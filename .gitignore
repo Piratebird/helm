@@ -1,0 +1,17 @@
+# enviorment 
+.env
+*.env
+.env.*
+!.env.example
+
+# Virtual envs
+venv/
+env/
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pdb
