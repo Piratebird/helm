@@ -1,0 +1,10 @@
+certifi==2025.11.12
+charset-normalizer==3.4.4
+feedparser==6.0.12
+idna==3.11
+packaging==25.0
+python-dotenv==1.2.1
+qbittorrent-api==2025.11.1
+requests==2.32.5
+sgmllib3k==1.0.0
+urllib3==2.5.0
