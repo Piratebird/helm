@@ -26,14 +26,10 @@ def add_indexer(indexer):
 
 def setup_indexers():
     config = load_config()
-    rss_urls = []
 
     for ix in DEFAULT_INDEXERS:
-        if add_indexer(ix):
-            rss_urls.append(
-                f"{JACKETT_URL}/api/v2.0/indexers/{ix}/results/rss?apikey={API_KEY}"
-            )
+        add_indexer(ix)
 
-        config["indexers"] = rss_urls
-        save_config(config)
-        return rss_urls
+    # store indexer names, not rss urls
+    config["indexers"] = DEFAULT_INDEXERS
+    save_config(config)

@@ -34,9 +34,9 @@ def login_qbittorrent():
     data = {"username": QB_USERNAME, "password": QB_PASSWORD}
     r = session.post(login_url, data=data)
 
-    if r.text != "ok.":
+    if r.text.strip().lower() != "ok.":
         raise Exception(f"Failed to login to qbittorrent: {r.text}")
-    print("Loffed in to qbittorrent web ui !!")
+    print("Logged in to qbittorrent web ui !!")
     return session
 
 

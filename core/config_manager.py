@@ -39,11 +39,43 @@ def load_config():
             ],
             "min_seeds": 3,
         }
+
     with open("config.json") as f:
-        return json.load(f)
+        try:
+            content = f.read().strip()
+            if not content:
+                return {
+                    "indexers": [],
+                    "qualities": [
+                        "480p",
+                        "720p",
+                        "1080p",
+                        "2160p",
+                        "WEB-DL",
+                        "WEBRip",
+                        "BluRay",
+                    ],
+                    "min_seeds": 3,
+                }
+            return json.loads(content)
+        except json.JSONDecodeError:
+            print("Config file is corrupted, resetting.")
+            return {
+                "indexers": [],
+                "qualities": [
+                    "480p",
+                    "720p",
+                    "1080p",
+                    "2160p",
+                    "WEB-DL",
+                    "WEBRip",
+                    "BluRay",
+                ],
+                "min_seeds": 3,
+            }
 
 
 # saving the configuration that are passed to it and formatting it
 def save_config(config):
     with open("config.json", "w") as f:
-        json.dump(config.j, f, indent=4)
+        json.dump(config, f, indent=4)
