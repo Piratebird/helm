@@ -27,6 +27,10 @@ def add_indexer(indexer):
 def setup_indexers():
     config = load_config()
 
+    # if they're already setup
+    if config.get("indexers"):
+        return
+    print("Setting up jackett indexers...")
     for ix in DEFAULT_INDEXERS:
         add_indexer(ix)
 
