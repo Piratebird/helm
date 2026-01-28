@@ -1,14 +1,20 @@
 # Helm - Torrent Automation Prototype
 
+<p align="center">
+  <img src="images/the_helm.jpeg" width="700">
+</p>
+
 **Current State:** Prototype
 
-Helm is a CLI-based torrent automation tool designed to fetch, filter, and send magnet links to qBittorrent. Currently, the project is in a prototype stage. To fully operate, it requires a few external services:
+Helm is a CLI-based torrent automation tool designed to fetch, filter, and send magnet links to qBittorrent. Currently, the project is in a prototype stage. To fully operate, it requires a few 
+
+## external services:
 
 - **Flaresolverr** (run via Docker image)
 - **Jackett** (as a service)
 - **qBittorrent-nox** (headless torrent client)
 
-Later, I plan to publish my own indexer files for easier setup.
+Later, I plan to publish my own indexer files for easier setup so hell yeah?!.
 
 ---
 
@@ -28,25 +34,31 @@ Later, I plan to publish my own indexer files for easier setup.
 
 ```bash
 sudo dnf install qbittorrent-nox
-
-<!-- rb_libtorrent-devel rb_libtorrent-python3 -->
-Debian / Ubuntu
-<!-- sudo apt install python3-libtorrent -->
+```
+### Debian / Ubuntu
+```bash
+sudo apt install qbittorrent-nox
 ```
 
-## Project Structure
+## Installation
+
+
+```bash
+# Clone the repo
+git clone https://github.com/Piratebird/helm.git
+cd helm
+
+# Create a virtual environment
+python3 -m venv venv
+source venv/bin/activate  # Linux/macOS
+# venv\Scripts\activate   # Windows
+
+# Install dependencies
+pip install -r requirements.txt
 
 ```
-helm/
-├── core/
-│ ├── config_manager.py # Step 0 → load/save config & .env
-│ ├── indexer_setup.py # Step 1 → add indexers / build RSS URLs
-│ ├── rss_fetcher.py # Step 2 → fetch & parse RSS feeds
-│ ├── torrent_filter.py # Step 3 → deduplicate, filter, sort
-│ ├── qbittorrent_client.py # Step 4 → send magnet links to qBittorrent
-│ └── utils.py # Small helper functions
-├── main.py # CLI entry point: search, download
-├── config.json # Stores indexers, qualities, min_seeds
-├── .env.example # Shows variables for Jackett URL/API key
-└── README.md # Quick usage instructions
-```
+
+
+# Why this exists ?
+
+Honestly for the most part it's for myself and my own usage i wanted to get magents of torrents and shows and it was annoying sometimes to look all over the internet for a torrent so i wanted to do that but with the terminal for the most part and heck yeah it gets the job done so far it's not perfect but it's my own so hell yeah :)
