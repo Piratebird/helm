@@ -10,16 +10,24 @@
 
 ## Table of Contents
 
-- [Why this exists ](#why-this-exists)
-- [Roadmap](#roadmap)
-- [Configuration](#configuration)
-- [Usage (WIP)](#usage-wip)
-- [Disclaimer](#disclaimer)
-- [Contributing](#contributing)
-- [How it Works (High-Level)](#how-it-works-high-level)
-- [Known Limitations](#known-limitations)
-- [Credits](#credits)
-- [License](#license)
+- [Helm - Torrent Automation Prototype](#helm---torrent-automation-prototype)
+  - [Table of Contents](#table-of-contents)
+  - [external services:](#external-services)
+  - [Features (Planned / Prototype)](#features-planned--prototype)
+  - [Dependencies](#dependencies)
+    - [Fedora / RHEL](#fedora--rhel)
+    - [Debian / Ubuntu](#debian--ubuntu)
+  - [Installation](#installation)
+  - [Why this exists](#why-this-exists)
+  - [Roadmap](#roadmap)
+  - [Configuration](#configuration)
+  - [Usage (WIP)](#usage-wip)
+  - [Disclaimer](#disclaimer)
+  - [Contributing](#contributing)
+  - [How it works (high-level)](#how-it-works-high-level)
+  - [Known limitations](#known-limitations)
+  - [Credits](#credits)
+  - [License](#license)
 
 **Current State:** Prototype
 
@@ -94,7 +102,7 @@ Helm is actively roaming the 7seas and trying to get more treasures:
 - Scrumptious TUI interface.
 - Better indexer management.
 
-For more detailed tasks breakdown check [TODO.md](TODO.md)
+For more detailed tasks breakdown check [TODO.md](docs/TODO.md)
 
 ## Configuration
 
