@@ -5,24 +5,39 @@ core/torrent_filter.py
 """
 
 
+import re
+
 def is_negative_match(title, negatives):
     title = title.lower()
-    return any(n in title for n in negatives)
+    for n in negatives:
+        if re.search(r'\b' + re.escape(n.lower()) + r'\b', title):
+            return True
+    return False
 
 
 def score_item(title, positives):
     title = title.lower()
-    return sum(1 for p in positives if p in title)
+    score = 0
+    for p in positives:
+        if re.search(r'\b' + re.escape(p.lower()) + r'\b', title):
+            score += 1
+    return score
 
 
 def match_keywords(title, keywords):
     title = title.lower()
-    return any(k in title for k in keywords)
+    for k in keywords:
+        if re.search(r'\b' + re.escape(k.lower()) + r'\b', title):
+            return True
+    return False
 
 
 def match_quality(title, qualities):
     title = title.lower()
-    return any(q.lower() in title for q in qualities)
+    for q in qualities:
+        if re.search(r'\b' + re.escape(q.lower()) + r'\b', title):
+            return True
+    return False
 
 
 def dedupe(items):

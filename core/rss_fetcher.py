@@ -46,8 +46,10 @@ def search_jackett(query):
 
     try:
         r = requests.get(url, params=params, timeout=30)
+        r.raise_for_status()
         return feedparser.parse(r.text).entries
     except Exception as e:
         print(f"Search error: {e}")
+        return []
 
     # return all_items

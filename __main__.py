@@ -3,7 +3,7 @@ from core.rss_fetcher import search_jackett
 from core.config_manager import CONTENT_PROFILES, NEGATIVE_KEYWORDS
 from core.torrent_filter import filter_items
 from core.qbittorrent_client import add_magnet
-
+import re
 if __name__ == "__main__":
     print("THE HELM- Torrent automation MVP ")
 
@@ -19,6 +19,9 @@ if __name__ == "__main__":
     )
     keywords = CONTENT_PROFILES.get(content_type, CONTENT_PROFILES["video"])
     negatives = NEGATIVE_KEYWORDS.get(content_type, [])
+    
+    query_words = set(re.findall(r'\b\w+\b', query.lower()))
+    negatives = [n for n in negatives if n.lower() not in query_words]
     all_items = search_jackett(query)
     print(f"Jackett returned {len(all_items)} raw results")
 
