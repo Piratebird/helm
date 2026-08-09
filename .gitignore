@@ -26,3 +26,4 @@ testing/
 *test*
 
 docker_data/
+config/
