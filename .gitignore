@@ -18,3 +18,9 @@ __pycache__/
 
 #configuration
 config.json
+
+bugs_notes.txt
+
+# testing / planning
+testing/
+*test*
