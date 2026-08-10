@@ -1,0 +1,6 @@
+.env
+config.json
+docker_data/
+.git/
+__pycache__/
+venv/

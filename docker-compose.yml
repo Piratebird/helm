@@ -1,0 +1,53 @@
+services:
+  jackett:
+    image: lscr.io/linuxserver/jackett:latest
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+    volumes:
+      - ./docker_data/jackett:/config:z
+      - ./docker_data/downloads:/downloads:z
+    ports:
+      - 19117:9117
+    restart: unless-stopped
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    environment:
+      - LOG_LEVEL=info
+      - TZ=Etc/UTC
+    ports:
+      - 18191:8191
+    restart: unless-stopped
+
+  mini-helm:
+    build: .
+    image: mini-helm
+    stdin_open: true
+    tty: true
+    env_file:
+      - ./docker_data/.env.docker
+    volumes:
+      - ./docker_data/config.json:/app/config.json:z
+    depends_on:
+      - jackett
+      - qbittorrent
+    profiles:
+      - cli
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+      - WEBUI_PORT=8080
+    volumes:
+      - ./docker_data/qbittorrent:/config:z
+      - ./docker_data/downloads:/downloads:z
+    ports:
+      - 18080:8080
+      - 6881:6881
+      - 6881:6881/udp
+    restart: unless-stopped

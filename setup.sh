@@ -1,0 +1,292 @@
+#!/usr/bin/env bash
+
+echo "==========================================="
+echo "        Helm Docker Setup Script           "
+echo "==========================================="
+echo ""
+
+# Ensure Docker is installed before proceeding
+if ! command -v docker &> /dev/null; then
+    echo "[-] Error: Docker is not installed or not in your PATH."
+    echo ""
+    
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        case "$ID" in
+            ubuntu|debian|pop|linuxmint)
+                echo "To install Docker on $NAME, run:"
+                echo "  sudo apt update && sudo apt install -y docker.io docker-compose-v2"
+                ;;
+            fedora)
+                echo "To install Docker on $NAME, run:"
+                echo "  sudo dnf install -y docker docker-compose"
+                ;;
+            arch|manjaro)
+                echo "To install Docker on $NAME, run:"
+                echo "  sudo pacman -S docker docker-compose"
+                ;;
+            centos|rhel|almalinux|rocky)
+                echo "To install Docker on $NAME, run:"
+                echo "  sudo yum install -y docker docker-compose"
+                ;;
+            *)
+                echo "Please install Docker manually for your OS ($NAME)."
+                ;;
+        esac
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        echo "To install Docker on macOS, run:"
+        echo "  brew install --cask docker"
+    else
+        echo "Please install Docker manually from https://docs.docker.com/get-docker/"
+    fi
+    
+    echo ""
+    echo "--- Unix Shenanigans Reminder ---"
+    echo "1. Start the Docker daemon:  sudo systemctl enable --now docker"
+    echo "2. Add user to docker group: sudo usermod -aG docker \$USER"
+    echo "3. Apply group changes:      newgrp docker (or just log out and log back in)"
+    echo ""
+    echo "After completing these steps, run ./setup.sh again."
+    exit 1
+fi
+
+# Ensure docker compose is available
+if ! docker compose version &> /dev/null; then
+    echo "[-] Error: 'docker compose' is not available."
+    echo "Please ensure you have the docker-compose-plugin installed."
+    exit 1
+fi
+
+# Ensure we don't fuck with the local native environment.
+# All docker-related data will go into a dedicated directory.
+mkdir -p docker_data/jackett docker_data/qbittorrent docker_data/downloads
+touch docker_data/config.json
+
+# Prompt for common configurations
+read -p "Enter Jackett API Key (press Enter to auto-extract later): " jackett_api
+read -p "Enter qBittorrent Username (default: admin): " qb_user
+qb_user=${qb_user:-admin}
+read -p "Enter qBittorrent Password (press Enter to auto-extract later): " qb_pass
+
+echo ""
+read -p "Do you want to route qBittorrent through a VPN using Gluetun? (y/N): " use_vpn
+
+# Write docker-compose.yml
+cat << 'EOF' > docker-compose.yml
+services:
+  jackett:
+    image: lscr.io/linuxserver/jackett:latest
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+    volumes:
+      - ./docker_data/jackett:/config:z
+      - ./docker_data/downloads:/downloads:z
+    ports:
+      - 19117:9117
+    restart: unless-stopped
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    environment:
+      - LOG_LEVEL=info
+      - TZ=Etc/UTC
+    ports:
+      - 18191:8191
+    restart: unless-stopped
+
+  mini-helm:
+    build: .
+    image: mini-helm
+    stdin_open: true
+    tty: true
+    env_file:
+      - ./docker_data/.env.docker
+    volumes:
+      - ./docker_data/config.json:/app/config.json:z
+    depends_on:
+      - jackett
+      - qbittorrent
+    profiles:
+      - cli
+EOF
+
+if [[ "$use_vpn" =~ ^[Yy]$ ]]; then
+    echo ""
+    echo "--- VPN Configuration ---"
+    read -p "Enter VPN Provider (e.g. nordvpn, custom): " vpn_provider
+    read -p "Enter VPN Type (wireguard/openvpn) (default: wireguard): " vpn_type
+    vpn_type=${vpn_type:-wireguard}
+    
+    vpn_extra=""
+    if [ "$vpn_type" = "wireguard" ]; then
+        read -p "Enter WireGuard Private Key: " wg_key
+        vpn_extra="WIREGUARD_PRIVATE_KEY=$wg_key"
+    fi
+    
+    echo "Configuring with VPN (Gluetun)..."
+    cat << 'EOF' >> docker-compose.yml
+
+  gluetun:
+    image: qmcgaw/gluetun:latest
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      - VPN_SERVICE_PROVIDER=${VPN_SERVICE_PROVIDER}
+      - VPN_TYPE=${VPN_TYPE}
+      - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
+    ports:
+      - 18080:8080
+      - 6881:6881
+      - 6881:6881/udp
+    restart: unless-stopped
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    network_mode: "service:gluetun"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+      - WEBUI_PORT=8080
+    volumes:
+      - ./docker_data/qbittorrent:/config:z
+      - ./docker_data/downloads:/downloads:z
+    depends_on:
+      - gluetun
+    restart: unless-stopped
+EOF
+else
+    echo "Configuring WITHOUT VPN..."
+    cat << 'EOF' >> docker-compose.yml
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+      - WEBUI_PORT=8080
+    volumes:
+      - ./docker_data/qbittorrent:/config:z
+      - ./docker_data/downloads:/downloads:z
+    ports:
+      - 18080:8080
+      - 6881:6881
+      - 6881:6881/udp
+    restart: unless-stopped
+EOF
+fi
+
+# To prevent docker compose from complaining about missing files during initial load
+touch ./docker_data/.env.docker
+
+# If using VPN, export variables so Gluetun can start successfully right now
+if [[ "$use_vpn" =~ ^[Yy]$ ]]; then
+    export VPN_SERVICE_PROVIDER="$vpn_provider"
+    export VPN_TYPE="$vpn_type"
+    export WIREGUARD_PRIVATE_KEY="$wg_key"
+fi
+
+# Seed Jackett indexers with defaults so Jackett has trackers out of the box!
+echo "Seeding default Jackett indexers..."
+mkdir -p ./docker_data/jackett/Jackett/Indexers
+cat << 'EOF' > ./docker_data/jackett/Jackett/Indexers/1337x.json
+[{"id": "sitelink", "type": "inputstring", "name": "Site Link", "value": "https://1337x.to/"}]
+EOF
+cat << 'EOF' > ./docker_data/jackett/Jackett/Indexers/thepiratebay.json
+[{"id": "sitelink", "type": "inputstring", "name": "Site Link", "value": "https://thepiratebay.org/"}]
+EOF
+cat << 'EOF' > ./docker_data/jackett/Jackett/Indexers/yts.json
+[{"id": "sitelink", "type": "inputstring", "name": "Site Link", "value": "https://yts.lt/"}]
+EOF
+cat << 'EOF' > ./docker_data/jackett/Jackett/Indexers/nyaa.json
+[{"id": "sitelink", "type": "inputstring", "name": "Site Link", "value": "https://nyaa.si/"}]
+EOF
+cat << 'EOF' > ./docker_data/jackett/Jackett/Indexers/torrentgalaxy.json
+[{"id": "sitelink", "type": "inputstring", "name": "Site Link", "value": "https://torrentgalaxy.to/"}]
+EOF
+
+echo ""
+echo "Starting containers in the background to initialize configurations..."
+docker compose up -d jackett flaresolverr qbittorrent
+
+echo "Waiting for services to spin up and generate configurations (this may take up to 45 seconds)..."
+
+# Extract Jackett API Key with a retry loop
+JACKETT_CONFIG="./docker_data/jackett/Jackett/ServerConfig.json"
+JACKETT_API="${jackett_api}"
+
+if [ -z "$JACKETT_API" ]; then
+    for i in {1..15}; do
+        if [ -f "$JACKETT_CONFIG" ]; then
+            extracted_api=$(grep '"APIKey"' "$JACKETT_CONFIG" | awk -F '"' '{print $4}')
+            if [ ! -z "$extracted_api" ]; then
+                JACKETT_API="$extracted_api"
+                echo "[+] Successfully grabbed Jackett API Key."
+                break
+            fi
+        fi
+        sleep 3
+    done
+    
+    if [ -z "$JACKETT_API" ]; then
+        echo "[-] Could not find APIKey in Jackett configuration. Using placeholder."
+        JACKETT_API="your_jackett_api_key_here"
+    fi
+fi
+
+# Extract qBittorrent temporary password from logs with a retry loop
+QB_PASS="${qb_pass}"
+if [ -z "$QB_PASS" ]; then
+    for i in {1..15}; do
+        extracted_pass=$(docker compose logs qbittorrent 2>&1 | grep -i "temporary password is provided for this session" | awk -F'session: ' '{print $2}' | tr -d '\r\n')
+        if [ ! -z "$extracted_pass" ]; then
+            QB_PASS="$extracted_pass"
+            echo "[+] Successfully grabbed qBittorrent Temporary Password."
+            break
+        fi
+        sleep 3
+    done
+    
+    if [ -z "$QB_PASS" ]; then
+        echo "[-] Temporary password not found in logs. (May be using default 'adminadmin' or already configured)."
+        QB_PASS="adminadmin"
+    fi
+fi
+
+# Write final isolated .env.docker file
+cat << EOF > ./docker_data/.env.docker
+# --- Helm Docker Isolated Configuration ---
+JACKETT_URL=http://jackett:9117
+JACKETT_API_KEY=$JACKETT_API
+QB_WEBUI=http://qbittorrent:8080
+QB_USERNAME=$qb_user
+QB_PASSWORD=$QB_PASS
+EOF
+
+if [[ "$use_vpn" =~ ^[Yy]$ ]]; then
+    cat << EOF >> ./docker_data/.env.docker
+
+# --- VPN (Gluetun) Configuration ---
+VPN_SERVICE_PROVIDER=$vpn_provider
+VPN_TYPE=$vpn_type
+$vpn_extra
+EOF
+fi
+
+echo ""
+echo "Building the mini-helm container..."
+docker compose build mini-helm
+
+echo ""
+echo "Setup is 100% complete! Everything is configured."
+echo "Your native .env and config.json were left completely untouched."
+echo "Docker configs are stored safely inside the ./docker_data directory."
+echo ""
+echo "To start using the app in its isolated mini container, run:"
+echo "    docker compose run --rm mini-helm"
+echo "==========================================="
