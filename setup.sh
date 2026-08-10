@@ -89,6 +89,14 @@ mkdir -p docker_data/jackett docker_data/qbittorrent docker_data/downloads
 touch docker_data/config.json
 
 # Prompt for common configurations
+echo ""
+echo "How would you like to run Helm?"
+echo "  [1] Permanent (Always-On) - Containers run 24/7 in the background."
+echo "  [2] Ephemeral (One-Shot)  - Containers spin up only when downloading, then tear down."
+read -p "Choose your mode (1/2, default 2): " run_mode
+run_mode=${run_mode:-2}
+echo ""
+
 read -p "Enter Jackett API Key (press Enter to auto-extract later): " jackett_api
 read -p "Enter qBittorrent Username (default: admin): " qb_user
 qb_user=${qb_user:-admin}
@@ -349,6 +357,16 @@ echo ""
 echo "Setup is 100% complete! Everything is configured."
 echo "Your native .env and config.json were left completely untouched."
 echo "Docker configs are stored safely inside the ./docker_data directory."
+echo ""
+
+if [ "$run_mode" == "2" ]; then
+    echo "Tearing down containers for Ephemeral (One-Shot) mode..."
+    docker compose down
+    echo "Containers stopped. Helm will spin them up automatically when you trigger a download."
+else
+    echo "Your permanent stack is currently running in the background."
+fi
+
 echo ""
 echo "To start using the app in its isolated mini container, run:"
 echo "    docker compose run --rm mini-helm"
