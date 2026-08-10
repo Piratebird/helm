@@ -46,8 +46,9 @@ class TorrentItem:
         self.size = size
         self.pubdate = pubdate
 
-def search_jackett(query):
+def search_jackett(query, content_type="video"):
     url = f"{JACKETT_URL}/api/v2.0/indexers/all/results/torznab/api"
+    
     params = {
         "apikey": API_KEY,
         "q": query,

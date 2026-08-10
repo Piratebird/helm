@@ -60,5 +60,7 @@ def add_magnet(magnet):
     if r.status_code in (200, 202):
         # add some decorations later like check-mark
         print(f"Magnet added: {magnet}")
+    elif r.status_code == 409:
+        print(f"\033[33mMagnet is already in your qBittorrent download list!\033[0m")
     else:
         print(f"Failed to add magnet: {r.status_code} | {r.text}")
