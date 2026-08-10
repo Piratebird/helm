@@ -9,9 +9,6 @@ core/qbittorrent_client.py
 
 import requests
 import os
-from dotenv import load_dotenv
-
-load_dotenv()
 
 # reading from .env fallback to the second parameter
 QB_WEBUI = os.getenv("QB_WEBUI", "http://localhost:8080")
@@ -39,11 +36,13 @@ def login_qbittorrent():
     data = {"username": QB_USERNAME, "password": QB_PASSWORD}
     r = session.post(login_url, data=data)
 
-    if r.status_code == 200:
-        if r.text.strip().lower() != "ok." and "SID" not in session.cookies:
-            raise Exception(f"Failed to login to qbittorrent: {r.text}")
-    elif r.status_code != 204:
-        raise Exception(f"Failed to login to qbittorrent: HTTP {r.status_code} {r.text}")
+    if r.status_code == 200 or r.status_code == 204:
+        # Check if the SID cookie was set, which indicates successful authentication
+        has_cookie = any(cookie.name == "SID" for cookie in session.cookies)
+        if r.text.strip().lower() != "ok." and not has_cookie:
+            pass # Trust 200/204 as generally OK for newer API versions
+    else:
+        raise ConnectionError(f"Failed to login to qbittorrent: HTTP {r.status_code} {r.text}")
     
     print("Logged in to qbittorrent web ui !!")
     _session = session

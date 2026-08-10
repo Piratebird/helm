@@ -40,24 +40,39 @@ def match_quality(title, qualities):
     return False
 
 
+import hashlib
+
 def dedupe(items):
     seen = set()
     unique = []
     for i in items:
-        link = i.link
-        hash_start = link.find("btih:") + 5
-        hash_value = link[hash_start : hash_start + 40].lower()
+        link = getattr(i, 'link', '')
+        if "btih:" in link.lower():
+            hash_start = link.lower().find("btih:") + 5
+            hash_value = link[hash_start : hash_start + 40].lower()
+        else:
+            # Fallback to hashing the whole link or title if not a standard magnet
+            hash_value = hashlib.md5(link.encode('utf-8')).hexdigest() if link else hashlib.md5(getattr(i, 'title', '').encode('utf-8')).hexdigest()
+            
         if hash_value not in seen:
             seen.add(hash_value)
             unique.append(i)
     return unique
 
 
-def filter_items(items, positives, negatives, min_score=1):
+def filter_items(items, positives, negatives, min_score=1, min_seeds=0):
     results = []
 
     for item in items:
-        title = item.title
+        title = getattr(item, 'title', '')
+        seeders = getattr(item, 'seeders', 0)
+        try:
+            seeders = int(seeders)
+        except (ValueError, TypeError):
+            seeders = 0
+
+        if seeders < min_seeds:
+            continue
 
         # if it containts a negative word(unrelated to the searched topic) kill the fucker
         if is_negative_match(title, negatives):

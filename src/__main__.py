@@ -1,62 +1,265 @@
+import os
+import sys
+import argparse
+import json
+from dotenv import load_dotenv
+load_dotenv()
+
 from core.indexers_setup import setup_indexers
 from core.rss_fetcher import search_jackett
-from core.config_manager import CONTENT_PROFILES, NEGATIVE_KEYWORDS
-from core.torrent_filter import filter_items
+from core.config_manager import CONTENT_PROFILES, NEGATIVE_KEYWORDS, load_config
+from core.torrent_filter import filter_items, dedupe
 from core.qbittorrent_client import add_magnet
 import re
+import time
+import threading
+import tty
+import termios
+import select
+
+def hex_to_ansi(hex_color):
+    hex_color = hex_color.lstrip('#')
+    r, g, b = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+    return f"\033[38;2;{r};{g};{b}m"
+
+class Palette:
+    NAVY = hex_to_ansi("#192A56")      # Text 'The HELM'
+    MAROON = hex_to_ansi("#542023")    # Steering Wheel
+    BROWN = hex_to_ansi("#5C4026")     # Anchor and Ropes
+    CREAM = hex_to_ansi("#EADAC9")     # Background
+    LIGHT_NAVY = hex_to_ansi("#4A69BD") # Brighter variant for readability
+    BRIGHT_MAROON = hex_to_ansi("#B33939") 
+    BRIGHT_BROWN = hex_to_ansi("#CD6133")
+    RESET = "\033[0m"
+
+C_LOGO = Palette.LIGHT_NAVY
+C_SUB = Palette.BRIGHT_MAROON
+C_TEXT = Palette.CREAM
+C_LINE = Palette.BRIGHT_BROWN
+C_ERR = hex_to_ansi("#FF5252")
+C_RST = Palette.RESET
+
+def format_size(size_bytes):
+    if not size_bytes:
+        return "????"
+    size = float(size_bytes)
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if size < 1024.0:
+            return f"{size:.1f}{unit}"
+        size /= 1024.0
+    return "????"
+
+def animated_search(query):
+    done = False
+
+    def animate():
+        # cool ass animation while searching
+        chars = ['.  ', '.. ', '...', '   ']
+        i = 0
+        while not done:
+            sys.stdout.write(f'\r{C_LOGO}Searching' + chars[i % 4] + f'{C_RST}')
+            sys.stdout.flush()
+            time.sleep(0.4)
+            i += 1
+        sys.stdout.write('\r' + ' ' * 20 + '\r')
+        sys.stdout.flush()
+
+    t = threading.Thread(target=animate)
+    t.start()
+    
+    try:
+        res = search_jackett(query)
+    finally:
+        done = True
+        t.join()
+        
+    return res
+# w logo perchance ?
+logo = r"""
+▗▖ ▗▖▗▄▄▄▖▗▖   ▗▖  ▗▖
+▐▌ ▐▌▐▌   ▐▌   ▐▛▚▞▜▌
+▐▛▀▜▌▐▛▀▀▘▐▌   ▐▌  ▐▌
+▐▌ ▐▌▐▙▄▄▖▐▙▄▄▖▐▌  ▐▌
+"""
+
 if __name__ == "__main__":
-    print("THE HELM- Torrent automation MVP ")
+    parser = argparse.ArgumentParser(description="Helm - Torrent automation MVP")
+    parser.add_argument("-q", "--query", help="Search query (bypasses input prompt)", type=str)
+    parser.add_argument("-t", "--type", help="Content type (video, games, etc.)", type=str, default="video")
+    parser.add_argument("--auto", action="store_true", help="Automatically select the top torrent and send it")
+    parser.add_argument("--json", action="store_true", help="Output results as JSON and exit")
+    args = parser.parse_args()
+
+    if not args.json and not args.query:
+        print(f"{C_LOGO}{logo}{C_RST}")
+        print(f"{C_SUB}THE HELM - Torrent automation MVP{C_RST}\n")
 
     setup_indexers()
-    query = input("What would you like to search for: ").strip()
-    content_type = (
-        input(
-            "Content type [video / games / software / books / music] (default: video ): "
-        )
-        .strip()
-        .lower()
-        or "video"
-    )
+    
+    if args.query:
+        query = args.query
+        content_type = args.type.lower()
+    else:
+        try:
+            query = input(f"\033[1m{C_TEXT}? What would you like to search for:{C_RST} ").strip()
+            content_type = (
+                input(
+                    f"\033[1m{C_TEXT}? Content type [video/games/software/books/music] (video):{C_RST} "
+                )
+                .strip()
+                .lower()
+                or "video"
+            )
+        except KeyboardInterrupt:
+            print(f"\n{C_SUB}later bozo!{C_RST}")
+            sys.exit(0)
     keywords = CONTENT_PROFILES.get(content_type, CONTENT_PROFILES["video"])
     negatives = NEGATIVE_KEYWORDS.get(content_type, [])
     
     query_words = set(re.findall(r'\b\w+\b', query.lower()))
     negatives = [n for n in negatives if n.lower() not in query_words]
-    all_items = search_jackett(query)
-    print(f"Jackett returned {len(all_items)} raw results")
+    all_items = animated_search(query)
+    print(f"{C_LOGO}Jackett returned {len(all_items)} raw results{C_RST}")
 
-    # config = load_config()
-    filtered = filter_items(all_items, keywords, negatives)
+    config = load_config()
+    min_seeds = config.get("min_seeds", 3)
+    
+    unique_items = dedupe(all_items)
+    filtered = filter_items(unique_items, keywords, negatives, min_score=1, min_seeds=min_seeds)
 
     if not filtered:
-        print("No torrent were found :( ")
-        exit()
+        if args.json:
+            print(json.dumps([]))
+        else:
+            print(f"{C_ERR}No torrents were found :({C_RST}", file=sys.stderr)
+        sys.exit(1)
 
-    print(f"\nFound {len(filtered)} results:\n")
-    print("-" * 69)
-    for i, t in enumerate(filtered, 1):
-        # shorten longer titles for readability
-        title = t.title if len(t.title) <= 60 else t.title[:57] + "...."
-        print(f"{i:>2}.{title}\n Link:{t.link}\n")
-    print("-" * 67)
+    if args.json:
+        json_output = [{"title": t.title, "link": t.link, "seeders": getattr(t, 'seeders', 0)} for t in filtered]
+        print(json.dumps(json_output, indent=2))
+        sys.exit(0)
+        
+    if args.auto:
+        selected = filtered[0]
+        add_magnet(selected.link)
+        if not args.json:
+            print(f"{C_TEXT}Top torrent sent successfully :){C_RST}")
+        sys.exit(0)
 
-    while True:
+    def interactive_selector(filtered_list):
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        current_input = ""
+        selected_index = 0
+        
+        def redraw():
+            nonlocal selected_index
+            # Clear screen and reset cursor
+            sys.stdout.write("\033[2J\033[H")
+            
+            # Print header again
+            logo_crlf = logo.replace('\n', '\r\n')
+            sys.stdout.write(f"{C_LOGO}{logo_crlf}{C_RST}\r\n")
+            sys.stdout.write(f"{C_SUB}THE HELM - Torrent automation MVP{C_RST}\r\n\r\n")
+            
+            # live filter heck yeah
+            search_term = current_input.lower()
+            if search_term.startswith('/'):
+                search_term = search_term[1:]
+                
+            disp_items = [t for t in filtered_list if search_term in t.title.lower()]
+            
+            if selected_index >= len(disp_items):
+                selected_index = max(0, len(disp_items) - 1)
+
+            limit = 40
+            
+            # Find max seed width for alignment
+            max_seeds = max([getattr(t, 'seeders', 0) for t in disp_items[:limit]] + [0])
+            seed_width = len(str(max_seeds))
+
+            sys.stdout.write(f"\033[1m{C_TEXT}Found {len(disp_items)} results (showing top {min(len(disp_items), limit)}):{C_RST}\r\n")
+            sys.stdout.write(f"{C_LINE}" + "━" * 80 + f"{C_RST}\r\n")
+            
+            for i, t in enumerate(disp_items[:limit]):
+                title = t.title if len(t.title) <= 38 else t.title[:35] + "..."
+                title_pad = max(2, 40 - len(title))
+                
+                seeds = getattr(t, 'seeders', 0)
+                leechs = getattr(t, 'leechers', 0)
+                size_str = format_size(getattr(t, 'size', 0))
+                date_str = getattr(t, 'pubdate', '') or '????-??-??'
+                
+                info_str = f"[{size_str:>7}] [{date_str:>10}] [{seeds:>4}↑ {leechs:>3}↓]"
+                
+                if i == selected_index:
+                    # Highlighted row
+                    sys.stdout.write(f"\033[7m\033[1m{C_LOGO} ❯ {title}{C_RST}\033[7m{' ' * title_pad}{C_TEXT}{info_str}{C_RST}\r\n")
+                else:
+                    sys.stdout.write(f"\033[1m{C_SUB}   {C_RST} {C_LOGO}{title}{C_RST}{' ' * title_pad}\033[1m{C_TEXT}{info_str}{C_RST}\r\n")
+                
+            if len(disp_items) > limit:
+                sys.stdout.write(f"\r\n\033[3m{C_SUB}... and {len(disp_items) - limit} more items{C_RST}\033[0m\r\n")
+                
+            sys.stdout.write(f"{C_LINE}" + "━" * 80 + f"{C_RST}\r\n")
+            prompt = f"\033[1m{C_TEXT}❯ Filter (Arrows to move, Enter to select):{C_RST} {current_input}"
+            sys.stdout.write(prompt)
+            sys.stdout.flush()
+            return disp_items
+
         try:
-            choice = int(
-                input(
-                    f"Enter the number of the torrent to send to qbittorrent (1-{len(filtered)}): "
-                )
-            )
-            if 1 <= choice <= len(filtered):
-                selected = filtered[choice - 1]
-                add_magnet(selected.link)
-                print("Torrent sent sucessfully :)")
-                break
-            else:
-                print("Invalid choice try again.")
-        except ValueError:
-            print("!!! PLEASE ENTER A VALID NUMBER !!!")
+            tty.setraw(sys.stdin.fileno())
+            sys.stdout.write("\033[?25l") # Hide cursor
+            items_to_show = redraw()
+            
+            while True:
+                ch = os.read(fd, 1).decode('utf-8', 'ignore')
+                if ch == '\x03': # Ctrl+C
+                    raise KeyboardInterrupt
+                elif ch == '\x1b': # Escape sequence
+                    if select.select([fd], [], [], 0.05)[0]:
+                        ch2 = os.read(fd, 1).decode('utf-8', 'ignore')
+                        if ch2 == '[':
+                            if select.select([fd], [], [], 0.05)[0]:
+                                ch3 = os.read(fd, 1).decode('utf-8', 'ignore')
+                                if ch3 == 'A': # Up
+                                    selected_index = max(0, selected_index - 1)
+                                elif ch3 == 'B': # Down
+                                    selected_index = min(len(items_to_show) - 1, selected_index + 1)
+                    else:
+                        raise KeyboardInterrupt # Plain Escape exits
+                    items_to_show = redraw()
+                elif ch in ('\r', '\n'): # Enter
+                    if items_to_show:
+                        return items_to_show[selected_index]
+                elif ch in ('\x7f', '\x08', '\b'): # Backspace
+                    current_input = current_input[:-1]
+                    selected_index = 0
+                    items_to_show = redraw()
+                elif ch == '\x15': # Ctrl+U to clear line
+                    current_input = ""
+                    selected_index = 0
+                    items_to_show = redraw()
+                elif ch == '\x17': # Ctrl+W to delete word
+                    current_input = " ".join(current_input.rstrip().split(" ")[:-1])
+                    if current_input:
+                        current_input += " "
+                    selected_index = 0
+                    items_to_show = redraw()
+                else:
+                    # Ignore non-printable characters for the prompt buffer
+                    if ch.isprintable():
+                        current_input += ch
+                        selected_index = 0
+                        items_to_show = redraw()
+        finally:
+            sys.stdout.write("\033[?25h") # Show cursor
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
-        except KeyboardInterrupt:
-            print("\nlater bozo!")
-            exit()
+    try:
+        selected = interactive_selector(filtered)
+        print(f"\n{C_TEXT}Torrent sent successfully :){C_RST}")
+        add_magnet(selected.link)
+    except KeyboardInterrupt:
+        print(f"\n{C_SUB}later bozo!{C_RST}")
+        sys.exit()

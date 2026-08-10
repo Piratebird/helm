@@ -37,14 +37,19 @@ def add_indexer(indexer):
 
 def setup_indexers():
     config = load_config()
+    existing_indexers = config.get("indexers", [])
 
-    # if they're already setup
-    if config.get("indexers"):
-        return
     print("Setting up jackett indexers...")
+    new_indexers_added = False
+    
     for ix in DEFAULT_INDEXERS:
-        add_indexer(ix)
+        if ix not in existing_indexers:
+            success = add_indexer(ix)
+            if success:
+                existing_indexers.append(ix)
+                new_indexers_added = True
 
-    # store indexer names, not rss urls
-    config["indexers"] = DEFAULT_INDEXERS
-    save_config(config)
+    if new_indexers_added:
+        # store indexer names, not rss urls
+        config["indexers"] = existing_indexers
+        save_config(config)

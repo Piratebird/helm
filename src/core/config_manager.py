@@ -9,11 +9,9 @@ once the user use "helm" once later on it'll be just detetced and loaded
 ## imports##
 import os
 import json
-from dotenv import load_dotenv
+import shutil
 
 ## setting up the  URL and the API key from .env ##
-
-load_dotenv()
 
 # the jackett url unless the user changed thiers before hand
 JACKETT_URL = os.getenv("JACKETT_URL", "http://localhost:9117")
@@ -186,24 +184,13 @@ def load_config():
                 }
             return json.loads(content)
         except json.JSONDecodeError:
-            print("Config file is corrupted, resetting.")
+            print("Config file is corrupted. Backing up to config.json.bak and resetting.")
+            shutil.copy("config.json", "config.json.bak")
             return {
                 "indexers": [],
                 "qualities": CONTENT_PROFILES["video"],
                 "min_seeds": 3,
-            }  # return {
-            #     "indexers": [],
-            #     "qualities": [
-            #         "480p",
-            #         "720p",
-            #         "1080p",
-            #         "2160p",
-            #         "WEB-DL",
-            #         "WEBRip",
-            #         "BluRay",
-            #     ],
-            #     "min_seeds": 3,
-            # }
+            }
 
 
 # saving the configuration that are passed to it and formatting it
