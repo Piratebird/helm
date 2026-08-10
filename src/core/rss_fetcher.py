@@ -12,12 +12,6 @@ import email.utils
 import datetime
 # from core.config_manager import load_config
 
-JACKETT_URL = os.getenv("JACKETT_URL", "http://localhost:9117")
-API_KEY = os.getenv("JACKETT_API_KEY")
-
-if API_KEY is None:
-    raise RuntimeError("JACKETT_API_KEY environment variable not set")
-
 
 # def fetch_feed(url):
 #     try:
@@ -47,12 +41,28 @@ class TorrentItem:
         self.pubdate = pubdate
 
 def search_jackett(query, content_type="video"):
-    url = f"{JACKETT_URL}/api/v2.0/indexers/all/results/torznab/api"
+    jackett_url = os.getenv("JACKETT_URL", "http://localhost:9117")
+    api_key = os.getenv("JACKETT_API_KEY")
+    if not api_key:
+        raise RuntimeError("JACKETT_API_KEY environment variable not set")
+        
+    url = f"{jackett_url}/api/v2.0/indexers/all/results/torznab/api"
+    
+    category_map = {
+        "video": "2000,5000",
+        "games": "4000",
+        "software": "4000",
+        "books": "8000",
+        "music": "3000"
+    }
     
     params = {
-        "apikey": API_KEY,
+        "apikey": api_key,
         "q": query,
     }
+    cat = category_map.get(content_type)
+    if cat:
+        params["cat"] = cat
 
     try:
         r = requests.get(url, params=params, timeout=30)
@@ -103,6 +113,8 @@ def search_jackett(query, content_type="video"):
                 leechers = 0
 
             items.append(TorrentItem(title, link, seeders, leechers, size, pubdate))
+        if len(items) == 0:
+            print(f"\n[DEBUG] Jackett returned 0 items. Raw XML response (first 2000 chars):\n{r.text[:2000]}\n")
         return items
     except requests.exceptions.RequestException as e:
         print(f"Network error while connecting to Jackett: {e}")

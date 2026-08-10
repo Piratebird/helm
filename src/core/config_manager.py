@@ -12,13 +12,7 @@ import json
 import shutil
 
 ## setting up the  URL and the API key from .env ##
-
-# the jackett url unless the user changed thiers before hand
-JACKETT_URL = os.getenv("JACKETT_URL", "http://localhost:9117")
-API_KEY = os.getenv("JACKETT_API_KEY")
-
-if API_KEY is None:
-    raise RuntimeError("JACKETT_API_KEY environment variable not set")
+# These are loaded dynamically in the modules that need them to avoid import crashes.
 
 CONTENT_PROFILES = {
     "video": [

@@ -1,19 +1,25 @@
 services:
   jackett:
     image: lscr.io/linuxserver/jackett:latest
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     environment:
       - PUID=1000
       - PGID=1000
       - TZ=Etc/UTC
     volumes:
-      - ./docker_data/jackett:/config:z
-      - ./docker_data/downloads:/downloads:z
+      - /home/piratebird/helm/docker_data/jackett:/config:z
+      - /home/piratebird/helm/docker_data/downloads:/downloads:z
     ports:
       - 19117:9117
     restart: unless-stopped
 
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr:latest
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     environment:
       - LOG_LEVEL=info
       - TZ=Etc/UTC
@@ -22,14 +28,22 @@ services:
     restart: unless-stopped
 
   mini-helm:
-    build: .
+    build:
+      context: .
+      network: host
     image: mini-helm
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     stdin_open: true
     tty: true
     env_file:
-      - ./docker_data/.env.docker
+      - /home/piratebird/helm/docker_data/.env.docker
+    security_opt:
+      - label=disable
     volumes:
-      - ./docker_data/config.json:/app/config.json:z
+      - /home/piratebird/helm/docker_data/config.json:/app/config.json:z
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - jackett
       - qbittorrent
@@ -38,16 +52,19 @@ services:
 
   qbittorrent:
     image: lscr.io/linuxserver/qbittorrent:latest
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     environment:
       - PUID=1000
       - PGID=1000
       - TZ=Etc/UTC
-      - WEBUI_PORT=8080
+      - WEBUI_PORT=18080
     volumes:
-      - ./docker_data/qbittorrent:/config:z
-      - ./docker_data/downloads:/downloads:z
+      - /home/piratebird/helm/docker_data/qbittorrent:/config:z
+      - /home/piratebird/helm/docker_data/downloads:/downloads:z
     ports:
-      - 18080:8080
+      - 18080:18080
       - 6881:6881
       - 6881:6881/udp
     restart: unless-stopped

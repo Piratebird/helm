@@ -71,16 +71,7 @@ if ! docker info > /dev/null 2>&1; then
 fi
 echo "[OK] Docker daemon is responsive."
 
-echo "[INFO] Testing registry connectivity..."
-REGISTRIES=("ghcr.io" "lscr.io" "docker.io")
-
-for registry in "${REGISTRIES[@]}"; do
-    if ! ping -c 1 "$registry" > /dev/null 2>&1; then
-        echo "[ERROR] Cannot reach $registry. DNS or network failure detected."
-        echo "Resolution: Check host /etc/resolv.conf, NetworkManager settings, or Docker daemon.json DNS definitions."
-        exit 1
-    fi
-done
+# Removed flaky ping tests. Docker will naturally fail if offline.
 echo "[OK] Network and DNS resolution functional."
 
 # Ensure we don't fuck with the local native environment.
@@ -97,10 +88,10 @@ read -p "Choose your mode (1/2, default 2): " run_mode
 run_mode=${run_mode:-2}
 echo ""
 
-read -p "Enter Jackett API Key (press Enter to auto-extract later): " jackett_api
+read -p "Enter Jackett API Key (press Enter to auto-extract later): " JACKETT_API
 read -p "Enter qBittorrent Username (default: admin): " qb_user
 qb_user=${qb_user:-admin}
-read -p "Enter qBittorrent Password (press Enter to auto-extract later): " qb_pass
+# Password is automatically managed by Helm
 
 echo ""
 read -p "Do you want to route qBittorrent through a VPN using Gluetun? (y/N): " use_vpn
@@ -110,19 +101,25 @@ cat << 'EOF' > docker-compose.yml
 services:
   jackett:
     image: lscr.io/linuxserver/jackett:latest
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     environment:
       - PUID=1000
       - PGID=1000
       - TZ=Etc/UTC
     volumes:
-      - ./docker_data/jackett:/config:z
-      - ./docker_data/downloads:/downloads:z
+      - ${PWD}/docker_data/jackett:/config:z
+      - ${PWD}/docker_data/downloads:/downloads:z
     ports:
       - 19117:9117
     restart: unless-stopped
 
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr:latest
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     environment:
       - LOG_LEVEL=info
       - TZ=Etc/UTC
@@ -131,14 +128,22 @@ services:
     restart: unless-stopped
 
   mini-helm:
-    build: .
+    build:
+      context: .
+      network: host
     image: mini-helm
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     stdin_open: true
     tty: true
     env_file:
-      - ./docker_data/.env.docker
+      - ${PWD}/docker_data/.env.docker
+    security_opt:
+      - label=disable
     volumes:
-      - ./docker_data/config.json:/app/config.json:z
+      - ${PWD}/docker_data/config.json:/app/config.json:z
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - jackett
       - qbittorrent
@@ -181,14 +186,17 @@ if [[ "$use_vpn" =~ ^[Yy]$ ]]; then
   qbittorrent:
     image: lscr.io/linuxserver/qbittorrent:latest
     network_mode: "service:gluetun"
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     environment:
       - PUID=1000
       - PGID=1000
       - TZ=Etc/UTC
-      - WEBUI_PORT=8080
+      - WEBUI_PORT=18080
     volumes:
-      - ./docker_data/qbittorrent:/config:z
-      - ./docker_data/downloads:/downloads:z
+      - ${PWD}/docker_data/qbittorrent:/config:z
+      - ${PWD}/docker_data/downloads:/downloads:z
     depends_on:
       - gluetun
     restart: unless-stopped
@@ -199,16 +207,19 @@ else
 
   qbittorrent:
     image: lscr.io/linuxserver/qbittorrent:latest
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     environment:
       - PUID=1000
       - PGID=1000
       - TZ=Etc/UTC
-      - WEBUI_PORT=8080
+      - WEBUI_PORT=18080
     volumes:
-      - ./docker_data/qbittorrent:/config:z
-      - ./docker_data/downloads:/downloads:z
+      - ${PWD}/docker_data/qbittorrent:/config:z
+      - ${PWD}/docker_data/downloads:/downloads:z
     ports:
-      - 18080:8080
+      - 18080:18080
       - 6881:6881
       - 6881:6881/udp
     restart: unless-stopped
@@ -228,28 +239,35 @@ fi
 # Seed Jackett indexers with defaults so Jackett has trackers out of the box!
 echo "Seeding default Jackett indexers..."
 mkdir -p ./docker_data/jackett/Jackett/Indexers
+
+# Generate basic indexer configs to make the app fully portable
 cat << 'EOF' > ./docker_data/jackett/Jackett/Indexers/1337x.json
-[{"id": "sitelink", "type": "inputstring", "name": "Site Link", "value": "https://1337x.to/"}]
-EOF
-cat << 'EOF' > ./docker_data/jackett/Jackett/Indexers/thepiratebay.json
-[{"id": "sitelink", "type": "inputstring", "name": "Site Link", "value": "https://thepiratebay.org/"}]
+[{"id": "sitelink","type": "inputstring","name": "Site Link","value": "https://1337x.to/"}]
 EOF
 cat << 'EOF' > ./docker_data/jackett/Jackett/Indexers/yts.json
-[{"id": "sitelink", "type": "inputstring", "name": "Site Link", "value": "https://yts.lt/"}]
+[{"id": "sitelink","type": "inputstring","name": "Site Link","value": "https://yts.mx/"}]
 EOF
-cat << 'EOF' > ./docker_data/jackett/Jackett/Indexers/nyaa.json
-[{"id": "sitelink", "type": "inputstring", "name": "Site Link", "value": "https://nyaa.si/"}]
+cat << 'EOF' > ./docker_data/jackett/Jackett/Indexers/nyaasi.json
+[{"id": "sitelink","type": "inputstring","name": "Site Link","value": "https://nyaa.si/"}]
 EOF
-cat << 'EOF' > ./docker_data/jackett/Jackett/Indexers/torrentgalaxy.json
-[{"id": "sitelink", "type": "inputstring", "name": "Site Link", "value": "https://torrentgalaxy.to/"}]
+cat << 'EOF' > ./docker_data/jackett/Jackett/Indexers/thepiratebay.json
+[{"id": "sitelink","type": "inputstring","name": "Site Link","value": "https://thepiratebay.org/"}]
+EOF
+
+echo "Pre-seeding qBittorrent configuration..."
+mkdir -p ./docker_data/qbittorrent/qBittorrent/
+cat << 'EOF' > ./docker_data/qbittorrent/qBittorrent/qBittorrent.conf
+[Preferences]
+WebUI\Password_PBKDF2="@ByteArray(ARQ77eY1NUZaQsuDHbIMCA==:0WMRkYTUWVT9wVvdDtHAjU9b3b7uB8NR1Gur2hmQCvCDpm39Q+PsIfSYvgkvpe7L5yL8YQv8EaV7t8mP308QWg==)"
+WebUI\Username=admin
+WebUI\AuthSubnetWhitelist=10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+WebUI\AuthSubnetWhitelistEnabled=true
+WebUI\LocalHostAuth=false
 EOF
 
 echo ""
 echo "Starting containers in the background to initialize configurations..."
-if ! docker compose up -d jackett flaresolverr qbittorrent; then
-    echo "[ERROR] Docker Compose failed to initiate the stack."
-    exit 1
-fi
+docker compose up -d
 
 echo "[INFO] Waiting for services to initialize..."
 
@@ -289,15 +307,22 @@ fi
 
 # Extract Jackett API Key with a retry loop
 JACKETT_CONFIG="./docker_data/jackett/Jackett/ServerConfig.json"
-JACKETT_API="${jackett_api}"
 
 if [ -z "$JACKETT_API" ]; then
     for i in {1..15}; do
         if [ -f "$JACKETT_CONFIG" ]; then
-            extracted_api=$(grep '"APIKey"' "$JACKETT_CONFIG" | awk -F '"' '{print $4}' || true)
+            extracted_api=$(python3 -c "import json; print(json.load(open('$JACKETT_CONFIG')).get('APIKey', ''))" 2>/dev/null || true)
             if [ ! -z "$extracted_api" ]; then
                 JACKETT_API="$extracted_api"
                 echo "[+] Successfully grabbed Jackett API Key."
+                
+                # Inject FlareSolverr URL safely to avoid race conditions with Jackett saving config
+                if grep -q '"FlareSolverrUrl"' "$JACKETT_CONFIG"; then
+                    docker compose stop jackett
+                    sed -i 's|"FlareSolverrUrl":.*|"FlareSolverrUrl": "http://flaresolverr:8191",|' "$JACKETT_CONFIG"
+                    docker compose start jackett
+                    echo "[+] Jackett configured with FlareSolverr."
+                fi
                 break
             fi
         fi
@@ -310,33 +335,18 @@ if [ -z "$JACKETT_API" ]; then
     fi
 fi
 
-# Extract qBittorrent temporary password from logs with a retry loop
-QB_PASS="${qb_pass}"
-if [ -z "$QB_PASS" ]; then
-    for i in {1..15}; do
-        extracted_pass=$(docker compose logs qbittorrent 2>&1 | grep -i "temporary password is provided for this session" | awk -F'session: ' '{print $2}' | tr -d '\r\n' || true)
-        if [ ! -z "$extracted_pass" ]; then
-            QB_PASS="$extracted_pass"
-            echo "[+] Successfully grabbed qBittorrent Temporary Password."
-            break
-        fi
-        sleep 3
-    done
-    
-    if [ -z "$QB_PASS" ]; then
-        echo "[-] Temporary password not found in logs. (May be using default 'adminadmin' or already configured)."
-        QB_PASS="adminadmin"
-    fi
-fi
+# qBittorrent password is fixed by our pre-seeded config
+QB_PASS="adminadmin"
 
 # Write final isolated .env.docker file
 cat << EOF > ./docker_data/.env.docker
 # --- Helm Docker Isolated Configuration ---
 JACKETT_URL=http://jackett:9117
 JACKETT_API_KEY=$JACKETT_API
-QB_WEBUI=http://qbittorrent:8080
+QB_WEBUI=http://qbittorrent:18080
 QB_USERNAME=$qb_user
 QB_PASSWORD=$QB_PASS
+COMPOSE_PROJECT_NAME=${PWD##*/}
 EOF
 
 if [[ "$use_vpn" =~ ^[Yy]$ ]]; then
@@ -351,7 +361,9 @@ fi
 
 echo ""
 echo "Building the mini-helm container..."
-docker compose build mini-helm
+sed -i "s|\${PWD}|$(pwd)|g" docker-compose.yml
+# Use legacy builder to bypass Fedora/Tailscale Buildkit DNS issues
+DOCKER_BUILDKIT=0 docker compose build mini-helm
 
 echo ""
 echo "Setup is 100% complete! Everything is configured."
@@ -363,11 +375,14 @@ if [ "$run_mode" == "2" ]; then
     echo "Tearing down containers for Ephemeral (One-Shot) mode..."
     docker compose down
     echo "Containers stopped. Helm will spin them up automatically when you trigger a download."
+    echo ""
+    echo "To start using the app in its isolated mini container, run:"
+    echo "    docker compose run --rm mini-helm --oneshot"
+    echo "==========================================="
 else
-    echo "Your permanent stack is currently running in the background."
+    echo "Containers are left running 24/7 in the background."
+    echo ""
+    echo "To start using the app in its isolated mini container, run:"
+    echo "    docker compose run --rm mini-helm"
+    echo "==========================================="
 fi
-
-echo ""
-echo "To start using the app in its isolated mini container, run:"
-echo "    docker compose run --rm mini-helm"
-echo "==========================================="

@@ -2,16 +2,17 @@ import os
 import subprocess
 import time
 import sys
+import requests
 
 def spin_up_oneshot():
     print("\n\033[1m\033[36mInitializing One-Shot Ephemeral Stack...\033[0m")
     print("\033[3mBringing up Jackett, Flaresolverr, and qBittorrent via docker compose...\033[0m")
     
+    # Explicitly ensure all background containers are up just in case host depends_on fails
     try:
-        subprocess.run(["docker", "compose", "up", "-d"], check=True)
-    except subprocess.CalledProcessError:
-        print("\033[31mFailed to start docker-compose stack. Make sure Docker is running.\033[0m")
-        sys.exit(1)
+        subprocess.run(["docker", "compose", "up", "-d", "jackett", "qbittorrent", "flaresolverr"], check=False)
+    except Exception:
+        pass
         
     def check_container_status(service_name, timeout=45):
         print(f"\033[3mWaiting for {service_name} to stabilize...\033[0m")
@@ -38,73 +39,49 @@ def spin_up_oneshot():
         
     check_container_status("jackett")
     check_container_status("qbittorrent")
-        
-    print("\033[33mWaiting for Jackett to generate API Key...\033[0m")
-    jackett_api = None
-    config_path = "./docker_data/jackett/Jackett/ServerConfig.json"
-    for _ in range(15):
-        if os.path.exists(config_path):
-            try:
-                with open(config_path, "r") as f:
-                    for line in f:
-                        if '"APIKey"' in line:
-                            jackett_api = line.split('"')[3]
-                            break
-            except Exception:
-                pass
-        if jackett_api:
-            break
-        time.sleep(3)
-        
-    if not jackett_api:
-        print("\033[31mCould not extract Jackett API Key.\033[0m")
-        subprocess.run(["docker", "compose", "down"])
-        sys.exit(1)
-        
-    os.environ["JACKETT_API_KEY"] = jackett_api
-    os.environ["JACKETT_URL"] = "http://localhost:19117"
+    check_container_status("flaresolverr")
+    print(f"\033[36mWaiting for internal HTTP servers to fully boot (this ensures 1337x doesn't fail)...\033[0m")
     
-    import core.rss_fetcher
-    core.rss_fetcher.API_KEY = jackett_api
-    core.rss_fetcher.JACKETT_URL = "http://localhost:19117"
-    
-    print("\033[32mJackett API Key extracted and injected.\033[0m")
-    
-    print("\033[33mWaiting for qBittorrent password...\033[0m")
-    qb_pass = None
-    for _ in range(15):
+    # Wait for Jackett to respond to HTTP requests
+    jackett_url = os.environ.get("JACKETT_URL", "http://jackett:9117")
+    jackett_ready = False
+    for _ in range(30):
         try:
-            logs = subprocess.check_output(["docker", "compose", "logs", "qbittorrent"], text=True)
-            for line in logs.split('\n'):
-                if "temporary password is provided for this session" in line.lower():
-                    qb_pass = line.split("session: ")[-1].strip()
-                    break
-        except Exception:
+            r = requests.get(f"{jackett_url}/UI/Dashboard")
+            if r.status_code in [200, 401]:
+                jackett_ready = True
+                break
+        except requests.exceptions.ConnectionError:
             pass
-        if qb_pass:
-            break
-        time.sleep(3)
+        time.sleep(2)
         
-    if not qb_pass:
-        qb_pass = "adminadmin"
+    if not jackett_ready:
+        print("\033[31m[WARNING] Jackett HTTP API didn't respond in time.\033[0m")
         
-    os.environ["QB_PASSWORD"] = qb_pass
-    os.environ["QB_USERNAME"] = "admin"
-    os.environ["QB_WEBUI"] = "http://localhost:18080"
-    
-    # Patch module variables in case they were already loaded by __main__
-    import core.qbittorrent_client
-    core.qbittorrent_client.QB_PASSWORD = qb_pass
-    core.qbittorrent_client.QB_USERNAME = "admin"
-    core.qbittorrent_client.QB_WEBUI = "http://localhost:18080"
-    
-    print("\033[32mqBittorrent credentials secured.\033[0m\n")
+    # Wait for Flaresolverr to respond to HTTP requests
+    flaresolverr_url = "http://flaresolverr:8191"
+    flaresolverr_ready = False
+    for _ in range(30):
+        try:
+            r = requests.get(flaresolverr_url)
+            if "ready" in r.text.lower() or r.status_code == 200:
+                flaresolverr_ready = True
+                break
+        except requests.exceptions.ConnectionError:
+            pass
+        time.sleep(2)
+        
+    if not flaresolverr_ready:
+        print("\033[31m[WARNING] Flaresolverr HTTP API didn't respond in time.\033[0m")
+
+    print("\033[32mEnvironment variables loaded and APIs ready.\033[0m\n")
 
 
 def teardown_oneshot():
     print("\n\033[1m\033[33mTearing down the ephemeral stack to save processing power...\033[0m")
     try:
-        subprocess.run(["docker", "compose", "down"], check=True)
+        project_name = os.environ.get("COMPOSE_PROJECT_NAME", "helm")
+        subprocess.run(["docker", "compose", "-p", project_name, "down"], check=True)
         print("\033[1m\033[32mAll containers destroyed cleanly. Your RAM is free!\033[0m")
     except Exception as e:
         print(f"\033[31mCould not tear down docker-compose stack: {e}\033[0m")
@@ -112,33 +89,52 @@ def teardown_oneshot():
 
 def wait_for_download():
     print("\n\033[36mWaiting for download to complete before tearing down the stack...\033[0m")
+    print("\033[3m(Press Ctrl+C to cancel the download and tear down)\033[0m")
     
     import core.qbittorrent_client as qbc
+    # temporarily inject webui for the wait functionality
+    qb_webui = os.environ.get("QB_WEBUI", "http://qbittorrent:18080")
     session = qbc.login_qbittorrent()
     time.sleep(5)  # give qbittorrent time to parse the magnet metadata
     
-    while True:
+    try:
+        while True:
+            try:
+                r = session.get(f"{qb_webui}/api/v2/torrents/info")
+                if r.status_code == 200:
+                    torrents = r.json()
+                    if not torrents:
+                        time.sleep(3)
+                        continue
+                        
+                    all_done = True
+                    for t in torrents:
+                        progress = t.get("progress", 0.0)
+                        name = t.get("name", "Unknown")
+                        if progress < 1.0:
+                            all_done = False
+                            print(f"\r\033[33mDownloading '{name[:40]}...' ({progress*100:.1f}%) \033[0m", end="")
+                            sys.stdout.flush()
+                    
+                    if all_done:
+                        print("\n\033[1m\033[32mDownload(s) 100% complete!\033[0m")
+                        break
+            except Exception:
+                pass
+                
+            time.sleep(3)
+    except KeyboardInterrupt:
+        print("\n\033[31mDownload cancelled by user!\033[0m")
+        print("\033[3mRemoving unfinished torrents from qBittorrent...\033[0m")
         try:
-            r = session.get(f"{qbc.QB_WEBUI}/api/v2/torrents/info")
+            r = session.get(f"{qb_webui}/api/v2/torrents/info")
             if r.status_code == 200:
                 torrents = r.json()
-                if not torrents:
-                    time.sleep(3)
-                    continue
-                    
-                all_done = True
-                for t in torrents:
-                    progress = t.get("progress", 0.0)
-                    name = t.get("name", "Unknown")
-                    if progress < 1.0:
-                        all_done = False
-                        print(f"\r\033[33mDownloading '{name[:40]}...' ({progress*100:.1f}%) \033[0m", end="")
-                        sys.stdout.flush()
-                
-                if all_done:
-                    print("\n\033[1m\033[32mDownload(s) 100% complete!\033[0m")
-                    break
+                hashes_to_delete = [t.get("hash") for t in torrents if t.get("progress", 0.0) < 1.0]
+                if hashes_to_delete:
+                    # delete torrent and downloaded data
+                    session.post(f"{qb_webui}/api/v2/torrents/delete", data={"hashes": "|".join(hashes_to_delete), "deleteFiles": "true"})
         except Exception:
             pass
-            
-        time.sleep(3)
+        raise
+

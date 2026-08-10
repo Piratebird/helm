@@ -9,8 +9,9 @@ used for setting up the indexers used by jackett api
 ### imports ###
 import requests
 
-# fromt the config_manager module we import the jackett api jackett url and the config functions
-from core.config_manager import JACKETT_URL, API_KEY, load_config, save_config
+# from the config_manager module we import the config functions
+from core.config_manager import load_config, save_config
+import os
 
 # the value is constant shouldn't change
 DEFAULT_INDEXERS = ["1337x", "torrentgalaxy", "YTS", "nyaa", "thepiratebay"]
@@ -19,8 +20,14 @@ DEFAULT_INDEXERS = ["1337x", "torrentgalaxy", "YTS", "nyaa", "thepiratebay"]
 import time
 
 def add_indexer(indexer):
-    url = f"{JACKETT_URL}/api/v2.0/indexers"
-    headers = {"X-Api-key": API_KEY}
+    jackett_url = os.getenv("JACKETT_URL", "http://localhost:9117")
+    api_key = os.getenv("JACKETT_API_KEY")
+    if not api_key:
+        print("JACKETT_API_KEY is not set. Cannot add indexer.")
+        return False
+        
+    url = f"{jackett_url}/api/v2.0/indexers"
+    headers = {"X-Api-key": api_key}
     payload = {"indexer": indexer}
     
     for attempt in range(5):

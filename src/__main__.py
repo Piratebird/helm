@@ -6,7 +6,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from core.indexers_setup import setup_indexers
 from core.rss_fetcher import search_jackett
 from core.config_manager import CONTENT_PROFILES, NEGATIVE_KEYWORDS, load_config
 from core.torrent_filter import filter_items, dedupe
@@ -121,11 +120,12 @@ if __name__ == "__main__":
     if args.oneshot:
         spin_up_oneshot()
 
+    mode_str = " (ONE-SHOT MODE)" if args.oneshot else ""
+
     if not args.json and not args.query:
         print(f"{C_LOGO}{logo}{C_RST}")
-        print(f"{C_SUB}THE HELM - Torrent automation MVP{C_RST}\n")
+        print(f"{C_SUB}THE HELM - Torrent automation MVP{mode_str}{C_RST}\n")
 
-    setup_indexers()
 
     if args.query:
         query = args.query
@@ -210,7 +210,7 @@ if __name__ == "__main__":
             # Print header again
             logo_crlf = logo.replace("\n", "\r\n")
             sys.stdout.write(f"{C_LOGO}{logo_crlf}{C_RST}\r\n")
-            sys.stdout.write(f"{C_SUB}THE HELM - Torrent automation MVP{C_RST}\r\n\r\n")
+            sys.stdout.write(f"{C_SUB}THE HELM - Torrent automation MVP{mode_str}{C_RST}\r\n\r\n")
 
             # live filter heck yeah
             search_term = current_input.lower()
@@ -223,19 +223,27 @@ if __name__ == "__main__":
                 selected_index = max(0, len(disp_items) - 1)
 
             limit = 40
+            start_idx = 0
+            if len(disp_items) > limit:
+                start_idx = max(0, selected_index - (limit // 2))
+                if start_idx + limit > len(disp_items):
+                    start_idx = max(0, len(disp_items) - limit)
+
+            window_items = disp_items[start_idx : start_idx + limit]
 
             # Find max seed width for alignment
             max_seeds = max(
-                [getattr(t, "seeders", 0) for t in disp_items[:limit]] + [0]
+                [getattr(t, "seeders", 0) for t in window_items] + [0]
             )
             seed_width = len(str(max_seeds))
 
             sys.stdout.write(
-                f"\033[1m{C_TEXT}Found {len(disp_items)} results (showing top {min(len(disp_items), limit)}):{C_RST}\r\n"
+                f"\033[1m{C_TEXT}Found {len(disp_items)} results (showing {start_idx + 1}-{start_idx + len(window_items)}):{C_RST}\r\n"
             )
             sys.stdout.write(f"{C_LINE}" + "━" * 80 + f"{C_RST}\r\n")
 
-            for i, t in enumerate(disp_items[:limit]):
+            for i, t in enumerate(window_items):
+                actual_i = start_idx + i
                 title = t.title if len(t.title) <= 38 else t.title[:35] + "..."
                 title_pad = max(2, 40 - len(title))
 
@@ -248,7 +256,7 @@ if __name__ == "__main__":
                     f"[{size_str:>7}] [{date_str:>10}] [{seeds:>4}↑ {leechs:>3}↓]"
                 )
 
-                if i == selected_index:
+                if actual_i == selected_index:
                     # Highlighted row
                     sys.stdout.write(
                         f"\033[7m\033[1m{C_LOGO} ❯ {title}{C_RST}\033[7m{' ' * title_pad}{C_TEXT}{info_str}{C_RST}\r\n"
@@ -259,9 +267,15 @@ if __name__ == "__main__":
                     )
 
             if len(disp_items) > limit:
-                sys.stdout.write(
-                    f"\r\n\033[3m{C_SUB}... and {len(disp_items) - limit} more items{C_RST}\033[0m\r\n"
-                )
+                remaining = len(disp_items) - (start_idx + limit)
+                if remaining > 0:
+                    sys.stdout.write(
+                        f"\r\n\033[3m{C_SUB}... and {remaining} more items below{C_RST}\033[0m\r\n"
+                    )
+                if start_idx > 0:
+                    sys.stdout.write(
+                        f"\r\n\033[3m{C_SUB}... and {start_idx} items above{C_RST}\033[0m\r\n"
+                    )
 
             sys.stdout.write(f"{C_LINE}" + "━" * 80 + f"{C_RST}\r\n")
             prompt = f"\033[1m{C_TEXT}❯ Filter (Arrows=Move, Enter=Download, Ctrl+E=Download+Teardown):{C_RST} {current_input}"
@@ -334,4 +348,10 @@ if __name__ == "__main__":
             
     except KeyboardInterrupt:
         print(f"\n{C_SUB}later bozo!{C_RST}")
+        if args.oneshot or do_teardown:
+            try:
+                from core.oneshot import teardown_oneshot
+                teardown_oneshot()
+            except Exception:
+                pass
         sys.exit()
