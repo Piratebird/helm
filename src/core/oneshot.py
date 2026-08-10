@@ -13,6 +13,32 @@ def spin_up_oneshot():
         print("\033[31mFailed to start docker-compose stack. Make sure Docker is running.\033[0m")
         sys.exit(1)
         
+    def check_container_status(service_name, timeout=45):
+        print(f"\033[3mWaiting for {service_name} to stabilize...\033[0m")
+        elapsed = 0
+        while elapsed < timeout:
+            try:
+                # Get container ID
+                cid = subprocess.check_output(["docker", "compose", "ps", "-q", service_name], text=True).strip()
+                if cid:
+                    # Check status
+                    status = subprocess.check_output(["docker", "inspect", "-f", "{{.State.Status}}", cid], text=True).strip()
+                    if status == "running":
+                        return True
+                    elif status == "exited":
+                        print(f"\033[31m[ERROR] Container {service_name} crashed immediately. Check 'docker compose logs {service_name}'\033[0m")
+                        subprocess.run(["docker", "compose", "down"])
+                        sys.exit(1)
+            except Exception:
+                pass
+            time.sleep(5)
+            elapsed += 5
+        print(f"\033[31m[WARNING] Timeout waiting for {service_name} to stabilize.\033[0m")
+        return False
+        
+    check_container_status("jackett")
+    check_container_status("qbittorrent")
+        
     print("\033[33mWaiting for Jackett to generate API Key...\033[0m")
     jackett_api = None
     config_path = "./docker_data/jackett/Jackett/ServerConfig.json"
