@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+# Exit immediately if a command exits with a non-zero status
+set -e
+# Catch errors in piped commands (e.g., command1 | command2)
+set -o pipefail
+
 echo "==========================================="
 echo "        Helm Docker Setup Script           "
 echo "==========================================="
@@ -27,7 +32,7 @@ if ! command -v docker &> /dev/null; then
                 ;;
             centos|rhel|almalinux|rocky)
                 echo "To install Docker on $NAME, run:"
-                echo "  sudo yum install -y docker docker-compose"
+                echo "  sudo dnf install -y docker docker-compose"
                 ;;
             *)
                 echo "Please install Docker manually for your OS ($NAME)."
@@ -56,6 +61,27 @@ if ! docker compose version &> /dev/null; then
     echo "Please ensure you have the docker-compose-plugin installed."
     exit 1
 fi
+
+echo "[INFO] Verifying Docker daemon access..."
+if ! docker info > /dev/null 2>&1; then
+    echo "[ERROR] Cannot connect to the Docker daemon."
+    echo "Resolution: Ensure the Docker service is running and your user is in the 'docker' group."
+    echo "Run: 'sudo usermod -aG docker \$USER' and 'newgrp docker'."
+    exit 1
+fi
+echo "[OK] Docker daemon is responsive."
+
+echo "[INFO] Testing registry connectivity..."
+REGISTRIES=("ghcr.io" "lscr.io" "docker.io")
+
+for registry in "${REGISTRIES[@]}"; do
+    if ! ping -c 1 "$registry" > /dev/null 2>&1; then
+        echo "[ERROR] Cannot reach $registry. DNS or network failure detected."
+        echo "Resolution: Check host /etc/resolv.conf, NetworkManager settings, or Docker daemon.json DNS definitions."
+        exit 1
+    fi
+done
+echo "[OK] Network and DNS resolution functional."
 
 # Ensure we don't fuck with the local native environment.
 # All docker-related data will go into a dedicated directory.
@@ -212,9 +238,46 @@ EOF
 
 echo ""
 echo "Starting containers in the background to initialize configurations..."
-docker compose up -d jackett flaresolverr qbittorrent
+if ! docker compose up -d jackett flaresolverr qbittorrent; then
+    echo "[ERROR] Docker Compose failed to initiate the stack."
+    exit 1
+fi
 
-echo "Waiting for services to spin up and generate configurations (this may take up to 45 seconds)..."
+echo "[INFO] Waiting for services to initialize..."
+
+TIMEOUT=45
+ELAPSED=0
+
+while [ "$ELAPSED" -lt "$TIMEOUT" ]; do
+    CRITICAL_CONTAINER=$(docker compose ps -q jackett || true)
+    
+    if [ -n "$CRITICAL_CONTAINER" ]; then
+        # 1. Check if the container successfully reached the 'running' state
+        IS_RUNNING=$(docker inspect -f '{{.State.Running}}' "$CRITICAL_CONTAINER" 2>/dev/null || true)
+        
+        if [ "$IS_RUNNING" == "true" ]; then
+            echo "[OK] Services are initialized and running!"
+            break
+        fi
+        
+        # 2. Check if the container crashed immediately (e.g., bad config)
+        IS_EXITED=$(docker inspect -f '{{.State.Status}}' "$CRITICAL_CONTAINER" 2>/dev/null || true)
+        if [ "$IS_EXITED" == "exited" ]; then
+            echo "[ERROR] Container jackett started but crashed immediately."
+            echo "Resolution: Run 'docker compose logs jackett' to inspect the failure."
+            exit 1
+        fi
+    fi
+
+    sleep 5
+    ELAPSED=$((ELAPSED + 5))
+    echo "Polling status... ($ELAPSED/$TIMEOUT seconds)"
+done
+
+if [ "$ELAPSED" -ge "$TIMEOUT" ]; then
+    echo "[WARNING] Timeout reached while waiting for configurations."
+    echo "Services may be experiencing slow startup times or are hanging."
+fi
 
 # Extract Jackett API Key with a retry loop
 JACKETT_CONFIG="./docker_data/jackett/Jackett/ServerConfig.json"
@@ -223,7 +286,7 @@ JACKETT_API="${jackett_api}"
 if [ -z "$JACKETT_API" ]; then
     for i in {1..15}; do
         if [ -f "$JACKETT_CONFIG" ]; then
-            extracted_api=$(grep '"APIKey"' "$JACKETT_CONFIG" | awk -F '"' '{print $4}')
+            extracted_api=$(grep '"APIKey"' "$JACKETT_CONFIG" | awk -F '"' '{print $4}' || true)
             if [ ! -z "$extracted_api" ]; then
                 JACKETT_API="$extracted_api"
                 echo "[+] Successfully grabbed Jackett API Key."
@@ -243,7 +306,7 @@ fi
 QB_PASS="${qb_pass}"
 if [ -z "$QB_PASS" ]; then
     for i in {1..15}; do
-        extracted_pass=$(docker compose logs qbittorrent 2>&1 | grep -i "temporary password is provided for this session" | awk -F'session: ' '{print $2}' | tr -d '\r\n')
+        extracted_pass=$(docker compose logs qbittorrent 2>&1 | grep -i "temporary password is provided for this session" | awk -F'session: ' '{print $2}' | tr -d '\r\n' || true)
         if [ ! -z "$extracted_pass" ]; then
             QB_PASS="$extracted_pass"
             echo "[+] Successfully grabbed qBittorrent Temporary Password."
