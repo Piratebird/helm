@@ -109,8 +109,8 @@ services:
       - PGID=1000
       - TZ=Etc/UTC
     volumes:
-      - ${PWD}/docker_data/jackett:/config:z
-      - ${PWD}/docker_data/downloads:/downloads:z
+      - ./docker_data/jackett:/config:z
+      - ./docker_data/downloads:/downloads:z
     ports:
       - 19117:9117
     restart: unless-stopped
@@ -138,11 +138,11 @@ services:
     stdin_open: true
     tty: true
     env_file:
-      - ${PWD}/docker_data/.env.docker
+      - ./docker_data/.env.docker
     security_opt:
       - label=disable
     volumes:
-      - ${PWD}/docker_data/config.json:/app/config.json:z
+      - ./docker_data/config.json:/app/config.json:z
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - jackett
@@ -195,8 +195,8 @@ if [[ "$use_vpn" =~ ^[Yy]$ ]]; then
       - TZ=Etc/UTC
       - WEBUI_PORT=18080
     volumes:
-      - ${PWD}/docker_data/qbittorrent:/config:z
-      - ${PWD}/docker_data/downloads:/downloads:z
+      - ./docker_data/qbittorrent:/config:z
+      - ./docker_data/downloads:/downloads:z
     depends_on:
       - gluetun
     restart: unless-stopped
@@ -216,8 +216,8 @@ else
       - TZ=Etc/UTC
       - WEBUI_PORT=18080
     volumes:
-      - ${PWD}/docker_data/qbittorrent:/config:z
-      - ${PWD}/docker_data/downloads:/downloads:z
+      - ./docker_data/qbittorrent:/config:z
+      - ./docker_data/downloads:/downloads:z
     ports:
       - 18080:18080
       - 6881:6881
@@ -361,7 +361,6 @@ fi
 
 echo ""
 echo "Building the mini-helm container..."
-sed -i "s|\${PWD}|$(pwd)|g" docker-compose.yml
 # Use legacy builder to bypass Fedora/Tailscale Buildkit DNS issues
 DOCKER_BUILDKIT=0 docker compose build mini-helm
 
