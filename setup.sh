@@ -381,6 +381,31 @@ if [ "$run_mode" == "2" ]; then
 else
     echo "Containers are left running 24/7 in the background."
     echo ""
+    read -p "Do you want to create a systemd service to start Helm automatically on boot? (y/N): " install_systemd
+    if [[ "$install_systemd" =~ ^[Yy]$ ]]; then
+        echo "Creating systemd service..."
+        cat << EOF | sudo tee /etc/systemd/system/helm-docker.service > /dev/null
+[Unit]
+Description=Helm Docker Compose Service
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=$PWD
+ExecStart=$(which docker) compose up -d
+ExecStop=$(which docker) compose down
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo systemctl daemon-reload
+        sudo systemctl enable helm-docker.service
+        echo "Systemd service 'helm-docker.service' created and enabled."
+    fi
+    echo ""
     echo "To start using the app in its isolated mini container, run:"
     echo "    docker compose run --rm mini-helm"
     echo "==========================================="

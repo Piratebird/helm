@@ -10,25 +10,15 @@ import xml.etree.ElementTree as ET
 import requests
 import email.utils
 import datetime
-# from core.config_manager import load_config
+import logging
 
-
-# def fetch_feed(url):
-#     try:
-#         return feedparser.parse(requests.get(url, timeout=10).text).entries
-#     # IMP!! fix later and make more detailed catch statement
-#     except Exception as e:
-#         print(f"An error occured: {e}")
-#         return []
-
-
-# def fetch_all_feeds():
-#     config = load_config()
-#     all_items = []
-
-#     for url in config["indexers"]:
-#         all_items.extend(fetch_feed(url))
-#     return all_items
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+handler = logging.StreamHandler()
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+if not logger.handlers:
+    logger.addHandler(handler)
 
 
 class TorrentItem:
@@ -114,13 +104,17 @@ def search_jackett(query, content_type="video"):
 
             items.append(TorrentItem(title, link, seeders, leechers, size, pubdate))
         if len(items) == 0:
-            print(f"\n[DEBUG] Jackett returned 0 items. Raw XML response (first 2000 chars):\n{r.text[:2000]}\n")
+            logger.debug(f"Jackett returned 0 items. Raw XML response (first 2000 chars):\n{r.text[:2000]}")
         return items
     except requests.exceptions.RequestException as e:
-        print(f"Network error while connecting to Jackett: {e}")
+        logger.error(f"Network error while connecting to Jackett: {e}")
+        return []
+    except ET.ParseError as e:
+        logger.error(f"XML parsing error: {e}")
+        return []
+    except ValueError as e:
+        logger.error(f"Value error while parsing results: {e}")
         return []
     except Exception as e:
-        print(f"Unexpected error parsing results: {e}")
+        logger.error(f"Unexpected error parsing results: {e}")
         return []
-
-    # return all_items

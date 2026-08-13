@@ -45,10 +45,14 @@ def login_qbittorrent():
     r = session.post(login_url, data=data)
 
     if r.status_code == 200 or r.status_code == 204:
-        # Check if the SID cookie was set, which indicates successful authentication
-        has_cookie = any(cookie.name == "SID" for cookie in session.cookies)
-        if r.text.strip().lower() != "ok." and not has_cookie:
-            print("\n\033[33mWarning: qBittorrent login returned 200/204 but no SID cookie was found. Assuming auth is bypassed (localhost).\033[0m")
+        # Verify authentication by making a secondary request
+        try:
+            r_verify = session.get(version_url)
+            if r_verify.status_code != 200:
+                raise ConnectionError("Secondary verification request failed, authentication was not successful.")
+        except Exception as e:
+            # catching errors like pokemons 
+            raise ConnectionError(f"Failed to verify qbittorrent authentication: {e}")
     else:
         raise ConnectionError(f"Failed to login to qbittorrent: HTTP {r.status_code} {r.text}")
     

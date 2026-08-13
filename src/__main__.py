@@ -6,6 +6,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from core.config_wizard import ensure_config
+ensure_config()
+
 from core.rss_fetcher import search_jackett
 from core.config_manager import CONTENT_PROFILES, NEGATIVE_KEYWORDS, load_config
 from core.torrent_filter import filter_items, dedupe
@@ -73,8 +76,20 @@ def animated_search(query, content_type):
     t = threading.Thread(target=animate)
     t.start()
 
+    res = []
     try:
-        res = search_jackett(query, content_type)
+        retries = 3
+        for attempt in range(retries):
+            try:
+                res = search_jackett(query, content_type)
+                if res:
+                    break
+                elif attempt < retries - 1:
+                    time.sleep(2)
+            except Exception as e:
+                if attempt == retries - 1:
+                    sys.stdout.write(f"\n{C_ERR}Search failed after {retries} attempts: {e}{C_RST}\n")
+                time.sleep(2)
     finally:
         done = True
         t.join()
@@ -337,6 +352,7 @@ if __name__ == "__main__":
             sys.stdout.write("\033[?25h")  # Show cursor
             termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
+    do_teardown = False
     try:
         selected, do_teardown = interactive_selector(filtered)
         add_magnet(selected.link)
