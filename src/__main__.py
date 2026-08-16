@@ -160,6 +160,8 @@ if __name__ == "__main__":
             )
         except KeyboardInterrupt:
             print(f"\n{C_SUB}later bozo!{C_RST}")
+            if args.oneshot:
+                teardown_oneshot()
             sys.exit(0)
     keywords = CONTENT_PROFILES.get(content_type, CONTENT_PROFILES["video"])
     negatives = NEGATIVE_KEYWORDS.get(content_type, [])
@@ -189,6 +191,8 @@ if __name__ == "__main__":
             print(json.dumps([]))
         else:
             print(f"{C_ERR}No torrents were found :({C_RST}", file=sys.stderr)
+        if args.oneshot:
+            teardown_oneshot()
         sys.exit(1)
 
     if args.json:
@@ -197,6 +201,8 @@ if __name__ == "__main__":
             for t in filtered
         ]
         print(json.dumps(json_output, indent=2))
+        if args.oneshot:
+            teardown_oneshot()
         sys.exit(0)
 
     if args.auto:

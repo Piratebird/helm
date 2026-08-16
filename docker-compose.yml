@@ -1,6 +1,11 @@
 services:
   jackett:
+    container_name: ${COMPOSE_PROJECT_NAME:-helm}-jackett
     image: lscr.io/linuxserver/jackett:latest
+    labels:
+      - "com.docker.compose.project=${COMPOSE_PROJECT_NAME:-helm}"
+      - "com.docker.compose.service=jackett"
+      - "com.docker.compose.oneoff=False"
     dns:
       - 8.8.8.8
       - 1.1.1.1
@@ -8,26 +13,36 @@ services:
       - PUID=1000
       - PGID=1000
       - TZ=Etc/UTC
+    security_opt:
+      - label=disable
     volumes:
-      - ./docker_data/jackett:/config:z
-      - ./docker_data/downloads:/downloads:z
+      - ${HOST_PWD:-.}/docker_data/jackett:/config
+      - ${HOST_PWD:-.}/docker_data/downloads:/downloads
     ports:
       - 19117:9117
     restart: unless-stopped
 
   flaresolverr:
+    container_name: ${COMPOSE_PROJECT_NAME:-helm}-flaresolverr
     image: ghcr.io/flaresolverr/flaresolverr:latest
+    labels:
+      - "com.docker.compose.project=${COMPOSE_PROJECT_NAME:-helm}"
+      - "com.docker.compose.service=flaresolverr"
+      - "com.docker.compose.oneoff=False"
     dns:
       - 8.8.8.8
       - 1.1.1.1
     environment:
       - LOG_LEVEL=info
       - TZ=Etc/UTC
+    security_opt:
+      - label=disable
     ports:
       - 18191:8191
     restart: unless-stopped
 
   mini-helm:
+    container_name: ${COMPOSE_PROJECT_NAME:-helm}-mini-helm
     build:
       context: .
       network: host
@@ -42,16 +57,18 @@ services:
     security_opt:
       - label=disable
     volumes:
-      - ./docker_data/config.json:/app/config.json:z
-      - /var/run/docker.sock:/var/run/docker.sock
-    depends_on:
-      - jackett
-      - qbittorrent
+      - ${HOST_PWD:-.}/docker_data/config.json:/app/config.json
+      - /run/user/1000/podman/podman.sock:/var/run/docker.sock
     profiles:
       - cli
 
   qbittorrent:
+    container_name: ${COMPOSE_PROJECT_NAME:-helm}-qbittorrent
     image: lscr.io/linuxserver/qbittorrent:latest
+    labels:
+      - "com.docker.compose.project=${COMPOSE_PROJECT_NAME:-helm}"
+      - "com.docker.compose.service=qbittorrent"
+      - "com.docker.compose.oneoff=False"
     dns:
       - 8.8.8.8
       - 1.1.1.1
@@ -60,9 +77,11 @@ services:
       - PGID=1000
       - TZ=Etc/UTC
       - WEBUI_PORT=18080
+    security_opt:
+      - label=disable
     volumes:
-      - ./docker_data/qbittorrent:/config:z
-      - ./docker_data/downloads:/downloads:z
+      - ${HOST_PWD:-.}/docker_data/qbittorrent:/config
+      - ${HOST_PWD:-.}/docker_data/downloads:/downloads
     ports:
       - 18080:18080
       - 6881:6881

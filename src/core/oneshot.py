@@ -28,7 +28,9 @@ def spin_up_oneshot():
                         return True
                     elif status == "exited":
                         print(f"\033[31m[ERROR] Container {service_name} crashed immediately. Check 'docker compose logs {service_name}'\033[0m")
-                        subprocess.run(["docker", "compose", "down"])
+                        project_name = os.environ.get("COMPOSE_PROJECT_NAME", "helm")
+                        for svc in ["jackett", "qbittorrent", "flaresolverr", "gluetun"]:
+                            subprocess.run(["docker", "stop", f"{project_name}-{svc}"], capture_output=True)
                         sys.exit(1)
             except Exception:
                 pass
@@ -81,8 +83,17 @@ def teardown_oneshot():
     print("\n\033[1m\033[33mTearing down the ephemeral stack to save processing power...\033[0m")
     try:
         project_name = os.environ.get("COMPOSE_PROJECT_NAME", "helm")
-        subprocess.run(["docker", "compose", "-p", project_name, "down"], check=True)
-        print("\033[1m\033[32mAll containers destroyed cleanly. Your RAM is free!\033[0m")
+        containers = [
+            f"{project_name}-jackett",
+            f"{project_name}-qbittorrent",
+            f"{project_name}-flaresolverr",
+            f"{project_name}-gluetun",
+        ]
+        # Stop containers individually via 'docker stop' instead of 'docker compose stop'
+        # to avoid network namespace destruction that triggers "rootless netns: permission denied"
+        for c in containers:
+            subprocess.run(["docker", "stop", c], capture_output=True)
+        print("\033[1m\033[32mAll containers stopped cleanly. Your RAM is free!\033[0m")
     except Exception as e:
         print(f"\033[31mCould not tear down docker-compose stack: {e}\033[0m")
 
