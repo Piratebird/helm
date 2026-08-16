@@ -28,4 +28,7 @@ testing/
 docker_data/
 config/
 
+# Auto-generated launcher (machine-specific)
+helm.sh
+
 downloads
