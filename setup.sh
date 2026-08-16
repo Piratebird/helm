@@ -28,18 +28,18 @@ check_docker() {
                 ubuntu|debian|pop|linuxmint)
                     echo "To install Docker on $NAME, run:"
                     echo "  sudo apt update && sudo apt install -y docker.io docker-compose-v2"
-                    ;;
+                ;;
                 fedora|centos|rhel|almalinux|rocky)
                     echo "To install Docker on $NAME, run:"
                     echo "  sudo dnf install -y docker docker-compose"
-                    ;;
+                ;;
                 arch|manjaro)
                     echo "To install Docker on $NAME, run:"
                     echo "  sudo pacman -S docker docker-compose"
-                    ;;
+                ;;
                 *)
                     echo "Please install Docker manually for your OS ($NAME)."
-                    ;;
+                ;;
             esac
         fi
         echo ""
@@ -50,20 +50,20 @@ check_docker() {
         echo ""
         exit 1
     fi
-
+    
     # Ensure docker compose is available
     if ! docker compose version &> /dev/null; then
         echo "[-] Error: 'docker compose' is not available."
         echo "Please ensure you have the docker-compose-plugin installed."
         exit 1
     fi
-
+    
     if ! docker info > /dev/null 2>&1; then
         echo "[ERROR] Cannot connect to the Docker daemon."
         echo "Resolution: Ensure the Docker service is running and your user is in the 'docker' group."
         exit 1
     fi
-
+    
     DOCKER_CMD="docker"
     COMPOSE_CMD="docker compose"
 }
@@ -85,18 +85,18 @@ check_podman() {
             case "$ID" in
                 ubuntu|debian|pop|linuxmint)
                     sudo apt update && sudo apt install -y podman podman-compose
-                    ;;
+                ;;
                 fedora|centos|rhel|almalinux|rocky)
                     sudo dnf install -y podman podman-compose
-                    ;;
+                ;;
                 arch|manjaro)
                     sudo pacman -S --noconfirm podman podman-compose
-                    ;;
+                ;;
                 *)
                     echo "Automatic installation is not supported for your OS ($NAME)."
                     echo "Please install Podman manually from https://podman.io/docs/installation"
                     exit 1
-                    ;;
+                ;;
             esac
         else
             echo "Cannot determine OS. Please install Podman manually."
@@ -112,7 +112,7 @@ check_podman() {
     # Check if podman compose is available
     if podman compose version &> /dev/null; then
         COMPOSE_CMD="podman compose"
-    elif command -v podman-compose &> /dev/null; then
+        elif command -v podman-compose &> /dev/null; then
         COMPOSE_CMD="podman-compose"
     else
         echo "[-] Error: Neither 'podman-compose' nor 'podman compose' is available."
@@ -146,22 +146,22 @@ install_native() {
             . /etc/os-release
             if [[ "$ID" == "ubuntu" || "$ID" == "debian" || "$ID" == "pop" || "$ID" == "linuxmint" ]]; then
                 sudo apt update && sudo apt install -y qbittorrent-nox wget tar curl libicu-dev libssl-dev zlib1g
-            elif [[ "$ID" == "fedora" || "$ID" == "centos" || "$ID" == "rhel" || "$ID" == "almalinux" || "$ID" == "rocky" ]]; then
+                elif [[ "$ID" == "fedora" || "$ID" == "centos" || "$ID" == "rhel" || "$ID" == "almalinux" || "$ID" == "rocky" ]]; then
                 sudo dnf install -y qbittorrent-nox wget tar curl icu openssl zlib
-            elif [[ "$ID" == "arch" || "$ID" == "manjaro" ]]; then
+                elif [[ "$ID" == "arch" || "$ID" == "manjaro" ]]; then
                 sudo pacman -S --noconfirm qbittorrent-nox wget tar curl icu openssl zlib
             else
                 echo "Please ensure you have qbittorrent-nox and .NET dependencies (ICU, OpenSSL, zlib) installed manually."
             fi
         fi
     fi
-
+    
     if ! command -v qbittorrent-nox &> /dev/null; then
         echo "[-] Error: qbittorrent-nox failed to install or is not in PATH."
     else
         echo "[OK] qBittorrent-nox is installed."
     fi
-
+    
     if [ ! -d "/opt/Jackett" ]; then
         echo "Installing Jackett to /opt/Jackett..."
         cd /opt
@@ -181,7 +181,7 @@ install_native() {
 # Branch logic based on selection
 if [ "$install_mode" == "3" ]; then
     install_native
-elif [ "$install_mode" == "2" ]; then
+    elif [ "$install_mode" == "2" ]; then
     check_podman
 else
     check_docker
@@ -275,7 +275,7 @@ if [ "$DOCKER_CMD" == "docker" ]; then
     cat << 'EOF' >> docker-compose.yml
       - /var/run/docker.sock:/var/run/docker.sock
 EOF
-elif [ "$DOCKER_CMD" == "podman" ]; then
+    elif [ "$DOCKER_CMD" == "podman" ]; then
     echo "[INFO] Enabling Podman rootless socket for container orchestration..."
     systemctl --user enable --now podman.socket 2>/dev/null || true
     # Get the podman socket path (usually /run/user/1000/podman/podman.sock)
@@ -475,7 +475,7 @@ while [ "$ELAPSED" -lt "$TIMEOUT" ]; do
             exit 1
         fi
     fi
-
+    
     sleep 5
     ELAPSED=$((ELAPSED + 5))
     echo "Polling status... ($ELAPSED/$TIMEOUT seconds)"
@@ -532,7 +532,7 @@ if [ "$run_mode" == "2" ]; then
     fi
     echo "Generating helm launcher script..."
     cat << EOF > helm.sh
-#!/bin/bash
+#!/usr/bin/env bash
 if [ "$DOCKER_CMD" == "podman" ]; then
     NETWORK="${COMPOSE_PROJECT_NAME:-helm}_default"
     podman run -it --rm --entrypoint="" --security-opt label=disable --network "\$NETWORK" -v "\$PWD:/app" -v "$PODMAN_SOCK:/var/run/docker.sock" --env-file ./docker_data/.env.docker mini-helm python src/__main__.py "\$@" 2> >(grep -v "rootless netns" >&2)
@@ -543,7 +543,7 @@ else
 fi
 EOF
     chmod +x helm.sh
-
+    
     echo "Containers stopped. Helm will spin them up automatically when you trigger a download."
     echo ""
     echo "To start using the app in its isolated mini container, run:"
