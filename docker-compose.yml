@@ -1,6 +1,6 @@
 services:
   jackett:
-    container_name: ${COMPOSE_PROJECT_NAME:-helm}-jackett
+    container_name: "${COMPOSE_PROJECT_NAME:-helm}-jackett"
     image: lscr.io/linuxserver/jackett:latest
     labels:
       - "com.docker.compose.project=${COMPOSE_PROJECT_NAME:-helm}"
@@ -23,7 +23,7 @@ services:
     restart: unless-stopped
 
   flaresolverr:
-    container_name: ${COMPOSE_PROJECT_NAME:-helm}-flaresolverr
+    container_name: "${COMPOSE_PROJECT_NAME:-helm}-flaresolverr"
     image: ghcr.io/flaresolverr/flaresolverr:latest
     labels:
       - "com.docker.compose.project=${COMPOSE_PROJECT_NAME:-helm}"
@@ -42,11 +42,8 @@ services:
     restart: unless-stopped
 
   mini-helm:
-    container_name: ${COMPOSE_PROJECT_NAME:-helm}-mini-helm
-    build:
-      context: .
-      network: host
-    image: mini-helm
+    container_name: "${COMPOSE_PROJECT_NAME:-helm}-mini-helm"
+    image: ghcr.io/piratebird/helm:latest
     dns:
       - 8.8.8.8
       - 1.1.1.1
@@ -58,12 +55,12 @@ services:
       - label=disable
     volumes:
       - ${HOST_PWD:-.}/docker_data/config.json:/app/config.json
-      - /run/user/1000/podman/podman.sock:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock
     profiles:
       - cli
 
   qbittorrent:
-    container_name: ${COMPOSE_PROJECT_NAME:-helm}-qbittorrent
+    container_name: "${COMPOSE_PROJECT_NAME:-helm}-qbittorrent"
     image: lscr.io/linuxserver/qbittorrent:latest
     labels:
       - "com.docker.compose.project=${COMPOSE_PROJECT_NAME:-helm}"
