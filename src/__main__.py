@@ -7,8 +7,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from core.config_wizard import ensure_config
-ensure_config()
-
 from core.rss_fetcher import search_jackett
 from core.config_manager import CONTENT_PROFILES, NEGATIVE_KEYWORDS, load_config
 from core.torrent_filter import filter_items, dedupe
@@ -131,6 +129,8 @@ if __name__ == "__main__":
         "--json", action="store_true", help="Output results as JSON and exit"
     )
     args = parser.parse_args()
+
+    ensure_config()
 
     if args.oneshot:
         spin_up_oneshot()

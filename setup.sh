@@ -14,7 +14,7 @@ echo "How would you like to install the required services (Jackett & qBittorrent
 echo "  [1] Docker (Recommended) - Uses standard docker-compose, isolates dependencies."
 echo "  [2] Podman               - Daemonless, rootless containers for lower memory overhead."
 echo "  [3] Native               - Installs directly to your OS (/opt/Jackett & /usr/bin/qbittorrent). Highest performance but clutters OS."
-read -p "Choose your installation method (1/2/3, default 1): " install_mode
+read -r -p "Choose your installation method (1/2/3, default 1): " install_mode
 install_mode=${install_mode:-1}
 echo ""
 
@@ -26,6 +26,7 @@ check_docker() {
             echo "To install Docker on macOS, run:"
             echo "  brew install --cask docker"
         elif [ -f /etc/os-release ]; then
+            # shellcheck disable=SC1091
             . /etc/os-release
             case "$ID" in
                 ubuntu|debian|pop|linuxmint)
@@ -74,7 +75,7 @@ check_docker() {
 check_podman() {
     if ! command -v podman &> /dev/null; then
         echo "[-] Podman is not installed."
-        read -p "Would you like this script to install Podman automatically? [Y/n]: " auto_install
+        read -r -p "Would you like this script to install Podman automatically? [Y/n]: " auto_install
         auto_install=${auto_install:-Y}
         
         if [[ ! "$auto_install" =~ ^[Yy]$ ]]; then
@@ -91,6 +92,7 @@ check_podman() {
                 exit 1
             fi
         elif [ -f /etc/os-release ]; then
+            # shellcheck disable=SC1091
             . /etc/os-release
             case "$ID" in
                 ubuntu|debian|pop|linuxmint)
@@ -149,7 +151,7 @@ install_native() {
     
     if [ "$needs_install" -eq 1 ]; then
         echo "[-] Some native dependencies (qbittorrent-nox, wget, libicu, etc.) are missing."
-        read -p "Would you like this script to install them automatically? [Y/n]: " auto_install
+        read -r -p "Would you like this script to install them automatically? [Y/n]: " auto_install
         auto_install=${auto_install:-Y}
         
         if [[ ! "$auto_install" =~ ^[Yy]$ ]]; then
@@ -159,6 +161,7 @@ install_native() {
         
         echo "Installing native dependencies..."
         if [ -f /etc/os-release ]; then
+            # shellcheck disable=SC1091
             . /etc/os-release
             if [[ "$ID" == "ubuntu" || "$ID" == "debian" || "$ID" == "pop" || "$ID" == "linuxmint" ]]; then
                 sudo apt update && sudo apt install -y qbittorrent-nox wget tar curl libicu-dev libssl-dev zlib1g
@@ -182,7 +185,7 @@ install_native() {
         echo "Installing Jackett to /opt/Jackett..."
         cd /opt
         wget -O - -o /dev/null https://github.com/Jackett/Jackett/releases/latest/download/Jackett.Binaries.LinuxAMDx64.tar.gz | sudo tar -xz
-        sudo chown $(whoami):$(id -g) -R "/opt/Jackett"
+        sudo chown "$(whoami)":"$(id -g)" -R "/opt/Jackett"
         cd Jackett
         sudo ./install_service_systemd.sh
         cd -
@@ -212,22 +215,22 @@ echo ""
 echo "How would you like to run Helm?"
 echo "  [1] Permanent (Always-On) - Containers run 24/7 in the background."
 echo "  [2] Ephemeral (One-Shot)  - Containers spin up only when downloading, then tear down."
-read -p "Choose your mode (1/2, default 2): " run_mode
+read -r -p "Choose your mode (1/2, default 2): " run_mode
 run_mode=${run_mode:-2}
 echo ""
 
-read -p "Enter Jackett API Key (press Enter to auto-extract later): " JACKETT_API
-read -p "Enter qBittorrent Username (default: admin): " qb_user
+read -r -p "Enter Jackett API Key (press Enter to auto-extract later): " JACKETT_API
+read -r -p "Enter qBittorrent Username (default: admin): " qb_user
 qb_user=${qb_user:-admin}
 
 echo ""
-read -p "Do you want to route qBittorrent through a VPN using Gluetun? (y/N): " use_vpn
+read -r -p "Do you want to route qBittorrent through a VPN using Gluetun? (y/N): " use_vpn
 
 # Write docker-compose.yml
 cat << 'EOF' > docker-compose.yml
 services:
   jackett:
-    container_name: ${COMPOSE_PROJECT_NAME:-helm}-jackett
+    container_name: "${COMPOSE_PROJECT_NAME:-helm}"-jackett
     image: lscr.io/linuxserver/jackett:latest
     labels:
       - "com.docker.compose.project=${COMPOSE_PROJECT_NAME:-helm}"
@@ -250,7 +253,7 @@ services:
     restart: unless-stopped
 
   flaresolverr:
-    container_name: ${COMPOSE_PROJECT_NAME:-helm}-flaresolverr
+    container_name: "${COMPOSE_PROJECT_NAME:-helm}"-flaresolverr
     image: ghcr.io/flaresolverr/flaresolverr:latest
     labels:
       - "com.docker.compose.project=${COMPOSE_PROJECT_NAME:-helm}"
@@ -269,7 +272,7 @@ services:
     restart: unless-stopped
 
   mini-helm:
-    container_name: ${COMPOSE_PROJECT_NAME:-helm}-mini-helm
+    container_name: "${COMPOSE_PROJECT_NAME:-helm}"-mini-helm
     build:
       context: .
       network: host
@@ -309,13 +312,13 @@ EOF
 if [[ "$use_vpn" =~ ^[Yy]$ ]]; then
     echo ""
     echo "--- VPN Configuration ---"
-    read -p "Enter VPN Provider (e.g. nordvpn, custom): " vpn_provider
-    read -p "Enter VPN Type (wireguard/openvpn) (default: wireguard): " vpn_type
+    read -r -p "Enter VPN Provider (e.g. nordvpn, custom): " vpn_provider
+    read -r -p "Enter VPN Type (wireguard/openvpn) (default: wireguard): " vpn_type
     vpn_type=${vpn_type:-wireguard}
     
     vpn_extra=""
     if [ "$vpn_type" = "wireguard" ]; then
-        read -p "Enter WireGuard Private Key: " wg_key
+        read -r -p "Enter WireGuard Private Key: " wg_key
         vpn_extra="WIREGUARD_PRIVATE_KEY=$wg_key"
     fi
     
@@ -323,7 +326,7 @@ if [[ "$use_vpn" =~ ^[Yy]$ ]]; then
     cat << 'EOF' >> docker-compose.yml
 
   gluetun:
-    container_name: ${COMPOSE_PROJECT_NAME:-helm}-gluetun
+    container_name: "${COMPOSE_PROJECT_NAME:-helm}"-gluetun
     image: qmcgaw/gluetun:latest
     labels:
       - "com.docker.compose.project=${COMPOSE_PROJECT_NAME:-helm}"
@@ -344,7 +347,7 @@ if [[ "$use_vpn" =~ ^[Yy]$ ]]; then
     restart: unless-stopped
 
   qbittorrent:
-    container_name: ${COMPOSE_PROJECT_NAME:-helm}-qbittorrent
+    container_name: "${COMPOSE_PROJECT_NAME:-helm}"-qbittorrent
     image: lscr.io/linuxserver/qbittorrent:latest
     labels:
       - "com.docker.compose.project=${COMPOSE_PROJECT_NAME:-helm}"
@@ -373,7 +376,7 @@ else
     cat << 'EOF' >> docker-compose.yml
 
   qbittorrent:
-    container_name: ${COMPOSE_PROJECT_NAME:-helm}-qbittorrent
+    container_name: "${COMPOSE_PROJECT_NAME:-helm}"-qbittorrent
     image: lscr.io/linuxserver/qbittorrent:latest
     labels:
       - "com.docker.compose.project=${COMPOSE_PROJECT_NAME:-helm}"
@@ -505,7 +508,7 @@ fi
 JACKETT_CONTAINER=""
 
 if [ -z "$JACKETT_API" ]; then
-    for i in {1..15}; do
+    for _ in {1..15}; do
         JACKETT_CONTAINER=$($DOCKER_CMD ps -q -f "name=${COMPOSE_PROJECT_NAME:-helm}-jackett" | head -n 1 || true)
         if [ -n "$JACKETT_CONTAINER" ]; then
             extracted_api=$($DOCKER_CMD exec "$JACKETT_CONTAINER" cat /config/Jackett/ServerConfig.json 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('APIKey',''))" 2>/dev/null || true)
@@ -542,7 +545,7 @@ if [ "$run_mode" == "2" ]; then
     if [ "$DOCKER_CMD" == "podman" ]; then
         # Use podman stop directly - avoids docker compose's network namespace destruction
         # which triggers the "rootless netns: kill network process: permission denied" bug
-        podman stop ${COMPOSE_PROJECT_NAME:-helm}-jackett ${COMPOSE_PROJECT_NAME:-helm}-qbittorrent ${COMPOSE_PROJECT_NAME:-helm}-flaresolverr ${COMPOSE_PROJECT_NAME:-helm}-gluetun 2>/dev/null || true
+        podman stop "${COMPOSE_PROJECT_NAME:-helm}"-jackett "${COMPOSE_PROJECT_NAME:-helm}"-qbittorrent "${COMPOSE_PROJECT_NAME:-helm}"-flaresolverr "${COMPOSE_PROJECT_NAME:-helm}"-gluetun 2>/dev/null || true
     else
         run_compose stop || true
     fi
@@ -566,7 +569,7 @@ EOF
 else
     echo "Containers are left running 24/7 in the background."
     echo ""
-    read -p "Do you want to create a systemd service to start Helm automatically on boot? (y/N): " install_systemd
+    read -r -p "Do you want to create a systemd service to start Helm automatically on boot? (y/N): " install_systemd
     if [[ "$install_systemd" =~ ^[Yy]$ ]]; then
         echo "Creating systemd service..."
         cat << EOF | sudo tee /etc/systemd/system/helm-app.service > /dev/null
@@ -578,8 +581,8 @@ After=network.target
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=$PWD
-ExecStart=$(which $COMPOSE_CMD) up -d
-ExecStop=/bin/bash -c '$DOCKER_CMD stop ${COMPOSE_PROJECT_NAME:-helm}-jackett ${COMPOSE_PROJECT_NAME:-helm}-qbittorrent ${COMPOSE_PROJECT_NAME:-helm}-flaresolverr 2>/dev/null || true'
+ExecStart=$(which "$COMPOSE_CMD") up -d
+ExecStop=/bin/bash -c '$DOCKER_CMD stop "${COMPOSE_PROJECT_NAME:-helm}"-jackett "${COMPOSE_PROJECT_NAME:-helm}"-qbittorrent "${COMPOSE_PROJECT_NAME:-helm}"-flaresolverr 2>/dev/null || true'
 TimeoutStartSec=0
 
 [Install]
