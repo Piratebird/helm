@@ -23,7 +23,6 @@ bugs_notes.txt
 
 # testing / planning
 testing/
-*test*
 
 docker_data/
 config/
