@@ -94,66 +94,46 @@ CONTENT_PROFILES = {
 
 NEGATIVE_KEYWORDS = {
     "games": [
-        "1080p",
-        "2160p",
-        "720p",
-        "web",
-        "webrip",
-        "bluray",
-        "bdrip",
-        "x264",
-        "x265",
-        "h264",
-        "h265",
-        "season",
-        "episode",
-        "s01",
-        "s02",
+        # video/tv
+        "1080p", "2160p", "720p", "web", "webrip", "bluray", "bdrip", "x264", "x265", "h264", "h265", "season", "episode", "s01", "s02",
+        # books
+        "pdf", "epub", "mobi", "azw", "azw3", "djvu", "audiobook", "m4b",
+        # music
+        "flac", "aac", "wav", "album", "single", "ep", "lp", "ost", "soundtrack",
     ],
-    "video": ["repack", "fitgirl", "dodi", "codex", "skidrow", "gog"],
-    "software": ["1080p", "2160p", "720p", "bluray", "bdrip", "x264", "x265"],
+    "video": [
+        # games/software
+        "repack", "gog", "fitgirl", "dodi", "elamigos", "codex", "flt", "skidrow", "steamrip", "x64", "x86", "win", "linux", "mac",
+        # books
+        "pdf", "epub", "mobi", "azw", "azw3", "djvu", "audiobook", "m4b",
+        # music
+        "flac", "aac", "wav", "album", "single", "ep", "lp", "ost", "soundtrack",
+    ],
+    "software": [
+        # video/tv
+        "1080p", "2160p", "720p", "web", "webrip", "bluray", "bdrip", "x264", "x265", "h264", "h265", "season", "episode", "s01", "s02",
+        # games
+        "repack", "gog", "fitgirl", "dodi", "elamigos", "codex", "flt", "skidrow", "steamrip",
+        # books
+        "pdf", "epub", "mobi", "azw", "azw3", "djvu", "audiobook", "m4b",
+        # music
+        "flac", "aac", "wav", "album", "single", "ep", "lp", "ost", "soundtrack",
+    ],
     "books": [
         # video/tv
-        "1080p",
-        "2160p",
-        "720p",
-        "web",
-        "webrip",
-        "bluray",
-        "bdrip",
-        "x264",
-        "x265",
-        "h264",
-        "h265",
-        "season",
-        "episode",
-        "s01",
-        "s02",
+        "1080p", "2160p", "720p", "web", "webrip", "bluray", "bdrip", "x264", "x265", "h264", "h265", "season", "episode", "s01", "s02",
         # games/software
-        "repack",
-        "gog",
-        "fitgirl",
-        "dodi",
-        "elamigos",
-        "codex",
-        "flt",
-        "skidrow",
-        "steamrip",
-        "x64",
-        "x86",
-        "win",
-        "linux",
-        "mac",
+        "repack", "gog", "fitgirl", "dodi", "elamigos", "codex", "flt", "skidrow", "steamrip", "x64", "x86", "win", "linux", "mac",
         # music
-        "flac",
-        "aac",
-        "wav",
-        "album",
-        "single",
-        "ep",
-        "lp",
-        "ost",
-        "soundtrack",
+        "flac", "aac", "wav", "album", "single", "ep", "lp", "ost", "soundtrack",
+    ],
+    "music": [
+        # video/tv
+        "1080p", "2160p", "720p", "web", "webrip", "bluray", "bdrip", "x264", "x265", "h264", "h265", "season", "episode", "s01", "s02",
+        # games/software
+        "repack", "gog", "fitgirl", "dodi", "elamigos", "codex", "flt", "skidrow", "steamrip", "x64", "x86", "win", "linux", "mac",
+        # books
+        "pdf", "epub", "mobi", "azw", "azw3", "djvu", "audiobook", "m4b"
     ],
 }
 

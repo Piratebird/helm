@@ -164,7 +164,7 @@ if __name__ == "__main__":
                 teardown_oneshot()
             sys.exit(0)
     keywords = CONTENT_PROFILES.get(content_type, CONTENT_PROFILES["video"])
-    negatives = NEGATIVE_KEYWORDS.get(content_type, [])
+    negatives = NEGATIVE_KEYWORDS.get(content_type, NEGATIVE_KEYWORDS["video"])
 
     query_words = set(re.findall(r"\b\w+\b", query.lower()))
     negatives = [n for n in negatives if n.lower() not in query_words]
