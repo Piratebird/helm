@@ -273,10 +273,7 @@ services:
 
   mini-helm:
     container_name: "${COMPOSE_PROJECT_NAME:-helm}"-mini-helm
-    build:
-      context: .
-      network: host
-    image: mini-helm
+    image: ghcr.io/piratebird/helm:latest
     dns:
       - 8.8.8.8
       - 1.1.1.1
@@ -428,9 +425,8 @@ $vpn_extra
 EOF
 fi
 
-echo ""
-echo "Building the mini-helm container..."
-DOCKER_BUILDKIT=0 $COMPOSE_CMD --profile cli build mini-helm
+echo "Pulling the latest helm image..."
+$COMPOSE_CMD --profile cli pull mini-helm
 
 run_compose() {
     if [ "$DOCKER_CMD" == "podman" ]; then
