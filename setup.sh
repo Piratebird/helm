@@ -230,7 +230,7 @@ read -r -p "Do you want to route qBittorrent through a VPN using Gluetun? (y/N):
 cat << 'EOF' > docker-compose.yml
 services:
   jackett:
-    container_name: "${COMPOSE_PROJECT_NAME:-helm}"-jackett
+    container_name: "${COMPOSE_PROJECT_NAME:-helm}-jackett"
     image: lscr.io/linuxserver/jackett:latest
     labels:
       - "com.docker.compose.project=${COMPOSE_PROJECT_NAME:-helm}"
@@ -253,7 +253,7 @@ services:
     restart: unless-stopped
 
   flaresolverr:
-    container_name: "${COMPOSE_PROJECT_NAME:-helm}"-flaresolverr
+    container_name: "${COMPOSE_PROJECT_NAME:-helm}-flaresolverr"
     image: ghcr.io/flaresolverr/flaresolverr:latest
     labels:
       - "com.docker.compose.project=${COMPOSE_PROJECT_NAME:-helm}"
@@ -272,7 +272,7 @@ services:
     restart: unless-stopped
 
   mini-helm:
-    container_name: "${COMPOSE_PROJECT_NAME:-helm}"-mini-helm
+    container_name: "${COMPOSE_PROJECT_NAME:-helm}-mini-helm"
     image: ghcr.io/piratebird/helm:latest
     dns:
       - 8.8.8.8
@@ -323,7 +323,7 @@ if [[ "$use_vpn" =~ ^[Yy]$ ]]; then
     cat << 'EOF' >> docker-compose.yml
 
   gluetun:
-    container_name: "${COMPOSE_PROJECT_NAME:-helm}"-gluetun
+    container_name: "${COMPOSE_PROJECT_NAME:-helm}-gluetun"
     image: qmcgaw/gluetun:latest
     labels:
       - "com.docker.compose.project=${COMPOSE_PROJECT_NAME:-helm}"
@@ -344,7 +344,7 @@ if [[ "$use_vpn" =~ ^[Yy]$ ]]; then
     restart: unless-stopped
 
   qbittorrent:
-    container_name: "${COMPOSE_PROJECT_NAME:-helm}"-qbittorrent
+    container_name: "${COMPOSE_PROJECT_NAME:-helm}-qbittorrent"
     image: lscr.io/linuxserver/qbittorrent:latest
     labels:
       - "com.docker.compose.project=${COMPOSE_PROJECT_NAME:-helm}"
@@ -373,7 +373,7 @@ else
     cat << 'EOF' >> docker-compose.yml
 
   qbittorrent:
-    container_name: "${COMPOSE_PROJECT_NAME:-helm}"-qbittorrent
+    container_name: "${COMPOSE_PROJECT_NAME:-helm}-qbittorrent"
     image: lscr.io/linuxserver/qbittorrent:latest
     labels:
       - "com.docker.compose.project=${COMPOSE_PROJECT_NAME:-helm}"
