@@ -55,7 +55,7 @@ def search_jackett(query, content_type="video"):
         params["cat"] = cat
 
     try:
-        r = requests.get(url, params=params, timeout=30)
+        r = requests.get(url, params=params, timeout=120)
         r.raise_for_status()
         
         root = ET.fromstring(r.text)

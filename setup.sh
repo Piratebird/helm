@@ -22,7 +22,10 @@ check_docker() {
     if ! command -v docker &> /dev/null; then
         echo "[-] Error: Docker is not installed or not in your PATH."
         echo ""
-        if [ -f /etc/os-release ]; then
+        if [ "$(uname)" == "Darwin" ]; then
+            echo "To install Docker on macOS, run:"
+            echo "  brew install --cask docker"
+        elif [ -f /etc/os-release ]; then
             . /etc/os-release
             case "$ID" in
                 ubuntu|debian|pop|linuxmint)
@@ -80,7 +83,14 @@ check_podman() {
         fi
         
         echo "Installing Podman..."
-        if [ -f /etc/os-release ]; then
+        if [ "$(uname)" == "Darwin" ]; then
+            if command -v brew &> /dev/null; then
+                brew install podman podman-desktop podman-compose
+            else
+                echo "Please install Homebrew (https://brew.sh/) first, then re-run this script."
+                exit 1
+            fi
+        elif [ -f /etc/os-release ]; then
             . /etc/os-release
             case "$ID" in
                 ubuntu|debian|pop|linuxmint)
@@ -125,6 +135,12 @@ check_podman() {
 
 install_native() {
     echo "--- Native Installation ---"
+    if [ "$(uname)" == "Darwin" ]; then
+        echo -e "\n\033[31m[ERROR] Native mode on macOS is blocked.\033[0m"
+        echo "i aint messing with yall system"
+        echo "Please re-run the script and select Docker (Option 1) or Podman (Option 2)."
+        exit 1
+    fi
     
     needs_install=0
     if ! command -v qbittorrent-nox &> /dev/null || ! command -v wget &> /dev/null || ! command -v tar &> /dev/null; then
@@ -536,8 +552,6 @@ if [ "$run_mode" == "2" ]; then
 if [ "$DOCKER_CMD" == "podman" ]; then
     NETWORK="${COMPOSE_PROJECT_NAME:-helm}_default"
     podman run -it --rm --entrypoint="" --security-opt label=disable --network "\$NETWORK" -v "\$PWD:/app" -v "$PODMAN_SOCK:/var/run/docker.sock" --env-file ./docker_data/.env.docker mini-helm python src/__main__.py "\$@" 2> >(grep -v "rootless netns" >&2)
-    pkill -9 rootlessport 2>/dev/null || true
-    pkill -9 slirp4netns 2>/dev/null || true
 else
     $COMPOSE_CMD --profile cli run --rm mini-helm "\$@"
 fi

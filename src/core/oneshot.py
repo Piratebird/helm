@@ -100,7 +100,7 @@ def teardown_oneshot():
 
 def wait_for_download():
     print("\n\033[36mWaiting for download to complete before tearing down the stack...\033[0m")
-    print("\033[3m(Press Ctrl+C to cancel the download and tear down)\033[0m")
+    print("\033[3m(Press Ctrl+C to cancel, or Ctrl+P then Ctrl+Q to detach and run in background)\033[0m")
     
     import core.qbittorrent_client as qbc
     # temporarily inject webui for the wait functionality

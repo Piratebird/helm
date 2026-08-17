@@ -183,7 +183,7 @@ if __name__ == "__main__":
 
     unique_items = dedupe(all_items)
     filtered = filter_items(
-        unique_items, keywords, negatives, min_score=1, min_seeds=min_seeds
+        unique_items, keywords, negatives, min_score=0, min_seeds=min_seeds
     )
 
     if not filtered:
@@ -276,6 +276,12 @@ if __name__ == "__main__":
                 info_str = (
                     f"[{size_str:>7}] [{date_str:>10}] [{seeds:>4}↑ {leechs:>3}↓]"
                 )
+
+                score = getattr(t, "score", 1)
+                if score == 0:
+                    title = f"\033[33m[GENERIC]\033[0m {title}"
+                    # Adjust padding because of ANSI escape codes
+                    title_pad += 19
 
                 if actual_i == selected_index:
                     # Highlighted row

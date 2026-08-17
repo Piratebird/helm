@@ -12,11 +12,7 @@
 
 - [Helm - Torrent Automation Prototype](#helm---torrent-automation-prototype)
   - [Table of Contents](#table-of-contents)
-  - [external services:](#external-services)
-  - [Features (Planned / Prototype)](#features-planned--prototype)
-  - [Dependencies](#dependencies)
-    - [Fedora / RHEL](#fedora--rhel)
-    - [Debian / Ubuntu](#debian--ubuntu)
+  - [Features](#features)
   - [Installation](#installation)
   - [Why this exists](#why-this-exists)
   - [Roadmap](#roadmap)
@@ -31,60 +27,49 @@
 
 **Current State:** Prototype
 
-Helm is a CLI-based torrent automation tool designed to fetch, filter, and send magnet links to qBittorrent. Currently, the project is in a prototype stage. To fully operate, it requires a few
+Helm is a CLI-based torrent automation tool designed to fetch, filter, and send magnet links to qBittorrent. 
 
-## external services:
-
-- **Flaresolverr** (run via Docker image)
-- **Jackett** (as a service)
-- **qBittorrent-nox** (headless torrent client)
-
-Later, I plan to publish my own indexer files for easier setup so hell yeah?!.
+It now handles its own dependencies seamlessly using Docker or Podman, spinning up Jackett, Flaresolverr, and qBittorrent automatically! Later, I plan to publish my own indexer files for easier setup so hell yeah?!.
 
 ---
 
-## Features (Planned / Prototype)
+## Features
 
-1. Load and save configuration (.env and JSON)
-2. Add indexers and build RSS URLs
-3. Fetch and parse RSS feeds
-4. Deduplicate, filter, and sort torrents
-5. Send magnet links automatically to qBittorrent
+- **Automated Container Setup:** No more manually configuring Jackett, qBittorrent, or Flaresolverr. `setup.sh` orchestrates everything via Docker/Podman compose.
+- **Ephemeral (One-Shot) Mode:** Containers spin up when you search/download, and tear down immediately after to save RAM and CPU.
+- **Permanent Mode:** Keep the stack running 24/7 if you prefer.
+- **VPN Support:** Automatically route qBittorrent traffic through Gluetun (Wireguard/OpenVPN).
+- **Live Search & Filter:** A fast, interactive CLI interface to search indexers and select torrents.
 
 ---
-
-## Dependencies
-
-### Fedora / RHEL
-
-```bash
-sudo dnf install qbittorrent-nox
-```
-
-### Debian / Ubuntu
-
-```bash
-sudo apt install qbittorrent-nox
-```
-
-> Note: Jackett and Flaresolverr must be installed and configured separately before running Helm.
 
 ## Installation
+
+Helm requires **Docker** (with Docker Compose) or **Podman** (with podman-compose) installed on your system.
+
+### macOS (via Homebrew)
+If you are on a Mac, the easiest way to get the required container engine is via Homebrew:
+```bash
+# To install Docker Desktop:
+brew install --cask docker
+
+# OR to install Podman Desktop:
+brew install podman podman-desktop podman-compose
+```
 
 ```bash
 # Clone the repo
 git clone https://github.com/Piratebird/helm.git
 cd helm
 
-# Create a virtual environment
-python3 -m venv venv
-source venv/bin/activate  # Linux/macOS
-# venv\Scripts\activate   # Windows
-
-# Install dependencies
-pip install -r requirements.txt
-
+# Run the automated setup script
+./setup.sh
 ```
+
+The script will guide you through:
+1. Choosing your container engine (Docker vs Podman)
+2. Choosing your run mode (Ephemeral vs Permanent)
+3. Setting up a VPN (optional)
 
 <br>
 
@@ -96,9 +81,8 @@ Honestly for the most part it's for myself and my own usage i wanted to get magn
 
 Helm is actively roaming the 7seas and trying to get more treasures:
 
-- Bash installer.
-- Improved qBittorrent integration.
-- Interactive configurations.
+- Bash installer (Mostly Done!)
+- Prowlarr integration (Replacing Jackett).
 - Scrumptious TUI interface.
 - Better indexer management.
 
@@ -106,26 +90,35 @@ For more detailed tasks breakdown check [TODO.md](docs/TODO.md)
 
 ## Configuration
 
-Helm uses a combo of env variables and JSON configuration files.
+Helm uses a combo of env variables and JSON configuration files cleanly sandboxed away from your host OS.
 
 What these do:
 
-- Indexer configuration
-- RSS feed URLs
-- Filtering and deduplication behavior.
-- qBittorrent connection details,
+- `docker_data/.env.docker`: Environment variables for the containers
+- `docker_data/jackett/`: Jackett configuration and indexers
+- `docker_data/qbittorrent/`: qBittorrent configuration and state
+- `docker_data/downloads/`: Your downloaded files
 
 Will see how the configuration changes based on the state of the project/its version.
 
 ## Usage (WIP)
 
-Helm is currently run from the CLI.
+Helm is currently run from the CLI using the generated launcher script.
 
 Typical workflow:
 
-1. Configure indexers and credentials via environment variables / JSON files.
-2. Run helm to fetch RSS feeds.
+1. Run `./setup.sh` to configure indexers and credentials.
+2. Run `./helm.sh` to fetch RSS feeds and search.
 3. Matching torrents are filtered and sent to qBittorrent automatically.
+
+You can also force one-shot modes and auto-downloads:
+```bash
+# Force one-shot mode for a single search
+./helm.sh --oneshot
+
+# Auto-download the top result for a query
+./helm.sh --oneshot --auto -q "Ubuntu 24.04" --type software
+```
 
 More detailed usage instructions will be added as the project stablize so hang in there :<
 
@@ -148,8 +141,6 @@ with that out the way this project is real close to me since it's my official fi
 ## How it works (high-level)
 
 Helm pulls torrent RSS feeds from configured indexers, applies filtering and deduplication rules, and automatically sends matching magnet links to qBittorrent.
-
-Note: Most configuration is handled through environment variables and JSON files.
 
 ## Known limitations
 

@@ -60,7 +60,7 @@ def dedupe(items):
     return unique
 
 
-def filter_items(items, positives, negatives, min_score=1, min_seeds=0):
+def filter_items(items, positives, negatives, min_score=0, min_seeds=0):
     results = []
 
     for item in items:
@@ -81,6 +81,7 @@ def filter_items(items, positives, negatives, min_score=1, min_seeds=0):
         score = score_item(title, positives)
 
         if score >= min_score or positives == []:
+            setattr(item, "score", score)
             results.append((item, score))
 
         # sort by score descending order
