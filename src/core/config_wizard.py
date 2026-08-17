@@ -83,6 +83,9 @@ def run_wizard():
     except KeyboardInterrupt:
         print("\n\n\033[33mConfiguration aborted. later bozo!\033[0m")
         sys.exit(0)
+    except EOFError:
+        print("\n\n\033[31m[ERROR] Cannot read input. If you are running via Docker, make sure to use the '-it' flag for interactive mode, or mount your configuration files!\033[0m")
+        sys.exit(1)
 
 
 def ensure_config():
