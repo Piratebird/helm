@@ -31,7 +31,7 @@ check_docker() {
             case "$ID" in
                 ubuntu|debian|pop|linuxmint)
                     echo "To install Docker on $NAME, run:"
-                    echo "  sudo apt update && sudo apt install -y docker.io docker-compose-v2"
+                    echo "  sudo apt update && sudo apt install -y docker.io docker-compose"
                 ;;
                 fedora|centos|rhel|almalinux|rocky)
                     echo "To install Docker on $NAME, run:"
@@ -285,6 +285,7 @@ services:
       - label=disable
     volumes:
       - ${HOST_PWD:-.}/docker_data/config.json:/app/config.json
+      - ${HOST_PWD:-.}/src:/app/src
 EOF
 
 if [ "$DOCKER_CMD" == "docker" ]; then
@@ -310,6 +311,15 @@ if [[ "$use_vpn" =~ ^[Yy]$ ]]; then
     echo ""
     echo "--- VPN Configuration ---"
     read -r -p "Enter VPN Provider (e.g. nordvpn, custom): " vpn_provider
+    
+    if [ "$vpn_provider" = "protonvpn" ]; then
+        echo ""
+        echo "[WARNING] ProtonVPN strictly blocks P2P/torrent traffic on their Free tier."
+        echo "          If you are on the Free tier, qBittorrent will be permanently stalled."
+        echo "          Please ensure you are using a Paid ProtonVPN account."
+        echo ""
+    fi
+    
     read -r -p "Enter VPN Type (wireguard/openvpn) (default: wireguard): " vpn_type
     vpn_type=${vpn_type:-wireguard}
     
@@ -317,6 +327,15 @@ if [[ "$use_vpn" =~ ^[Yy]$ ]]; then
     if [ "$vpn_type" = "wireguard" ]; then
         read -r -p "Enter WireGuard Private Key: " wg_key
         vpn_extra="WIREGUARD_PRIVATE_KEY=$wg_key"
+    elif [ "$vpn_type" = "openvpn" ]; then
+        if [ "$vpn_provider" != "custom" ]; then
+            read -r -p "Enter OpenVPN Username (or token): " ovpn_user
+            read -r -s -p "Enter OpenVPN Password (leave blank if using token): " ovpn_pass
+            echo ""
+            vpn_extra="OPENVPN_USER=$ovpn_user"$'\n'"OPENVPN_PASSWORD=$ovpn_pass"
+        else
+            echo "[INFO] For 'custom' OpenVPN, ensure you place custom.conf (and auth.conf if needed) in ./docker_data/gluetun"
+        fi
     fi
     
     echo "Configuring with VPN (Gluetun)..."
@@ -337,6 +356,10 @@ if [[ "$use_vpn" =~ ^[Yy]$ ]]; then
       - VPN_SERVICE_PROVIDER=${VPN_SERVICE_PROVIDER}
       - VPN_TYPE=${VPN_TYPE}
       - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
+      - OPENVPN_USER=${OPENVPN_USER}
+      - OPENVPN_PASSWORD=${OPENVPN_PASSWORD}
+    volumes:
+      - ${HOST_PWD:-.}/docker_data/gluetun:/gluetun
     ports:
       - 18080:8080
       - 6881:6881
@@ -351,9 +374,6 @@ if [[ "$use_vpn" =~ ^[Yy]$ ]]; then
       - "com.docker.compose.service=qbittorrent"
       - "com.docker.compose.oneoff=False"
     network_mode: "service:gluetun"
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
     environment:
       - PUID=1000
       - PGID=1000
@@ -415,6 +435,8 @@ if [[ "$use_vpn" =~ ^[Yy]$ ]]; then
     export VPN_SERVICE_PROVIDER="$vpn_provider"
     export VPN_TYPE="$vpn_type"
     export WIREGUARD_PRIVATE_KEY="$wg_key"
+    export OPENVPN_USER="$ovpn_user"
+    export OPENVPN_PASSWORD="$ovpn_pass"
     
     cat << EOF >> ./docker_data/.env.docker
 

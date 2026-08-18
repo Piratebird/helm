@@ -116,30 +116,217 @@ if __name__ == "__main__":
         default="video",
     )
     parser.add_argument(
-        "--auto",
+        "-a", "--auto",
         action="store_true",
         help="Automatically select the top torrent and send it",
     )
     parser.add_argument(
-        "--oneshot",
+        "-i", "--indexers",
+        action="store_true",
+        help="Manage Jackett indexers",
+    )
+    parser.add_argument(
+        "-o", "--oneshot",
         action="store_true",
         help="Start docker stack, search, download, wait for completion, and tear down",
     )
     parser.add_argument(
-        "--json", action="store_true", help="Output results as JSON and exit"
+        "-j", "--json", action="store_true", help="Output results as JSON and exit"
     )
     args = parser.parse_args()
 
     ensure_config()
 
+    if args.indexers:
+        from core.indexer_manager import JackettManager
+        try:
+            manager = JackettManager()
+        except Exception as e:
+            print(f"{C_ERR}Failed to initialize Jackett Manager: {e}{C_RST}", file=sys.stderr)
+            sys.exit(1)
+            
+        sys.stdout.write(f"{C_LOGO}Fetching indexers from Jackett...{C_RST}\r\n")
+        sys.stdout.flush()
+        all_indexers = manager.get_all_indexers()
+        
+        def interactive_indexer_selector(indexer_list):
+            fd = sys.stdin.fileno()
+            old_settings = termios.tcgetattr(fd)
+            current_input = ""
+            selected_index = 0
+            
+            def redraw():
+                nonlocal selected_index
+                sys.stdout.write("\033[2J\033[H")
+                logo_crlf = logo.replace("\n", "\r\n")
+                sys.stdout.write(f"{C_LOGO}{logo_crlf}{C_RST}\r\n")
+                sys.stdout.write(f"{C_SUB}THE HELM - Indexer Management{C_RST}\r\n\r\n")
+                
+                search_term = current_input.lower()
+                if search_term.startswith("/"):
+                    search_term = search_term[1:]
+
+                disp_items = [idx for idx in indexer_list if search_term in idx['title'].lower() or search_term in idx['id'].lower()]
+                
+                # Sort: Configured first, then alphabetically
+                disp_items.sort(key=lambda x: (not x['configured'], x['title'].lower()))
+                
+                if selected_index >= len(disp_items):
+                    selected_index = max(0, len(disp_items) - 1)
+                    
+                limit = 40
+                start_idx = 0
+                if len(disp_items) > limit:
+                    start_idx = max(0, selected_index - (limit // 2))
+                    if start_idx + limit > len(disp_items):
+                        start_idx = max(0, len(disp_items) - limit)
+                        
+                window_items = disp_items[start_idx : start_idx + limit]
+                
+                sys.stdout.write(f"\033[1m{C_TEXT}Found {len(disp_items)} indexers (showing {start_idx + 1}-{start_idx + len(window_items)}):{C_RST}\r\n")
+                sys.stdout.write(f"{C_LINE}" + "━" * 80 + f"{C_RST}\r\n")
+                
+                import unicodedata
+                def get_display_width(s):
+                    return sum(2 if unicodedata.east_asian_width(c) in ('F', 'W') else 1 for c in s)
+
+                for i, idx in enumerate(window_items):
+                    actual_i = start_idx + i
+                    title = idx['title']
+                    if get_display_width(title) > 40:
+                        # Truncate by display width
+                        current_w = 0
+                        new_title = ""
+                        for c in title:
+                            cw = 2 if unicodedata.east_asian_width(c) in ('F', 'W') else 1
+                            if current_w + cw > 37:
+                                break
+                            new_title += c
+                            current_w += cw
+                        title = new_title + "..."
+                    
+                    status = "\033[32m[CONFIGURED]\033[0m" if idx['configured'] else "\033[31m[UNCONFIGURED]\033[0m"
+                    typ = idx.get('type', 'unknown')
+                    
+                    title_pad = max(2, 42 - get_display_width(title))
+                    info_str = f"{status} {typ}"
+                    
+                    if actual_i == selected_index:
+                        sys.stdout.write(f"\033[7m\033[1m{C_LOGO} ❯ {title}{C_RST}\033[7m{' ' * title_pad}{C_TEXT}{info_str}{C_RST}\r\n")
+                    else:
+                        sys.stdout.write(f"\033[1m{C_SUB}   {C_RST} {C_LOGO}{title}{C_RST}{' ' * title_pad}\033[1m{C_TEXT}{info_str}{C_RST}\r\n")
+                
+                if len(disp_items) > limit:
+                    remaining = len(disp_items) - (start_idx + limit)
+                    if remaining > 0:
+                        sys.stdout.write(f"\r\n\033[3m{C_SUB}... and {remaining} more items below{C_RST}\033[0m\r\n")
+                    if start_idx > 0:
+                        sys.stdout.write(f"\r\n\033[3m{C_SUB}... and {start_idx} items above{C_RST}\033[0m\r\n")
+                
+                sys.stdout.write(f"{C_LINE}" + "━" * 80 + f"{C_RST}\r\n")
+                prompt = f"\033[1m{C_TEXT}❯ Search (Arrows=Move, Enter=Toggle Config):{C_RST} {current_input}"
+                sys.stdout.write(prompt)
+                sys.stdout.flush()
+                return disp_items
+
+            try:
+                tty.setraw(sys.stdin.fileno())
+                sys.stdout.write("\033[?25l")
+                items_to_show = redraw()
+
+                while True:
+                    ch = os.read(fd, 1).decode("utf-8", "ignore")
+                    if ch == "\x03":
+                        raise KeyboardInterrupt
+                    elif ch == "\x1b":
+                        if select.select([fd], [], [], 0.05)[0]:
+                            ch2 = os.read(fd, 1).decode("utf-8", "ignore")
+                            if ch2 == "[":
+                                if select.select([fd], [], [], 0.05)[0]:
+                                    ch3 = os.read(fd, 1).decode("utf-8", "ignore")
+                                    if ch3 == "A":
+                                        selected_index = max(0, selected_index - 1)
+                                    elif ch3 == "B":
+                                        selected_index = min(len(items_to_show) - 1, selected_index + 1)
+                        else:
+                            raise KeyboardInterrupt
+                        items_to_show = redraw()
+                    elif ch in ("\r", "\n"):
+                        if items_to_show:
+                            return items_to_show[selected_index]
+                    elif ch in ("\x7f", "\x08", "\b"):
+                        current_input = current_input[:-1]
+                        selected_index = 0
+                        items_to_show = redraw()
+                    elif ch == "\x15":
+                        current_input = ""
+                        selected_index = 0
+                        items_to_show = redraw()
+                    elif ch == "\x17":
+                        current_input = " ".join(current_input.rstrip().split(" ")[:-1])
+                        if current_input:
+                            current_input += " "
+                        selected_index = 0
+                        items_to_show = redraw()
+                    else:
+                        if ch.isprintable():
+                            current_input += ch
+                            selected_index = 0
+                            items_to_show = redraw()
+            finally:
+                sys.stdout.write("\033[?25h")
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+                
+        while True:
+            try:
+                selected_indexer = interactive_indexer_selector(all_indexers)
+                if selected_indexer:
+                    if selected_indexer['configured']:
+                        sys.stdout.write(f"\r\n{C_TEXT}Removing {selected_indexer['title']}...{C_RST}\r\n")
+                        sys.stdout.flush()
+                        try:
+                            manager.remove_indexer(selected_indexer['id'])
+                            selected_indexer['configured'] = False
+                        except Exception as e:
+                            sys.stdout.write(f"\r\n{C_ERR}Failed to remove: {e}{C_RST}\r\n")
+                            sys.stdout.flush()
+                            time.sleep(2)
+                    else:
+                        if selected_indexer.get('type', 'public') != 'public':
+                            sys.stdout.write(f"\r\n{C_ERR}Cannot add {selected_indexer['type']} trackers via CLI as they require credentials. Please use the Jackett Web UI ({manager.url}).{C_RST}\r\n")
+                            sys.stdout.flush()
+                            time.sleep(3)
+                        else:
+                            sys.stdout.write(f"\r\n{C_TEXT}Adding {selected_indexer['title']}...{C_RST}\r\n")
+                            sys.stdout.flush()
+                            try:
+                                manager.add_indexer(selected_indexer['id'])
+                                selected_indexer['configured'] = True
+                            except Exception as e:
+                                error_msg = str(e)
+                                if "500" in error_msg:
+                                    error_msg = "Jackett rejected the default config. Please configure this indexer manually via the Jackett Web UI."
+                                sys.stdout.write(f"\r\n{C_ERR}Failed to add: {error_msg}{C_RST}\r\n")
+                                sys.stdout.flush()
+                                time.sleep(3)
+            except KeyboardInterrupt:
+                print(f"\n{C_SUB}Exiting indexer management.{C_RST}")
+                sys.exit(0)
+
     if args.oneshot:
-        spin_up_oneshot()
+        try:
+            spin_up_oneshot()
+        except KeyboardInterrupt:
+            print(f"\n{C_SUB}later bozo!{C_RST}")
+            teardown_oneshot()
+            sys.exit(0)
 
     mode_str = " (ONE-SHOT MODE)" if args.oneshot else ""
 
     if not args.json and not args.query:
         print(f"{C_LOGO}{logo}{C_RST}")
         print(f"{C_SUB}THE HELM - Torrent automation MVP{mode_str}{C_RST}\n")
+
 
 
     if args.query:
@@ -175,7 +362,13 @@ if __name__ == "__main__":
     if content_type == "books":
         search_query = re.sub(r"[^\w\s]", "", query)
         
-    all_items = animated_search(search_query, content_type)
+    try:
+        all_items = animated_search(search_query, content_type)
+    except KeyboardInterrupt:
+        print(f"\n{C_SUB}later bozo!{C_RST}")
+        if args.oneshot:
+            teardown_oneshot()
+        sys.exit(0)
     print(f"{C_LOGO}Jackett returned {len(all_items)} raw results{C_RST}")
 
     config = load_config()
@@ -263,10 +456,26 @@ if __name__ == "__main__":
             )
             sys.stdout.write(f"{C_LINE}" + "━" * 80 + f"{C_RST}\r\n")
 
+            import unicodedata
+            def get_display_width(s):
+                return sum(2 if unicodedata.east_asian_width(c) in ('F', 'W') else 1 for c in s)
+
             for i, t in enumerate(window_items):
                 actual_i = start_idx + i
-                title = t.title if len(t.title) <= 38 else t.title[:35] + "..."
-                title_pad = max(2, 40 - len(title))
+                title = t.title
+                
+                if get_display_width(title) > 38:
+                    current_w = 0
+                    new_title = ""
+                    for c in title:
+                        cw = 2 if unicodedata.east_asian_width(c) in ('F', 'W') else 1
+                        if current_w + cw > 35:
+                            break
+                        new_title += c
+                        current_w += cw
+                    title = new_title + "..."
+                    
+                title_pad = max(2, 40 - get_display_width(title))
 
                 seeds = getattr(t, "seeders", 0)
                 leechs = getattr(t, "leechers", 0)

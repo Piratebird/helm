@@ -104,7 +104,7 @@ def search_jackett(query, content_type="video"):
 
             items.append(TorrentItem(title, link, seeders, leechers, size, pubdate))
         if len(items) == 0:
-            logger.debug(f"Jackett returned 0 items. Raw XML response (first 2000 chars):\n{r.text[:2000]}")
+            logger.debug(f"Jackett returned 0 items for query: '{query}'")
         return items
     except requests.exceptions.RequestException as e:
         logger.error(f"Network error while connecting to Jackett: {e}")
