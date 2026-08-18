@@ -1,4 +1,4 @@
-# enviorment 
+# Environments
 .env
 *.env
 .env.*
@@ -15,21 +15,26 @@ __pycache__/
 *.pyo
 *.pyd
 *.pdb
-
-#configuration
-config.json
-
-bugs_notes.txt
-
-# testing / planning
-testing/
 .pytest_cache/
 
-#docker and allat jazz
+# Builds / Packages
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Configuration
+config.json
+.helm_data/
+
+# Testing / Planning
+testing/
+bugs_notes.txt
+
+# Docker / App Data
 docker_data/
 config/
+downloads/
 
 # Auto-generated launcher (machine-specific)
 helm.sh
-
-downloads

@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "helm-torrent"
+version = "0.1.0"
+authors = [
+  { name="Piratebird" },
+]
+description = "Torrent automation MVP"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "requests>=2.31.0",
+    "python-dotenv>=1.0.0"
+]
+
+[project.urls]
+"Homepage" = "https://github.com/Piratebird/helm"
+
+[project.scripts]
+helm = "helm.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

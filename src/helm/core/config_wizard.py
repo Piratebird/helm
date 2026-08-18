@@ -1,6 +1,6 @@
 import os
 import requests
-from core.config_manager import load_config, save_config
+from helm.core.config_manager import load_config, save_config
 
 def run_wizard():
     import sys

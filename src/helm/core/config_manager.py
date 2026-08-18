@@ -139,7 +139,7 @@ NEGATIVE_KEYWORDS = {
 
 
 def load_config():
-    if not os.path.exists("config.json"):
+    if not os.path.exists(os.path.expanduser("~/.helm_data/config.json")):
         return {
             "indexers": [],
             "qualities": CONTENT_PROFILES["video"],
@@ -147,7 +147,7 @@ def load_config():
         }
         # the default values for the json file if it's not detected/exists
 
-    with open("config.json") as f:
+    with open(os.path.expanduser("~/.helm_data/config.json")) as f:
         try:
             content = f.read().strip()
             if not content:
@@ -159,7 +159,7 @@ def load_config():
             return json.loads(content)
         except json.JSONDecodeError:
             print("Config file is corrupted. Backing up to config.json.bak and resetting.")
-            shutil.copy("config.json", "config.json.bak")
+            shutil.copy(os.path.expanduser("~/.helm_data/config.json"), os.path.expanduser("~/.helm_data/config.json.bak"))
             return {
                 "indexers": [],
                 "qualities": CONTENT_PROFILES["video"],
@@ -169,5 +169,5 @@ def load_config():
 
 # saving the configuration that are passed to it and formatting it
 def save_config(config):
-    with open("config.json", "w") as f:
+    with open(os.path.expanduser("~/.helm_data/config.json"), "w") as f:
         json.dump(config, f, indent=4)
