@@ -3,7 +3,7 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
 import pytest
-from core.torrent_filter import (
+from helm.core.torrent_filter import (
     is_negative_match,
     score_item,
     dedupe,
