@@ -1,0 +1,323 @@
+import os
+import sys
+import time
+import threading
+import tty
+import termios
+import select
+import unicodedata
+
+from helm.ui.colors import C_LOGO, C_RST, C_ERR, C_TEXT, C_LINE, C_SUB, logo
+
+def format_size(size_bytes):
+    if not size_bytes:
+        return "????"
+    size = float(size_bytes)
+    for unit in ["B", "KB", "MB", "GB", "TB"]:
+        if size < 1024.0:
+            return f"{size:.1f}{unit}"
+        size /= 1024.0
+    return "????"
+
+def animated_search(query, content_type, lite_mode=False):
+    done = False
+
+    def animate():
+        chars = [".  ", ".. ", "...", "   "]
+        i = 0
+        while not done:
+            sys.stdout.write(f"\r{C_LOGO}Searching" + chars[i % 4] + f"{C_RST}")
+            sys.stdout.flush()
+            time.sleep(0.4)
+            i += 1
+        sys.stdout.write("\r" + " " * 20 + "\r")
+        sys.stdout.flush()
+
+    t = threading.Thread(target=animate)
+    t.start()
+
+    res = []
+    used_lite = lite_mode
+    try:
+        if not lite_mode:
+            try:
+                from helm.core.rss_fetcher import search_jackett
+                res = search_jackett(query, content_type)
+            except Exception as e:
+                # Clear the searching text temporarily to print warning
+                sys.stdout.write("\r" + " " * 30 + "\r")
+                sys.stdout.write(f"\n\033[33m[!] Jackett not available ({e}). Auto-falling back to LITE MODE...\033[0m\n")
+                sys.stdout.flush()
+                used_lite = True
+
+        if used_lite:
+            from helm.core.lite_fetcher import search_lite
+            res = search_lite(query)
+
+    finally:
+        done = True
+        t.join()
+
+    return res, used_lite
+
+def get_display_width(s):
+    return sum(2 if unicodedata.east_asian_width(c) in ('F', 'W') else 1 for c in s)
+
+def interactive_indexer_selector(indexer_list):
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    current_input = ""
+    selected_index = 0
+    
+    def redraw():
+        nonlocal selected_index
+        sys.stdout.write("\033[2J\033[H")
+        logo_crlf = logo.replace("\n", "\r\n")
+        sys.stdout.write(f"{C_LOGO}{logo_crlf}{C_RST}\r\n")
+        sys.stdout.write(f"{C_SUB}THE HELM - Indexer Management{C_RST}\r\n\r\n")
+        
+        search_term = current_input.lower()
+        if search_term.startswith("/"):
+            search_term = search_term[1:]
+
+        disp_items = [idx for idx in indexer_list if search_term in idx['title'].lower() or search_term in idx['id'].lower()]
+        disp_items.sort(key=lambda x: (not x['configured'], x['title'].lower()))
+        
+        if selected_index >= len(disp_items):
+            selected_index = max(0, len(disp_items) - 1)
+            
+        limit = 40
+        start_idx = 0
+        if len(disp_items) > limit:
+            start_idx = max(0, selected_index - (limit // 2))
+            if start_idx + limit > len(disp_items):
+                start_idx = max(0, len(disp_items) - limit)
+                
+        window_items = disp_items[start_idx : start_idx + limit]
+        
+        sys.stdout.write(f"\033[1m{C_TEXT}Found {len(disp_items)} indexers (showing {start_idx + 1}-{start_idx + len(window_items)}):{C_RST}\r\n")
+        sys.stdout.write(f"{C_LINE}" + "━" * 80 + f"{C_RST}\r\n")
+        
+        for i, idx in enumerate(window_items):
+            actual_i = start_idx + i
+            title = idx['title']
+            if get_display_width(title) > 40:
+                current_w = 0
+                new_title = ""
+                for c in title:
+                    cw = 2 if unicodedata.east_asian_width(c) in ('F', 'W') else 1
+                    if current_w + cw > 37:
+                        break
+                    new_title += c
+                    current_w += cw
+                title = new_title + "..."
+            
+            status = "\033[32m[CONFIGURED]\033[0m" if idx['configured'] else "\033[31m[UNCONFIGURED]\033[0m"
+            typ = idx.get('type', 'unknown')
+            
+            title_pad = max(2, 42 - get_display_width(title))
+            info_str = f"{status} {typ}"
+            
+            if actual_i == selected_index:
+                sys.stdout.write(f"\033[7m\033[1m{C_LOGO} ❯ {title}{C_RST}\033[7m{' ' * title_pad}{C_TEXT}{info_str}{C_RST}\r\n")
+            else:
+                sys.stdout.write(f"\033[1m{C_SUB}   {C_RST} {C_LOGO}{title}{C_RST}{' ' * title_pad}\033[1m{C_TEXT}{info_str}{C_RST}\r\n")
+        
+        if len(disp_items) > limit:
+            remaining = len(disp_items) - (start_idx + limit)
+            if remaining > 0:
+                sys.stdout.write(f"\r\n\033[3m{C_SUB}... and {remaining} more items below{C_RST}\033[0m\r\n")
+            if start_idx > 0:
+                sys.stdout.write(f"\r\n\033[3m{C_SUB}... and {start_idx} items above{C_RST}\033[0m\r\n")
+        
+        sys.stdout.write(f"{C_LINE}" + "━" * 80 + f"{C_RST}\r\n")
+        prompt = f"\033[1m{C_TEXT}❯ Search (Arrows=Move, Enter=Toggle Config, Esc/Ctrl-C=Exit):{C_RST} {current_input}"
+        sys.stdout.write(prompt)
+        sys.stdout.flush()
+        return disp_items
+
+    try:
+        tty.setraw(sys.stdin.fileno())
+        sys.stdout.write("\033[?25l")
+        items_to_show = redraw()
+
+        while True:
+            ch = os.read(fd, 1).decode("utf-8", "ignore")
+            if ch == "\x03":
+                raise KeyboardInterrupt
+            elif ch == "\x1b":
+                if select.select([fd], [], [], 0.05)[0]:
+                    ch2 = os.read(fd, 1).decode("utf-8", "ignore")
+                    if ch2 == "[":
+                        if select.select([fd], [], [], 0.05)[0]:
+                            ch3 = os.read(fd, 1).decode("utf-8", "ignore")
+                            if ch3 == "A":
+                                selected_index = max(0, selected_index - 1)
+                            elif ch3 == "B":
+                                selected_index = min(len(items_to_show) - 1, selected_index + 1)
+                else:
+                    raise KeyboardInterrupt
+                items_to_show = redraw()
+            elif ch in ("\r", "\n"):
+                if items_to_show:
+                    return items_to_show[selected_index]
+            elif ch in ("\x7f", "\x08", "\b"):
+                current_input = current_input[:-1]
+                selected_index = 0
+                items_to_show = redraw()
+            elif ch == "\x15":
+                current_input = ""
+                selected_index = 0
+                items_to_show = redraw()
+            elif ch == "\x17":
+                current_input = " ".join(current_input.rstrip().split(" ")[:-1])
+                if current_input:
+                    current_input += " "
+                selected_index = 0
+                items_to_show = redraw()
+            else:
+                if ch.isprintable():
+                    current_input += ch
+                    selected_index = 0
+                    items_to_show = redraw()
+    finally:
+        sys.stdout.write("\033[?25h")
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+
+def interactive_selector(filtered_list, mode_str=""):
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    current_input = ""
+    selected_index = 0
+
+    def redraw():
+        nonlocal selected_index
+        sys.stdout.write("\033[2J\033[H")
+
+        logo_crlf = logo.replace("\n", "\r\n")
+        sys.stdout.write(f"{C_LOGO}{logo_crlf}{C_RST}\r\n")
+        sys.stdout.write(f"{C_SUB}THE HELM - Torrent automation MVP{mode_str}{C_RST}\r\n\r\n")
+
+        search_term = current_input.lower()
+        if search_term.startswith("/"):
+            search_term = search_term[1:]
+
+        disp_items = [t for t in filtered_list if search_term in t.title.lower()]
+
+        if selected_index >= len(disp_items):
+            selected_index = max(0, len(disp_items) - 1)
+
+        limit = 40
+        start_idx = 0
+        if len(disp_items) > limit:
+            start_idx = max(0, selected_index - (limit // 2))
+            if start_idx + limit > len(disp_items):
+                start_idx = max(0, len(disp_items) - limit)
+
+        window_items = disp_items[start_idx : start_idx + limit]
+
+        sys.stdout.write(f"\033[1m{C_TEXT}Found {len(disp_items)} results (showing {start_idx + 1}-{start_idx + len(window_items)}):{C_RST}\r\n")
+        sys.stdout.write(f"{C_LINE}" + "━" * 80 + f"{C_RST}\r\n")
+
+        for i, t in enumerate(window_items):
+            actual_i = start_idx + i
+            title = t.title
+            score = getattr(t, "score", 1)
+            is_generic = (score == 0)
+            
+            prefix_len = 10 if is_generic else 0
+            max_title_len = 38 - prefix_len
+            
+            if get_display_width(title) > max_title_len:
+                current_w = 0
+                new_title = ""
+                for c in title:
+                    cw = 2 if unicodedata.east_asian_width(c) in ('F', 'W') else 1
+                    if current_w + cw > max_title_len - 3:
+                        break
+                    new_title += c
+                    current_w += cw
+                title = new_title + "..."
+                
+            visible_len = prefix_len + get_display_width(title)
+            title_pad = max(2, 40 - visible_len)
+
+            seeds = getattr(t, "seeders", 0)
+            leechs = getattr(t, "leechers", 0)
+            size_str = format_size(getattr(t, "size", 0))
+            date_str = getattr(t, "pubdate", "") or "????-??-??"
+
+            info_str = f"[{size_str:>7}] [{date_str:>10}] [{seeds:>4}↑ {leechs:>3}↓]"
+
+            if is_generic:
+                title = f"\033[33m[GENERIC]{C_LOGO} {title}"
+
+            if actual_i == selected_index:
+                sys.stdout.write(f"\033[7m\033[1m{C_LOGO} ❯ {title}{C_RST}\033[7m{' ' * title_pad}{C_TEXT}{info_str}{C_RST}\r\n")
+            else:
+                sys.stdout.write(f"\033[1m{C_SUB}   {C_RST} {C_LOGO}{title}{C_RST}{' ' * title_pad}\033[1m{C_TEXT}{info_str}{C_RST}\r\n")
+
+        if len(disp_items) > limit:
+            remaining = len(disp_items) - (start_idx + limit)
+            if remaining > 0:
+                sys.stdout.write(f"\r\n\033[3m{C_SUB}... and {remaining} more items below{C_RST}\033[0m\r\n")
+            if start_idx > 0:
+                sys.stdout.write(f"\r\n\033[3m{C_SUB}... and {start_idx} items above{C_RST}\033[0m\r\n")
+
+        sys.stdout.write(f"{C_LINE}" + "━" * 80 + f"{C_RST}\r\n")
+        prompt = f"\033[1m{C_TEXT}❯ Filter (Arrows=Move, Enter=Download, Esc/Ctrl-C=Exit, Ctrl-E=Download+Teardown):{C_RST} {current_input}"
+        sys.stdout.write(prompt)
+        sys.stdout.flush()
+        return disp_items
+
+    try:
+        tty.setraw(sys.stdin.fileno())
+        sys.stdout.write("\033[?25l")
+        items_to_show = redraw()
+
+        while True:
+            ch = os.read(fd, 1).decode("utf-8", "ignore")
+            if ch == "\x03":
+                raise KeyboardInterrupt
+            elif ch == "\x1b":
+                if select.select([fd], [], [], 0.05)[0]:
+                    ch2 = os.read(fd, 1).decode("utf-8", "ignore")
+                    if ch2 == "[":
+                        if select.select([fd], [], [], 0.05)[0]:
+                            ch3 = os.read(fd, 1).decode("utf-8", "ignore")
+                            if ch3 == "A":
+                                selected_index = max(0, selected_index - 1)
+                            elif ch3 == "B":
+                                selected_index = min(len(items_to_show) - 1, selected_index + 1)
+                else:
+                    raise KeyboardInterrupt
+                items_to_show = redraw()
+            elif ch == '\x05':
+                if items_to_show:
+                    return items_to_show[selected_index], True
+            elif ch in ("\r", "\n"):
+                if items_to_show:
+                    return items_to_show[selected_index], False
+            elif ch in ("\x7f", "\x08", "\b"):
+                current_input = current_input[:-1]
+                selected_index = 0
+                items_to_show = redraw()
+            elif ch == "\x15":
+                current_input = ""
+                selected_index = 0
+                items_to_show = redraw()
+            elif ch == "\x17":
+                current_input = " ".join(current_input.rstrip().split(" ")[:-1])
+                if current_input:
+                    current_input += " "
+                selected_index = 0
+                items_to_show = redraw()
+            else:
+                if ch.isprintable():
+                    current_input += ch
+                    selected_index = 0
+                    items_to_show = redraw()
+    finally:
+        sys.stdout.write("\033[?25h")
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
