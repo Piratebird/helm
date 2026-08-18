@@ -23,7 +23,9 @@ bugs_notes.txt
 
 # testing / planning
 testing/
+.pytest_cache/
 
+#docker and allat jazz
 docker_data/
 config/
 
