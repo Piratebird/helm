@@ -40,6 +40,8 @@ It now handles its own dependencies seamlessly using Docker or Podman, spinning 
 - **Permanent Mode:** Keep the stack running 24/7 if you prefer.
 - **VPN Support:** Automatically route qBittorrent traffic through Gluetun (Wireguard/OpenVPN).
 - **Live Search & Filter:** A fast, interactive CLI interface to search indexers and select torrents.
+- **Lite Mode (Zero Setup):** Search and get Magnet links instantly using built-in Python scrapers without needing Docker or Jackett installed!
+- **CLI Indexer Management:** Add and remove Jackett indexers directly from the command line.
 
 ---
 
@@ -47,7 +49,13 @@ It now handles its own dependencies seamlessly using Docker or Podman, spinning 
 
 Helm requires **Docker** (with Docker Compose) or **Podman** (with podman-compose) installed on your system.
 
-### macOS (via Homebrew)
+### Python Package (New!)
+You can now install Helm directly via pip to run it natively or use the new Lite Mode:
+```bash
+pip install helm-torrent
+```
+
+### Container Setup (Full Mode)
 If you are on a Mac, the easiest way to get the required container engine is via Homebrew:
 ```bash
 # To install Docker Desktop:
@@ -81,7 +89,6 @@ Honestly for the most part it's for myself and my own usage i wanted to get magn
 
 Helm is actively roaming the 7seas and trying to get more treasures:
 
-- Bash installer (Mostly Done!)
 - Prowlarr integration (Replacing Jackett).
 - Scrumptious TUI interface.
 - Better indexer management.
@@ -118,6 +125,12 @@ You can also force one-shot modes and auto-downloads:
 
 # Auto-download the top result for a query
 ./helm.sh --oneshot --auto -q "Ubuntu 24.04" --type software
+
+# Run built-in Lite Mode (without Jackett/Docker)
+helm --lite
+
+# Manage Jackett indexers
+helm --indexers
 ```
 
 More detailed usage instructions will be added as the project stablize so hang in there :<
