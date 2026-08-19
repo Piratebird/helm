@@ -25,19 +25,16 @@
   - [Why this exists](#why-this-exists)
   - [Roadmap](#roadmap)
   - [Configuration](#configuration)
-  - [Usage (WIP)](#usage-wip)
+  - [Usage](#usage)
   - [Disclaimer](#disclaimer)
   - [Contributing](#contributing)
   - [How it works (high-level)](#how-it-works-high-level)
-  - [Known limitations](#known-limitations)
   - [Credits](#credits)
   - [License](#license)
 
-**Current State:** Prototype
+Helm is a blazing-fast CLI-based torrent automation tool designed to fetch, filter, and send magnet links to qBittorrent. 
 
-Helm is a CLI-based torrent automation tool designed to fetch, filter, and send magnet links to qBittorrent. 
-
-It now handles its own dependencies seamlessly using Docker or Podman, spinning up Jackett, Flaresolverr, and qBittorrent automatically! Later, I plan to publish my own indexer files for easier setup so hell yeah?!.
+It completely automates its own setup, orchestrating Jackett, Flaresolverr, and qBittorrent using Docker or Podman under the hood.
 
 ---
 
@@ -120,32 +117,36 @@ What these do:
 
 Will see how the configuration changes based on the state of the project/its version.
 
-## Usage (WIP)
+## Usage
 
-Helm is currently run from the CLI using the generated launcher script.
+Helm is primarily run using the included scripts to manage the Docker containers and CLI.
 
 Typical workflow:
 
-1. Run `./setup.sh` to configure indexers and credentials.
-2. Run `./helm.sh` to fetch RSS feeds and search.
+1. Run `./setup.sh` to configure indexers, VPN, and credentials.
+2. Run `./helm.sh` to launch the interactive CLI and search for torrents.
 3. Matching torrents are filtered and sent to qBittorrent automatically.
 
-You can also force one-shot modes and auto-downloads:
+You can also pass arguments directly to the wrapper script:
 ```bash
-# Force one-shot mode for a single search
+# Force one-shot mode (spins up and tears down Docker)
 ./helm.sh --oneshot
 
 # Auto-download the top result for a query
 ./helm.sh --oneshot --auto -q "Ubuntu 24.04" --type software
 
 # Run built-in Lite Mode (without Jackett/Docker)
-helm --lite
+./helm.sh --lite
 
 # Manage Jackett indexers
-helm --indexers
+./helm.sh --indexers
 ```
 
-More detailed usage instructions will be added as the project stablize so hang in there :<
+## Performance & Resource Optimization
+
+Helm is aggressively optimized for a minimal memory footprint. While containerized applications are usually heavy, the `setup.sh` installer strictly throttles the Docker/Podman engines using Linux cgroups (e.g., hard-capping Jackett to 256MB).
+
+In our [Resource Benchmarks](docs/BENCHMARK.md), we proved that running Helm's containerized stack actually **saves RAM** compared to installing the software natively!
 
 ## Disclaimer
 
@@ -157,7 +158,7 @@ However you use this tool is your responsibility gangster.
 
 ## Contributing
 
-Contributions are welcome especially but not limited to bug fixes, refactors or doumenation improvements.
+Contributions are welcome especially but not limited to bug fixes, refactors or documentation improvements.
 
 If you plan to add a major feature or change behavior, it's prolly a good idea to open an issue.
 
@@ -166,13 +167,6 @@ with that out the way this project is real close to me since it's my official fi
 ## How it works (high-level)
 
 Helm pulls torrent RSS feeds from configured indexers, applies filtering and deduplication rules, and automatically sends matching magnet links to qBittorrent.
-
-## Known limitations
-
-- Project is still in early prototype stage.
-- Configuration format could change.
-- Error handeling maybe minimal in some areas here and there.
-- Not extensively tested on all platforms.
 
 ## Credits
 
