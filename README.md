@@ -4,6 +4,10 @@
 <p align="center">
   <img src="images/the_helm.jpeg" width="700">
 </p>
+<p align="center">
+  <a href="https://pypi.org/project/helm-torrent/"><img src="https://img.shields.io/pypi/v/helm-torrent.svg?style=flat-square&color=blue" alt="PyPI"></a>
+  <a href="https://hub.docker.com/r/piratebird/helm"><img src="https://img.shields.io/docker/pulls/piratebird/helm.svg?style=flat-square" alt="Docker Pulls"></a>
+</p>
 </div>
 <hr>
 <br>
