@@ -14,8 +14,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application
 COPY . .
 
-# Ensure __init__.py exists to prevent ModuleNotFoundError in case it was stripped during transfer
-RUN touch src/core/__init__.py
+# Install the application as a Python package
+RUN pip install --no-cache-dir .
 
 # Run the app
-ENTRYPOINT ["python", "src/__main__.py"]
+ENTRYPOINT ["python", "-m", "helm.cli"]
+ENV PYTHONPATH=/app/src

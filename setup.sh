@@ -572,7 +572,7 @@ if [ "$run_mode" == "2" ]; then
 #!/usr/bin/env bash
 if [ "$DOCKER_CMD" == "podman" ]; then
     NETWORK="${COMPOSE_PROJECT_NAME:-helm}_default"
-    podman run -it --rm --entrypoint="" --security-opt label=disable --network "\$NETWORK" -v "\$PWD:/app" -v "$PODMAN_SOCK:/var/run/docker.sock" --env-file ./docker_data/.env.docker mini-helm python src/__main__.py "\$@" 2> >(grep -v "rootless netns" >&2)
+    podman run -it --rm --entrypoint="" --security-opt label=disable --network "\$NETWORK" -v "\$PWD:/app" -v "$PODMAN_SOCK:/var/run/docker.sock" --env-file ./docker_data/.env.docker mini-helm python -m helm.cli "\$@" 2> >(grep -v "rootless netns" >&2)
 else
     $COMPOSE_CMD --profile cli run --rm mini-helm "\$@"
 fi
