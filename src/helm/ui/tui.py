@@ -2,12 +2,49 @@ import os
 import sys
 import time
 import threading
-import tty
-import termios
-import select
+IS_WINDOWS = sys.platform == "win32"
+if IS_WINDOWS:
+    import msvcrt
+    import time
+else:
+    import tty
+    import termios
+    import select
 import unicodedata
 
 from helm.ui.colors import C_LOGO, C_RST, C_ERR, C_TEXT, C_LINE, C_SUB, logo
+
+def _read_key(fd):
+    if IS_WINDOWS:
+        while True:
+            if msvcrt.kbhit():
+                ch = msvcrt.getch()
+                if ch in (b'\x00', b'\xe0'):
+                    ch2 = msvcrt.getch()
+                    if ch2 == b'H': return "UP"
+                    if ch2 == b'P': return "DOWN"
+                    continue
+                try:
+                    ch_str = ch.decode("utf-8", "ignore")
+                    if ch_str == '\r': return '\n'
+                    return ch_str
+                except:
+                    continue
+            time.sleep(0.01)
+    else:
+        ch = os.read(fd, 1).decode("utf-8", "ignore")
+        if ch == "\x1b":
+            if select.select([fd], [], [], 0.05)[0]:
+                ch2 = os.read(fd, 1).decode("utf-8", "ignore")
+                if ch2 == "[":
+                    if select.select([fd], [], [], 0.05)[0]:
+                        ch3 = os.read(fd, 1).decode("utf-8", "ignore")
+                        if ch3 == "A": return "UP"
+                        if ch3 == "B": return "DOWN"
+            else:
+                return "ESC"
+        if ch == "\x7f": return "\b"
+        return ch
 
 def format_size(size_bytes):
     if not size_bytes:
@@ -64,8 +101,8 @@ def get_display_width(s):
     return sum(2 if unicodedata.east_asian_width(c) in ('F', 'W') else 1 for c in s)
 
 def interactive_indexer_selector(indexer_list):
-    fd = sys.stdin.fileno()
-    old_settings = termios.tcgetattr(fd)
+    fd = sys.stdin.fileno() if not IS_WINDOWS else None
+    old_settings = termios.tcgetattr(fd) if not IS_WINDOWS else None
     current_input = ""
     selected_index = 0
     
@@ -137,26 +174,20 @@ def interactive_indexer_selector(indexer_list):
         return disp_items
 
     try:
-        tty.setraw(sys.stdin.fileno())
+        if not IS_WINDOWS:
+            tty.setraw(sys.stdin.fileno())
         sys.stdout.write("\033[?25l")
         items_to_show = redraw()
 
         while True:
-            ch = os.read(fd, 1).decode("utf-8", "ignore")
-            if ch == "\x03":
+            ch = _read_key(fd)
+            if ch == "\x03" or ch == "ESC":
                 raise KeyboardInterrupt
-            elif ch == "\x1b":
-                if select.select([fd], [], [], 0.05)[0]:
-                    ch2 = os.read(fd, 1).decode("utf-8", "ignore")
-                    if ch2 == "[":
-                        if select.select([fd], [], [], 0.05)[0]:
-                            ch3 = os.read(fd, 1).decode("utf-8", "ignore")
-                            if ch3 == "A":
-                                selected_index = max(0, selected_index - 1)
-                            elif ch3 == "B":
-                                selected_index = min(len(items_to_show) - 1, selected_index + 1)
-                else:
-                    raise KeyboardInterrupt
+            elif ch == "UP":
+                selected_index = max(0, selected_index - 1)
+                items_to_show = redraw()
+            elif ch == "DOWN":
+                selected_index = min(len(items_to_show) - 1, selected_index + 1)
                 items_to_show = redraw()
             elif ch in ("\r", "\n"):
                 if items_to_show:
@@ -182,12 +213,13 @@ def interactive_indexer_selector(indexer_list):
                     items_to_show = redraw()
     finally:
         sys.stdout.write("\033[?25h")
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        if not IS_WINDOWS:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 
 def interactive_selector(filtered_list, mode_str=""):
-    fd = sys.stdin.fileno()
-    old_settings = termios.tcgetattr(fd)
+    fd = sys.stdin.fileno() if not IS_WINDOWS else None
+    old_settings = termios.tcgetattr(fd) if not IS_WINDOWS else None
     current_input = ""
     selected_index = 0
 
@@ -272,26 +304,20 @@ def interactive_selector(filtered_list, mode_str=""):
         return disp_items
 
     try:
-        tty.setraw(sys.stdin.fileno())
+        if not IS_WINDOWS:
+            tty.setraw(sys.stdin.fileno())
         sys.stdout.write("\033[?25l")
         items_to_show = redraw()
 
         while True:
-            ch = os.read(fd, 1).decode("utf-8", "ignore")
-            if ch == "\x03":
+            ch = _read_key(fd)
+            if ch == "\x03" or ch == "ESC":
                 raise KeyboardInterrupt
-            elif ch == "\x1b":
-                if select.select([fd], [], [], 0.05)[0]:
-                    ch2 = os.read(fd, 1).decode("utf-8", "ignore")
-                    if ch2 == "[":
-                        if select.select([fd], [], [], 0.05)[0]:
-                            ch3 = os.read(fd, 1).decode("utf-8", "ignore")
-                            if ch3 == "A":
-                                selected_index = max(0, selected_index - 1)
-                            elif ch3 == "B":
-                                selected_index = min(len(items_to_show) - 1, selected_index + 1)
-                else:
-                    raise KeyboardInterrupt
+            elif ch == "UP":
+                selected_index = max(0, selected_index - 1)
+                items_to_show = redraw()
+            elif ch == "DOWN":
+                selected_index = min(len(items_to_show) - 1, selected_index + 1)
                 items_to_show = redraw()
             elif ch == '\x05':
                 if items_to_show:
@@ -320,4 +346,5 @@ def interactive_selector(filtered_list, mode_str=""):
                     items_to_show = redraw()
     finally:
         sys.stdout.write("\033[?25h")
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        if not IS_WINDOWS:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
