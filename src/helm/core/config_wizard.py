@@ -1,4 +1,5 @@
 import os
+import sys
 import requests
 from helm.core.config_manager import load_config, save_config
 
