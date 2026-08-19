@@ -17,15 +17,23 @@ def run_wizard():
         
         while True:
             jackett_url_input = input(f"Jackett URL [{jackett_url}]: ").strip()
+            if jackett_url_input.lower() in ('exit', 'quit', 'q') or '\x03' in jackett_url_input:
+                print("\n\033[33mConfiguration aborted. later bozo!\033[0m")
+                sys.exit(0)
             if jackett_url_input: jackett_url = jackett_url_input
             
             # Obscure the API key if it exists
             masked_api = f"{jackett_api[:4]}...{jackett_api[-4:]}" if len(jackett_api) > 8 else "***" if jackett_api else ""
             jackett_api_input = input(f"Jackett API Key [{masked_api}]: ").strip()
+            if jackett_api_input.lower() in ('exit', 'quit', 'q') or '\x03' in jackett_api_input:
+                print("\n\033[33mConfiguration aborted. later bozo!\033[0m")
+                sys.exit(0)
             if jackett_api_input: jackett_api = jackett_api_input
             
             jackett_pwd_input = input(f"Jackett Admin Password (leave blank if none) [{'***' if jackett_pwd else ''}]: ").strip()
-            # If user presses enter on empty default, it stays empty. If they type something, it updates.
+            if jackett_pwd_input.lower() in ('exit', 'quit', 'q') or '\x03' in jackett_pwd_input:
+                print("\n\033[33mConfiguration aborted. later bozo!\033[0m")
+                sys.exit(0)
             if jackett_pwd_input: jackett_pwd = jackett_pwd_input
             # To allow clearing the password if one was set, we could allow a special string, but for now we just take the input if truthy or keep it if they just pressed enter.
             
@@ -66,12 +74,21 @@ def run_wizard():
         
         while True:
             qb_webui_input = input(f"qBittorrent WebUI URL [{qb_webui}]: ").strip()
+            if qb_webui_input.lower() in ('exit', 'quit', 'q') or '\x03' in qb_webui_input:
+                print("\n\033[33mConfiguration aborted. later bozo!\033[0m")
+                sys.exit(0)
             if qb_webui_input: qb_webui = qb_webui_input
             
             qb_username_input = input(f"qBittorrent Username [{qb_username}]: ").strip()
+            if qb_username_input.lower() in ('exit', 'quit', 'q') or '\x03' in qb_username_input:
+                print("\n\033[33mConfiguration aborted. later bozo!\033[0m")
+                sys.exit(0)
             if qb_username_input: qb_username = qb_username_input
             
             qb_password_input = input(f"qBittorrent Password [{'***' if qb_password else ''}]: ").strip()
+            if qb_password_input.lower() in ('exit', 'quit', 'q') or '\x03' in qb_password_input:
+                print("\n\033[33mConfiguration aborted. later bozo!\033[0m")
+                sys.exit(0)
             if qb_password_input: qb_password = qb_password_input
             
             if qb_password:
