@@ -232,6 +232,11 @@ services:
   jackett:
     container_name: "${COMPOSE_PROJECT_NAME:-helm}-jackett"
     image: lscr.io/linuxserver/jackett:latest
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
     labels:
       - "com.docker.compose.project=${COMPOSE_PROJECT_NAME:-helm}"
       - "com.docker.compose.service=jackett"
@@ -255,6 +260,11 @@ services:
   flaresolverr:
     container_name: "${COMPOSE_PROJECT_NAME:-helm}-flaresolverr"
     image: ghcr.io/flaresolverr/flaresolverr:latest
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
     labels:
       - "com.docker.compose.project=${COMPOSE_PROJECT_NAME:-helm}"
       - "com.docker.compose.service=flaresolverr"
@@ -344,6 +354,11 @@ if [[ "$use_vpn" =~ ^[Yy]$ ]]; then
   gluetun:
     container_name: "${COMPOSE_PROJECT_NAME:-helm}-gluetun"
     image: qmcgaw/gluetun:latest
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
     labels:
       - "com.docker.compose.project=${COMPOSE_PROJECT_NAME:-helm}"
       - "com.docker.compose.service=gluetun"
@@ -369,6 +384,11 @@ if [[ "$use_vpn" =~ ^[Yy]$ ]]; then
   qbittorrent:
     container_name: "${COMPOSE_PROJECT_NAME:-helm}-qbittorrent"
     image: lscr.io/linuxserver/qbittorrent:latest
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
     labels:
       - "com.docker.compose.project=${COMPOSE_PROJECT_NAME:-helm}"
       - "com.docker.compose.service=qbittorrent"
@@ -395,6 +415,11 @@ else
   qbittorrent:
     container_name: "${COMPOSE_PROJECT_NAME:-helm}-qbittorrent"
     image: lscr.io/linuxserver/qbittorrent:latest
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
     labels:
       - "com.docker.compose.project=${COMPOSE_PROJECT_NAME:-helm}"
       - "com.docker.compose.service=qbittorrent"
