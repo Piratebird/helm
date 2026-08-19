@@ -38,3 +38,6 @@ downloads/
 
 # Auto-generated launcher (machine-specific)
 helm.sh
+# IDEs
+.vscode/
+.idea/

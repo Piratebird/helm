@@ -24,6 +24,8 @@ def _read_key(fd):
                     if ch2 == b'H': return "UP"
                     if ch2 == b'P': return "DOWN"
                     continue
+                if ch == b'\x1b':
+                    return "ESC"
                 try:
                     ch_str = ch.decode("utf-8", "ignore")
                     if ch_str == '\r': return '\n'

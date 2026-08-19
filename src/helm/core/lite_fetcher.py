@@ -143,5 +143,22 @@ def search_lite(query):
     except Exception as e:
         logger.error(f"Nyaa error: {e}")
         
+    # --- qBittorrent Plugins Integration --- #
+    import os
+    try:
+        from helm.core.lite_plugin_loader import run_plugins
+        
+        # Define where to look for plugins
+        plugin_dirs = [
+            os.path.expanduser("~/.helm_data/plugins"), # User plugins
+            os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "plugins") # Bundled plugins
+        ]
+        
+        plugin_results = run_plugins(query, plugin_dirs)
+        if plugin_results:
+            items.extend(plugin_results)
+    except Exception as e:
+        logger.error(f"Plugin loader error: {e}")
+        
     return items
 

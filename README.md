@@ -2,11 +2,15 @@
 
 <div>
 <p align="center">
-  <img src="images/the_helm.jpeg" width="700">
+  <img src="https://raw.githubusercontent.com/Piratebird/helm/main/images/the_helm.jpeg" width="700">
 </p>
 <p align="center">
   <a href="https://pypi.org/project/helm-torrent/"><img src="https://img.shields.io/pypi/v/helm-torrent.svg?style=flat-square&color=blue" alt="PyPI"></a>
+  <a href="https://pypi.org/project/helm-torrent/"><img src="https://img.shields.io/pypi/pyversions/helm-torrent.svg?style=flat-square" alt="Python Versions"></a>
   <a href="https://hub.docker.com/r/piratebird/helm"><img src="https://img.shields.io/docker/pulls/piratebird/helm.svg?style=flat-square" alt="Docker Pulls"></a>
+  <a href="https://github.com/Piratebird/helm/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Piratebird/helm/ci.yml?branch=main&style=flat-square" alt="CI Status"></a>
+  <a href="https://github.com/Piratebird/helm/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Piratebird/helm.svg?style=flat-square" alt="License"></a>
+  <a href="https://github.com/Piratebird/helm/stargazers"><img src="https://img.shields.io/github/stars/Piratebird/helm.svg?style=flat-square&color=yellow" alt="Stars"></a>
 </p>
 </div>
 <hr>
@@ -172,7 +176,10 @@ Helm pulls torrent RSS feeds from configured indexers, applies filtering and ded
 
 ## Credits
 
-shoutout to the goats (this project is built with these open-source tools btw) qBittorrent, Jackett, and Flaresolverr.
+Shoutout to the goats! This project is built utilizing these fantastic open-source tools: qBittorrent, Jackett, and Flaresolverr.
+
+**Lite Mode Plugins:**
+A massive thank you to the [qBittorrent search engine plugins community](https://github.com/qbittorrent/search-plugins) and developers. Helm's lightweight search mode natively supports their `.py` plugins, making it possible to search dozens of torrent indexers instantly without any Docker overhead.
 
 ## License
 
