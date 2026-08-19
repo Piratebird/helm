@@ -53,10 +53,26 @@ def main():
         args = parser.parse_args()
 
         if not args.lite:
-            ensure_config()
+            config = load_config()
+            if "JACKETT_API_KEY" not in config and not os.getenv("JACKETT_API_KEY"):
+                try:
+                    choice = input(f"\n\033[1m{C_TEXT}? No configuration found. Would you like to run in Lite Mode (zero setup)? [Y/n]:{C_RST} ").strip().lower()
+                    if choice != 'n':
+                        args.lite = True
+                    else:
+                        ensure_config()
+                except (KeyboardInterrupt, EOFError):
+                    print(f"\n{C_SUB}later bozo!{C_RST}")
+                    sys.exit(0)
+            else:
+                ensure_config()
 
         if args.indexers:
-            from core.indexer_manager import JackettManager
+            if args.lite:
+                print(f"{C_ERR}Cannot manage Jackett indexers in Lite Mode.{C_RST}", file=sys.stderr)
+                sys.exit(1)
+            ensure_config()
+            from helm.core.indexer_manager import JackettManager
             try:
                 manager = JackettManager()
             except Exception as e:
