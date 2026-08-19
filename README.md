@@ -58,6 +58,10 @@ You can now install Helm directly via pip to run it natively or use the new Lite
 ```bash
 pip install helm-torrent
 ```
+Once installed, you can launch the CLI from anywhere using:
+```bash
+helm
+```
 
 ### Container Setup (Full Mode)
 If you are on a Mac, the easiest way to get the required container engine is via Homebrew:

@@ -128,24 +128,31 @@ def run_wizard():
 def ensure_config():
     config = load_config()
     needs_wizard = False
-    
-    keys = ["JACKETT_URL", "JACKETT_API_KEY", "JACKETT_PASSWORD", "QB_WEBUI", "QB_USERNAME", "QB_PASSWORD"]
+    # Check required keys
+    keys = ["JACKETT_URL", "JACKETT_API_KEY", "QB_WEBUI", "QB_USERNAME", "QB_PASSWORD"]
     for k in keys:
         if k not in config and not os.getenv(k):
-            # JACKETT_PASSWORD can be empty string, but if the key doesn't even exist in config and not in env, we trigger wizard
-            # Wait, if JACKETT_PASSWORD isn't required to be non-empty, maybe we shouldn't trigger wizard if ONLY password is missing?
-            # It's better to just include it so the dictionary always has it.
-            if k == "JACKETT_PASSWORD":
-                if "JACKETT_PASSWORD" not in config:
-                    needs_wizard = True
-                    break
-            else:
+            needs_wizard = True
+            break
+            
+    # Dynamically check if JACKETT_PASSWORD is required
+    if not needs_wizard and "JACKETT_PASSWORD" not in config and os.getenv("JACKETT_PASSWORD") is None:
+        jackett_url = config.get("JACKETT_URL", os.getenv("JACKETT_URL", "http://localhost:9117"))
+        try:
+            session = requests.Session()
+            r = session.get(f"{jackett_url}/UI/Dashboard", timeout=2)
+            if "/UI/Login" in r.url:
                 needs_wizard = True
-                break
+        except Exception:
+            pass
             
     if needs_wizard:
-        run_wizard()
-        config = load_config()
+        if not sys.stdin.isatty():
+            print("\n\033[33m[WARN] Missing configuration keys, but running non-interactively (e.g. Docker). Skipping interactive wizard.\033[0m\n")
+            # We don't exit here so the rest of the app can try to run, or fail with a native API error
+        else:
+            run_wizard()
+            config = load_config()
         
     for k in keys:
         if k in config:
