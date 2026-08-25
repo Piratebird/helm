@@ -108,12 +108,18 @@ For more detailed tasks breakdown check [TODO.md](docs/TODO.md)
 
 Helm uses a combo of env variables and JSON configuration files cleanly sandboxed away from your host OS.
 
+With the adoption of XDG standards, your configuration and state are stored natively based on your OS:
+
+- **Linux:** `~/.config/helm/` (Config) and `~/.local/state/helm/` (State)
+- **Mac:** `~/Library/Application Support/helm/` (Config and State)
+- **Windows:** `%APPDATA%\helm\` (Config) and `%LOCALAPPDATA%\helm\` (State)
+
 What these do:
 
-- `docker_data/.env.docker`: Environment variables for the containers
-- `docker_data/jackett/`: Jackett configuration and indexers
-- `docker_data/qbittorrent/`: qBittorrent configuration and state
-- `docker_data/downloads/`: Your downloaded files
+- `state/.env.docker`: Environment variables for the containers
+- `state/jackett/`: Jackett configuration and indexers
+- `state/qbittorrent/`: qBittorrent configuration and state
+- `Downloads/helm/`: Your downloaded files
 
 Will see how the configuration changes based on the state of the project/its version.
 

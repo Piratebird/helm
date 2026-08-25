@@ -1,6 +1,7 @@
-import time
-import sys
 import os
+import sys
+import time
+
 
 def download_magnet(magnet_link, save_path="./downloads"):
     try:
@@ -25,22 +26,22 @@ def download_magnet(magnet_link, save_path="./downloads"):
         'announce_to_all_tiers': True
     }
     ses = lt.session(settings)
-    
+
     # Add common DHT routers to bootstrap finding peers quickly
     ses.add_dht_router("router.bittorrent.com", 6881)
     ses.add_dht_router("router.utorrent.com", 6881)
     ses.add_dht_router("dht.transmissionbt.com", 6881)
     ses.add_dht_router("dht.aelitis.com", 6881)
-    
-    print(f"\n\033[1m\033[34mAdding magnet link to libtorrent session...\033[0m")
-    
+
+    print("\n\033[1m\033[34mAdding magnet link to libtorrent session...\033[0m")
+
     # Parse the magnet URI properly for libtorrent 2.x
     params = lt.parse_magnet_uri(magnet_link)
     params.save_path = save_path
     handle = ses.add_torrent(params)
 
     sys.stdout.write("Downloading Metadata")
-    
+
     try:
         timeout = 60
         elapsed = 0
@@ -54,16 +55,16 @@ def download_magnet(magnet_link, save_path="./downloads"):
                 print(f"Fallback Magnet Link: {magnet_link}")
                 ses.pause()
                 return False
-                
+
         print("\nMetadata downloaded. Starting torrent download...")
         print(f"Saving to: \033[1m{os.path.abspath(save_path)}\033[0m\n")
-        
+
         while handle.status().state != lt.torrent_status.seeding:
             s = handle.status()
-            
-            state_str = ['queued', 'checking', 'downloading metadata', 
+
+            state_str = ['queued', 'checking', 'downloading metadata',
                          'downloading', 'finished', 'seeding', 'allocating']
-            
+
             sys.stdout.write(
                 f'\r\033[K\033[1m{s.progress * 100:.2f}%\033[0m complete '
                 f'(down: \033[32m{s.download_rate / 1000:.1f} kB/s\033[0m | '
@@ -71,7 +72,7 @@ def download_magnet(magnet_link, save_path="./downloads"):
                 f'peers: {s.num_peers}) [{state_str[s.state]}]'
             )
             sys.stdout.flush()
-            
+
             alerts = ses.pop_alerts()
             for a in alerts:
                 msg = a.message()
@@ -80,13 +81,13 @@ def download_magnet(magnet_link, save_path="./downloads"):
                     sys.stdout.write(f"\033[33mEnsure you have write permissions to {os.path.abspath(save_path)}\033[0m\n")
                     ses.pause()
                     return False
-                    
+
             time.sleep(1)
-            
+
         print("\n\n\033[32m\033[1mDownload complete!\033[0m")
     except KeyboardInterrupt:
         print("\n\n\033[33mDownload interrupted by user. Cleaning up session...\033[0m")
         ses.pause()
         return False
-        
+
     return True

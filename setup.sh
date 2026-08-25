@@ -5,6 +5,61 @@ set -e
 # Catch errors in piped commands (e.g., command1 | command2)
 set -o pipefail
 
+OS="$(uname -s)"
+case "${OS}" in
+    Darwin*)
+        DEFAULT_CONFIG="$HOME/Library/Application Support/helm"
+        DEFAULT_STATE="$HOME/Library/Application Support/helm/state"
+        ;;
+    MINGW*|CYGWIN*|MSYS*)
+        DEFAULT_CONFIG="${APPDATA:-$HOME/AppData/Roaming}/helm"
+        DEFAULT_STATE="${LOCALAPPDATA:-$HOME/AppData/Local}/helm"
+        ;;
+    *)
+        DEFAULT_CONFIG="$HOME/.config/helm"
+        DEFAULT_STATE="$HOME/.local/state/helm"
+        ;;
+esac
+
+HELM_CONFIG="${DEFAULT_CONFIG}"
+HELM_STATE="${DEFAULT_STATE}"
+HELM_DL="$HOME/Downloads/helm"
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --config-dir)
+      HELM_CONFIG="$2"
+      shift 2
+      ;;
+    --state-dir)
+      HELM_STATE="$2"
+      shift 2
+      ;;
+    --downloads-dir)
+      HELM_DL="$2"
+      shift 2
+      ;;
+    --help)
+      echo "Usage: ./setup.sh [OPTIONS]"
+      echo "Options:"
+      echo "  --config-dir <path>       Set configuration directory (default: OS native config path)"
+      echo "  --state-dir <path>        Set state directory (default: OS native state path)"
+      echo "  --downloads-dir <path>    Set downloads directory (default: ~/Downloads/helm)"
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1"
+      exit 1
+      ;;
+  esac
+done
+
+echo "Using paths:"
+echo "  Config:    $HELM_CONFIG"
+echo "  State:     $HELM_STATE"
+echo "  Downloads: $HELM_DL"
+echo ""
+
 echo "==========================================="
 echo "        Helm Application Setup Script      "
 echo "==========================================="
@@ -208,8 +263,9 @@ fi
 
 echo "[OK] Container engine and compose are functional."
 
-mkdir -p docker_data/jackett docker_data/qbittorrent docker_data/downloads
-touch docker_data/config.json
+mkdir -p "$HELM_STATE/jackett" "$HELM_STATE/qbittorrent" "$HELM_STATE/gluetun" "$HELM_DL"
+mkdir -p "$HELM_CONFIG"
+touch "$HELM_CONFIG/config.json"
 
 echo ""
 echo "How would you like to run Helm?"
@@ -251,8 +307,8 @@ services:
     security_opt:
       - label=disable
     volumes:
-      - ${HOST_PWD:-.}/docker_data/jackett:/config
-      - ${HOST_PWD:-.}/docker_data/downloads:/downloads
+      - "$HELM_STATE"/jackett:/config
+      - "$HELM_DL":/downloads
     ports:
       - 19117:9117
     restart: unless-stopped
@@ -290,12 +346,13 @@ services:
     stdin_open: true
     tty: true
     env_file:
-      - ./docker_data/.env.docker
+      - "$HELM_STATE"/.env.docker
     security_opt:
       - label=disable
     volumes:
-      - ${HOST_PWD:-.}/docker_data/config.json:/app/config.json
+      - "$HELM_CONFIG"/config.json:/app/config.json
       - ${HOST_PWD:-.}/src:/app/src
+      - ${HOST_PWD:-.}/docker-compose.yml:/app/docker-compose.yml
 EOF
 
 if [ "$DOCKER_CMD" == "docker" ]; then
@@ -334,20 +391,35 @@ if [[ "$use_vpn" =~ ^[Yy]$ ]]; then
     vpn_type=${vpn_type:-wireguard}
     
     vpn_extra=""
-    if [ "$vpn_type" = "wireguard" ]; then
+    if [ -z "$vpn_provider" ]; then
+        echo "[ERROR] VPN Provider cannot be empty. Disabling VPN."
+        use_vpn="n"
+    elif [ "$vpn_type" = "wireguard" ]; then
         read -r -p "Enter WireGuard Private Key: " wg_key
-        vpn_extra="WIREGUARD_PRIVATE_KEY=$wg_key"
+        if [ -z "$wg_key" ]; then
+            echo "[ERROR] WireGuard key cannot be empty. Disabling VPN."
+            use_vpn="n"
+        else
+            vpn_extra="WIREGUARD_PRIVATE_KEY=$wg_key"
+        fi
     elif [ "$vpn_type" = "openvpn" ]; then
         if [ "$vpn_provider" != "custom" ]; then
             read -r -p "Enter OpenVPN Username (or token): " ovpn_user
             read -r -s -p "Enter OpenVPN Password (leave blank if using token): " ovpn_pass
             echo ""
-            vpn_extra="OPENVPN_USER=$ovpn_user"$'\n'"OPENVPN_PASSWORD=$ovpn_pass"
+            if [ -z "$ovpn_user" ]; then
+                echo "[ERROR] OpenVPN user cannot be empty. Disabling VPN."
+                use_vpn="n"
+            else
+                vpn_extra="OPENVPN_USER=$ovpn_user"$'\n'"OPENVPN_PASSWORD=$ovpn_pass"
+            fi
         else
-            echo "[INFO] For 'custom' OpenVPN, ensure you place custom.conf (and auth.conf if needed) in ./docker_data/gluetun"
+            echo "[INFO] For 'custom' OpenVPN, ensure you place custom.conf (and auth.conf if needed) in "$HELM_STATE"/gluetun"
         fi
     fi
-    
+fi
+
+if [[ "$use_vpn" =~ ^[Yy]$ ]]; then
     echo "Configuring with VPN (Gluetun)..."
     cat << 'EOF' >> docker-compose.yml
 
@@ -367,14 +439,10 @@ if [[ "$use_vpn" =~ ^[Yy]$ ]]; then
       - NET_ADMIN
     devices:
       - /dev/net/tun:/dev/net/tun
-    environment:
-      - VPN_SERVICE_PROVIDER=${VPN_SERVICE_PROVIDER}
-      - VPN_TYPE=${VPN_TYPE}
-      - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
-      - OPENVPN_USER=${OPENVPN_USER}
-      - OPENVPN_PASSWORD=${OPENVPN_PASSWORD}
+    env_file:
+      - "$HELM_STATE"/.env.docker
     volumes:
-      - ${HOST_PWD:-.}/docker_data/gluetun:/gluetun
+      - "$HELM_STATE"/gluetun:/gluetun
     ports:
       - 18080:8080
       - 6881:6881
@@ -402,8 +470,8 @@ if [[ "$use_vpn" =~ ^[Yy]$ ]]; then
     security_opt:
       - label=disable
     volumes:
-      - ${HOST_PWD:-.}/docker_data/qbittorrent:/config
-      - ${HOST_PWD:-.}/docker_data/downloads:/downloads
+      - "$HELM_STATE"/qbittorrent:/config
+      - "$HELM_DL":/downloads
     depends_on:
       - gluetun
     restart: unless-stopped
@@ -435,8 +503,8 @@ else
     security_opt:
       - label=disable
     volumes:
-      - ${HOST_PWD:-.}/docker_data/qbittorrent:/config
-      - ${HOST_PWD:-.}/docker_data/downloads:/downloads
+      - "$HELM_STATE"/qbittorrent:/config
+      - "$HELM_DL":/downloads
     ports:
       - 18080:18080
       - 6881:6881
@@ -445,7 +513,11 @@ else
 EOF
 fi
 
-cat << EOF > ./docker_data/.env.docker
+sed -i "s|\"\$HELM_STATE\"|$HELM_STATE|g" docker-compose.yml
+sed -i "s|\"\$HELM_CONFIG\"|$HELM_CONFIG|g" docker-compose.yml
+sed -i "s|\"\$HELM_DL\"|$HELM_DL|g" docker-compose.yml
+
+cat << EOF > "$HELM_STATE"/.env.docker
 # --- Helm Container Isolated Configuration ---
 JACKETT_URL=http://jackett:9117
 JACKETT_API_KEY=\${JACKETT_API:-placeholder}
@@ -457,13 +529,7 @@ HOST_PWD=$PWD
 EOF
 
 if [[ "$use_vpn" =~ ^[Yy]$ ]]; then
-    export VPN_SERVICE_PROVIDER="$vpn_provider"
-    export VPN_TYPE="$vpn_type"
-    export WIREGUARD_PRIVATE_KEY="$wg_key"
-    export OPENVPN_USER="$ovpn_user"
-    export OPENVPN_PASSWORD="$ovpn_pass"
-    
-    cat << EOF >> ./docker_data/.env.docker
+    cat << EOF >> "$HELM_STATE"/.env.docker
 
 # --- VPN (Gluetun) Configuration ---
 VPN_SERVICE_PROVIDER=$vpn_provider
@@ -477,31 +543,31 @@ $COMPOSE_CMD --profile cli pull mini-helm
 
 run_compose() {
     if [ "$DOCKER_CMD" == "podman" ]; then
-        podman run --rm --entrypoint="" --security-opt label=disable -v "$PWD:/app" -v "$PODMAN_SOCK:/var/run/docker.sock" --env-file ./docker_data/.env.docker mini-helm docker compose "$@" 2> >(grep -v "rootless netns" >&2)
+        podman run --rm --entrypoint="" --security-opt label=disable -v "$PWD:/app" -v "$PODMAN_SOCK:/var/run/docker.sock" --env-file "$HELM_STATE"/.env.docker mini-helm docker compose "$@" 2> >(grep -v "rootless netns" >&2)
     else
         $COMPOSE_CMD "$@"
     fi
 }
 
 echo "Seeding default Jackett indexers..."
-mkdir -p ./docker_data/jackett/Jackett/Indexers
+mkdir -p "$HELM_STATE"/jackett/Jackett/Indexers
 
-cat << 'EOF' > ./docker_data/jackett/Jackett/Indexers/1337x.json
+cat << 'EOF' > "$HELM_STATE"/jackett/Jackett/Indexers/1337x.json
 [{"id": "sitelink","type": "inputstring","name": "Site Link","value": "https://1337x.to/"}]
 EOF
-cat << 'EOF' > ./docker_data/jackett/Jackett/Indexers/yts.json
+cat << 'EOF' > "$HELM_STATE"/jackett/Jackett/Indexers/yts.json
 [{"id": "sitelink","type": "inputstring","name": "Site Link","value": "https://yts.mx/"}]
 EOF
-cat << 'EOF' > ./docker_data/jackett/Jackett/Indexers/nyaasi.json
+cat << 'EOF' > "$HELM_STATE"/jackett/Jackett/Indexers/nyaasi.json
 [{"id": "sitelink","type": "inputstring","name": "Site Link","value": "https://nyaa.si/"}]
 EOF
-cat << 'EOF' > ./docker_data/jackett/Jackett/Indexers/thepiratebay.json
+cat << 'EOF' > "$HELM_STATE"/jackett/Jackett/Indexers/thepiratebay.json
 [{"id": "sitelink","type": "inputstring","name": "Site Link","value": "https://thepiratebay.org/"}]
 EOF
 
 echo "Pre-seeding qBittorrent configuration..."
-mkdir -p ./docker_data/qbittorrent/qBittorrent/
-cat << 'EOF' > ./docker_data/qbittorrent/qBittorrent/qBittorrent.conf
+mkdir -p "$HELM_STATE"/qbittorrent/qBittorrent/
+cat << 'EOF' > "$HELM_STATE"/qbittorrent/qBittorrent/qBittorrent.conf
 [Preferences]
 WebUI\Password_PBKDF2="@ByteArray(ARQ77eY1NUZaQsuDHbIMCA==:0WMRkYTUWVT9wVvdDtHAjU9b3b7uB8NR1Gur2hmQCvCDpm39Q+PsIfSYvgkvpe7L5yL8YQv8EaV7t8mP308QWg==)"
 WebUI\Username=admin
@@ -512,7 +578,7 @@ EOF
 
 echo ""
 echo "Starting containers in the background to initialize configurations..."
-run_compose up -d jackett qbittorrent flaresolverr
+run_compose up -d --remove-orphans jackett qbittorrent flaresolverr
 
 echo "[INFO] Waiting for services to initialize..."
 
@@ -575,12 +641,18 @@ if [ -z "$JACKETT_API" ]; then
 fi
 
 # Re-write .env.docker with the true JACKETT_API_KEY
-sed -i "s|JACKETT_API_KEY=.*|JACKETT_API_KEY=$JACKETT_API|" ./docker_data/.env.docker
+sed -i "s|JACKETT_API_KEY=.*|JACKETT_API_KEY=$JACKETT_API|" "$HELM_STATE"/.env.docker
 
 echo ""
 echo "Setup is 100% complete! Everything is configured."
 echo "Your native .env and config.json were left completely untouched."
-echo "Container configs are stored safely inside the ./docker_data directory."
+echo "---"
+echo "Security Summary & Data Locations:"
+echo " - Settings:   ~/.config/helm/"
+echo " - Databases:  ~/.local/state/helm/"
+echo " - Secrets:    ~/.local/state/helm/.env.docker"
+echo " - Downloads:  ~/Downloads/helm/"
+echo "---"
 echo ""
 
 if [ "$run_mode" == "2" ]; then
@@ -597,7 +669,7 @@ if [ "$run_mode" == "2" ]; then
 #!/usr/bin/env bash
 if [ "$DOCKER_CMD" == "podman" ]; then
     NETWORK="${COMPOSE_PROJECT_NAME:-helm}_default"
-    podman run -it --rm --entrypoint="" --security-opt label=disable --network "\$NETWORK" -v "\$PWD:/app" -v "$PODMAN_SOCK:/var/run/docker.sock" --env-file ./docker_data/.env.docker mini-helm python -m helm.cli "\$@" 2> >(grep -v "rootless netns" >&2)
+    podman run -it --rm --entrypoint="" --security-opt label=disable --network "\$NETWORK" -v "\$PWD:/app" -v "$PODMAN_SOCK:/var/run/docker.sock" --env-file "$HELM_STATE"/.env.docker mini-helm python -m helm.cli "\$@" 2> >(grep -v "rootless netns" >&2)
 else
     $COMPOSE_CMD --profile cli run --rm mini-helm "\$@"
 fi

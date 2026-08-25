@@ -7,9 +7,9 @@ core/qbittorrent_client.py
 
 """
 
-import requests
 import os
 
+import requests
 
 _session = None
 
@@ -28,7 +28,7 @@ def login_qbittorrent():
         raise Exception("Please set QB_PASSWORD in .env file !!")
 
     session = requests.Session()
-    
+
     # Check if auth is already bypassed (e.g. via AuthSubnetWhitelist)
     version_url = f"{qb_webui}/api/v2/app/version"
     try:
@@ -39,7 +39,7 @@ def login_qbittorrent():
             return session
     except Exception:
         pass
-    
+
     login_url = f"{qb_webui}/api/v2/auth/login"
     data = {"username": qb_username, "password": qb_password}
     r = session.post(login_url, data=data)
@@ -51,11 +51,11 @@ def login_qbittorrent():
             if r_verify.status_code != 200:
                 raise ConnectionError("Secondary verification request failed, authentication was not successful.")
         except Exception as e:
-            # catching errors like pokemons 
+            # catching errors like pokemons
             raise ConnectionError(f"Failed to verify qbittorrent authentication: {e}")
     else:
         raise ConnectionError(f"Failed to login to qbittorrent: HTTP {r.status_code} {r.text}")
-    
+
     print("Logged in to qbittorrent web ui !!")
     _session = session
     return session
@@ -74,6 +74,6 @@ def add_magnet(magnet):
         # add some decorations later like check-mark
         print(f"Magnet added: {magnet}")
     elif r.status_code == 409:
-        print(f"\033[33mMagnet is already in your qBittorrent download list!\033[0m")
+        print("\033[33mMagnet is already in your qBittorrent download list!\033[0m")
     else:
         print(f"Failed to add magnet: {r.status_code} | {r.text}")

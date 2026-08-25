@@ -7,6 +7,7 @@ core/torrent_filter.py
 
 import re
 
+
 def is_negative_match(title, negatives):
     title = title.lower()
     for n in negatives:
@@ -42,6 +43,7 @@ def match_quality(title, qualities):
 
 import hashlib
 
+
 def dedupe(items):
     seen = set()
     unique = []
@@ -53,7 +55,7 @@ def dedupe(items):
         else:
             # Fallback to hashing the whole link or title if not a standard magnet
             hash_value = hashlib.md5(link.encode('utf-8')).hexdigest() if link else hashlib.md5(getattr(i, 'title', '').encode('utf-8')).hexdigest()
-            
+
         if hash_value not in seen:
             seen.add(hash_value)
             unique.append(i)
@@ -81,7 +83,7 @@ def filter_items(items, positives, negatives, min_score=0, min_seeds=0):
         score = score_item(title, positives)
 
         if score >= min_score or positives == []:
-            setattr(item, "score", score)
+            item.score = score
             results.append((item, score))
 
         # sort by score descending order

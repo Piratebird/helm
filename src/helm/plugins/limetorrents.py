@@ -8,12 +8,13 @@ from html.parser import HTMLParser
 from typing import Callable, Dict, List, Mapping, Match, Tuple, Union
 from urllib.parse import quote
 
-from helpers import retrieve_url
 from novaprinter import prettyPrinter
+
+from helpers import retrieve_url
 
 
 class limetorrents:
-    url = "https://www.limetorrents.lol"
+    url = "https://www.limetorrents.fun"
     name = "LimeTorrents"
     supported_categories = {'all': 'all',
                             'anime': 'anime',

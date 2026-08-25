@@ -1,14 +1,10 @@
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
-import pytest
-from helm.core.torrent_filter import (
-    is_negative_match,
-    score_item,
-    dedupe,
-    filter_items
-)
+from helm.core.torrent_filter import dedupe, filter_items, is_negative_match, score_item
+
 
 class MockItem:
     def __init__(self, title, link="", seeders=0):
@@ -49,13 +45,13 @@ def test_filter_items():
         MockItem("Movie 1080p HDCAM", seeders=100), # Negative match
         MockItem("Movie 1080p", seeders=0),       # Too few seeds
     ]
-    
+
     positives = ["1080p"]
     negatives = ["hdcam"]
-    
+
     # Test with min_score=0, min_seeds=1
     results = filter_items(items, positives, negatives, min_score=0, min_seeds=1)
-    
+
     assert len(results) == 2
     # Should be sorted by score, so "Movie 1080p" (score 1) first, then "Movie 720p" (score 0)
     assert results[0].title == "Movie 1080p"

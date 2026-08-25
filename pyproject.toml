@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "helm-torrent"
-version = "0.7.1"
+version = "0.8.0"
 authors = [
   { name="Piratebird" },
 ]
@@ -19,12 +19,14 @@ classifiers = [
 dependencies = [
     "requests>=2.31.0",
     "python-dotenv>=1.0.0",
-    "libtorrent"
+    "libtorrent>=2.0.0,<2.1.0"
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest"
+    "pytest",
+    "pytest-cov",
+    "responses"
 ]
 
 [project.urls]
@@ -35,3 +37,15 @@ helm = "helm.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py38"
+select = ["E", "F", "W", "I", "B"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true

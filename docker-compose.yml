@@ -21,8 +21,8 @@ services:
     security_opt:
       - label=disable
     volumes:
-      - ${HOST_PWD:-.}/docker_data/jackett:/config
-      - ${HOST_PWD:-.}/docker_data/downloads:/downloads
+      - /home/piratebird/.local/state/helm/jackett:/config
+      - /home/piratebird/Downloads/helm:/downloads
     ports:
       - 19117:9117
     restart: unless-stopped
@@ -60,45 +60,16 @@ services:
     stdin_open: true
     tty: true
     env_file:
-      - ./docker_data/.env.docker
+      - /home/piratebird/.local/state/helm/.env.docker
     security_opt:
       - label=disable
     volumes:
-      - ${HOST_PWD:-.}/docker_data/config.json:/app/config.json
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/piratebird/.config/helm/config.json:/app/config.json
       - ${HOST_PWD:-.}/src:/app/src
+      - ${HOST_PWD:-.}/docker-compose.yml:/app/docker-compose.yml
+      - /var/run/docker.sock:/var/run/docker.sock
     profiles:
       - cli
-
-  gluetun:
-    container_name: "${COMPOSE_PROJECT_NAME:-helm}-gluetun"
-    image: qmcgaw/gluetun:latest
-    deploy:
-      resources:
-        limits:
-          cpus: "0.25"
-          memory: 128M
-    labels:
-      - "com.docker.compose.project=${COMPOSE_PROJECT_NAME:-helm}"
-      - "com.docker.compose.service=gluetun"
-      - "com.docker.compose.oneoff=False"
-    cap_add:
-      - NET_ADMIN
-    devices:
-      - /dev/net/tun:/dev/net/tun
-    environment:
-      - VPN_SERVICE_PROVIDER=${VPN_SERVICE_PROVIDER}
-      - VPN_TYPE=${VPN_TYPE}
-      - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
-      - OPENVPN_USER=${OPENVPN_USER}
-      - OPENVPN_PASSWORD=${OPENVPN_PASSWORD}
-    volumes:
-      - ${HOST_PWD:-.}/docker_data/gluetun:/gluetun
-    ports:
-      - 18080:8080
-      - 6881:6881
-      - 6881:6881/udp
-    restart: unless-stopped
 
   qbittorrent:
     container_name: "${COMPOSE_PROJECT_NAME:-helm}-qbittorrent"
@@ -112,7 +83,9 @@ services:
       - "com.docker.compose.project=${COMPOSE_PROJECT_NAME:-helm}"
       - "com.docker.compose.service=qbittorrent"
       - "com.docker.compose.oneoff=False"
-    network_mode: "service:gluetun"
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     environment:
       - PUID=1000
       - PGID=1000
@@ -121,8 +94,10 @@ services:
     security_opt:
       - label=disable
     volumes:
-      - ${HOST_PWD:-.}/docker_data/qbittorrent:/config
-      - ${HOST_PWD:-.}/docker_data/downloads:/downloads
-    depends_on:
-      - gluetun
+      - /home/piratebird/.local/state/helm/qbittorrent:/config
+      - /home/piratebird/Downloads/helm:/downloads
+    ports:
+      - 18080:18080
+      - 6881:6881
+      - 6881:6881/udp
     restart: unless-stopped

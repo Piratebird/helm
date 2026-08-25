@@ -4,15 +4,17 @@
 
 import http.client
 import re
-import sys
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta
 from html.parser import HTMLParser
 from typing import Callable, Dict, List, Mapping, Match, Tuple, Union
 
-from helpers import retrieve_url
 from novaprinter import prettyPrinter
+
+from helm.core.logger import get_logger
+
+from helpers import retrieve_url
 
 
 class eztv:
@@ -100,7 +102,8 @@ class eztv:
                 response: http.client.HTTPResponse = urllib.request.urlopen(req)  # nosec B310 # pylint: disable=consider-using-with
                 return response.read().decode('utf-8')
             except urllib.error.URLError as errno:
-                print(f"Connection error: {errno.reason}", file=sys.stderr)
+                logger = get_logger(__name__)
+                logger.debug(f"Event: Connection error in EZTV: {getattr(errno, 'reason', str(errno))}", exc_info=True)
             return ""
 
     def search(self, what: str, cat: str = 'all') -> None:

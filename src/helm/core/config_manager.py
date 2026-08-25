@@ -7,8 +7,8 @@ once the user use "helm" once later on it'll be just detetced and loaded
 """
 
 ## imports##
-import os
 import json
+import os
 import shutil
 
 ## setting up the  URL and the API key from .env ##
@@ -138,36 +138,90 @@ NEGATIVE_KEYWORDS = {
 }
 
 
-def load_config():
-    if not os.path.exists(os.path.expanduser("~/.helm_data/config.json")):
-        return {
-            "indexers": [],
-            "qualities": CONTENT_PROFILES["video"],
-            "min_seeds": 3,
-        }
-        # the default values for the json file if it's not detected/exists
+import sys
 
-    with open(os.path.expanduser("~/.helm_data/config.json")) as f:
+
+def get_config_dir():
+    if "HELM_CONFIG_DIR" in os.environ:
+        return os.environ["HELM_CONFIG_DIR"]
+    if sys.platform == "win32":
+        base = os.environ.get("APPDATA", os.path.expanduser("~"))
+        return os.path.join(base, "helm")
+    elif sys.platform == "darwin":
+        return os.path.expanduser("~/Library/Application Support/helm")
+    else:
+        base = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
+        return os.path.join(base, "helm")
+
+def get_log_dir():
+    if "HELM_STATE_DIR" in os.environ:
+        return os.environ["HELM_STATE_DIR"]
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
+        return os.path.join(base, "helm", "logs")
+    elif sys.platform == "darwin":
+        return os.path.expanduser("~/Library/Logs/helm")
+    else:
+        base = os.environ.get("XDG_STATE_HOME", os.path.expanduser("~/.local/state"))
+        return os.path.join(base, "helm", "logs")
+
+def get_dl_dir():
+    if "HELM_DL_DIR" in os.environ:
+        return os.environ["HELM_DL_DIR"]
+    if sys.platform == "win32":
+        return os.path.expanduser("~\\Downloads\\helm")
+    else:
+        return os.path.expanduser("~/Downloads/helm")
+
+def get_config_file():
+    config_dir = get_config_dir()
+    os.makedirs(config_dir, exist_ok=True)
+    return os.path.join(config_dir, "config.json")
+
+def _migrate_old_config():
+    old_dir = os.path.expanduser("~/.helm_data")
+    old_file = os.path.join(old_dir, "config.json")
+    new_file = get_config_file()
+
+    if os.path.exists(old_file) and not os.path.exists(new_file):
+        try:
+            shutil.copy2(old_file, new_file)
+            print(f"Migrated config from {old_file} to {new_file}")
+        except Exception as e:
+            print(f"Failed to migrate config: {e}")
+
+def load_config():
+    _migrate_old_config()
+    config_file = get_config_file()
+
+    default_config = {
+        "indexers": [],
+        "qualities": CONTENT_PROFILES["video"],
+        "min_seeds": 3,
+        "EXECUTION_MODE": "native",
+        "LITE_MODE_ONLY": False
+    }
+
+    if not os.path.exists(config_file):
+        return default_config
+
+    with open(config_file) as f:
         try:
             content = f.read().strip()
             if not content:
-                return {
-                    "indexers": [],
-                    "qualities": CONTENT_PROFILES["video"],
-                    "min_seeds": 3,
-                }
-            return json.loads(content)
+                return default_config
+
+            loaded = json.loads(content)
+            # Ensure new keys exist
+            for k, v in default_config.items():
+                if k not in loaded:
+                    loaded[k] = v
+            return loaded
         except json.JSONDecodeError:
             print("Config file is corrupted. Backing up to config.json.bak and resetting.")
-            shutil.copy(os.path.expanduser("~/.helm_data/config.json"), os.path.expanduser("~/.helm_data/config.json.bak"))
-            return {
-                "indexers": [],
-                "qualities": CONTENT_PROFILES["video"],
-                "min_seeds": 3,
-            }
+            shutil.copy(config_file, config_file + ".bak")
+            return default_config
 
-
-# saving the configuration that are passed to it and formatting it
 def save_config(config):
-    with open(os.path.expanduser("~/.helm_data/config.json"), "w") as f:
+    with open(get_config_file(), "w") as f:
         json.dump(config, f, indent=4)
