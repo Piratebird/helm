@@ -11,9 +11,9 @@ else:
     import select
     import termios
     import tty
-import unicodedata
+import unicodedata  # noqa: E402
 
-from helm.ui.colors import C_LINE, C_LOGO, C_RST, C_SUB, C_TEXT, logo
+from helm.ui.colors import C_LINE, C_LOGO, C_RST, C_SUB, C_TEXT, logo  # noqa: E402
 
 
 def _read_key(fd):
@@ -21,18 +21,21 @@ def _read_key(fd):
         while True:
             if msvcrt.kbhit():
                 ch = msvcrt.getch()
-                if ch in (b'\x00', b'\xe0'):
+                if ch in (b"\x00", b"\xe0"):
                     ch2 = msvcrt.getch()
-                    if ch2 == b'H': return "UP"
-                    if ch2 == b'P': return "DOWN"
+                    if ch2 == b"H":
+                        return "UP"
+                    if ch2 == b"P":
+                        return "DOWN"
                     continue
-                if ch == b'\x1b':
+                if ch == b"\x1b":
                     return "ESC"
                 try:
                     ch_str = ch.decode("utf-8", "ignore")
-                    if ch_str == '\r': return '\n'
+                    if ch_str == "\r":
+                        return "\n"
                     return ch_str
-                except:
+                except:  # noqa: E722
                     continue
             time.sleep(0.01)
     else:
@@ -43,12 +46,16 @@ def _read_key(fd):
                 if ch2 == "[":
                     if select.select([fd], [], [], 0.05)[0]:
                         ch3 = os.read(fd, 1).decode("utf-8", "ignore")
-                        if ch3 == "A": return "UP"
-                        if ch3 == "B": return "DOWN"
+                        if ch3 == "A":
+                            return "UP"
+                        if ch3 == "B":
+                            return "DOWN"
             else:
                 return "ESC"
-        if ch == "\x7f": return "\b"
+        if ch == "\x7f":
+            return "\b"
         return ch
+
 
 def format_size(size_bytes):
     if not size_bytes:
@@ -59,6 +66,7 @@ def format_size(size_bytes):
             return f"{size:.1f}{unit}"
         size /= 1024.0
     return "????"
+
 
 def animated_search(query, content_type, lite_mode=False):
     done = False
@@ -84,31 +92,35 @@ def animated_search(query, content_type, lite_mode=False):
 
         def fetch_jackett():
             from helm.core.rss_fetcher import search_jackett
+
             return search_jackett(query, content_type)
 
         def fetch_lite():
             from helm.core.lite_fetcher import search_lite
+
             return search_lite(query)
 
         if not lite_mode:
             jackett_future = None
             lite_future = None
-            
+
             with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
                 jackett_future = executor.submit(fetch_jackett)
                 lite_future = executor.submit(fetch_lite)
-                
+
                 try:
                     res.extend(jackett_future.result())
                 except Exception as e:
                     sys.stdout.write("\r" + " " * 30 + "\r")
-                    sys.stdout.write(f"\n\033[33m[!] Jackett not available ({e}). Auto-falling back to LITE MODE...\033[0m\n")
+                    sys.stdout.write(
+                        f"\n\033[33m[!] Jackett not available ({e}). Auto-falling back to LITE MODE...\033[0m\n"
+                    )
                     sys.stdout.flush()
                     used_lite = True
-                
+
                 try:
                     res.extend(lite_future.result())
-                except Exception as e:
+                except Exception:
                     pass
         else:
             res.extend(fetch_lite())
@@ -119,8 +131,10 @@ def animated_search(query, content_type, lite_mode=False):
 
     return res, used_lite
 
+
 def get_display_width(s):
-    return sum(2 if unicodedata.east_asian_width(c) in ('F', 'W') else 1 for c in s)
+    return sum(2 if unicodedata.east_asian_width(c) in ("F", "W") else 1 for c in s)
+
 
 def interactive_indexer_selector(indexer_list):
     fd = sys.stdin.fileno() if not IS_WINDOWS else None
@@ -140,8 +154,10 @@ def interactive_indexer_selector(indexer_list):
         if search_term.startswith("/"):
             search_term = search_term[1:]
 
-        disp_items = [idx for idx in indexer_list if search_term in idx['title'].lower() or search_term in idx['id'].lower()]
-        disp_items.sort(key=lambda x: (not x['configured'], x['title'].lower()))
+        disp_items = [
+            idx for idx in indexer_list if search_term in idx["title"].lower() or search_term in idx["id"].lower()
+        ]
+        disp_items.sort(key=lambda x: (not x["configured"], x["title"].lower()))
 
         if selected_index >= len(disp_items):
             selected_index = max(0, len(disp_items) - 1)
@@ -155,33 +171,39 @@ def interactive_indexer_selector(indexer_list):
 
         window_items = disp_items[start_idx : start_idx + limit]
 
-        buf.append(f"\033[1m{C_TEXT}Found {len(disp_items)} indexers (showing {start_idx + 1}-{start_idx + len(window_items)}):{C_RST}\033[K\r\n")
+        buf.append(
+            f"\033[1m{C_TEXT}Found {len(disp_items)} indexers (showing {start_idx + 1}-{start_idx + len(window_items)}):{C_RST}\033[K\r\n"
+        )
         buf.append(f"{C_LINE}" + "━" * 80 + f"{C_RST}\033[K\r\n")
 
         for i, idx in enumerate(window_items):
             actual_i = start_idx + i
-            title = idx['title']
+            title = idx["title"]
             if get_display_width(title) > 40:
                 current_w = 0
                 new_title = ""
                 for c in title:
-                    cw = 2 if unicodedata.east_asian_width(c) in ('F', 'W') else 1
+                    cw = 2 if unicodedata.east_asian_width(c) in ("F", "W") else 1
                     if current_w + cw > 37:
                         break
                     new_title += c
                     current_w += cw
                 title = new_title + "..."
 
-            status = "\033[32m[CONFIGURED]\033[0m" if idx['configured'] else "\033[31m[UNCONFIGURED]\033[0m"
-            typ = idx.get('type', 'unknown')
+            status = "\033[32m[CONFIGURED]\033[0m" if idx["configured"] else "\033[31m[UNCONFIGURED]\033[0m"
+            typ = idx.get("type", "unknown")
 
             title_pad = max(2, 42 - get_display_width(title))
             info_str = f"{status} {typ}"
 
             if actual_i == selected_index:
-                buf.append(f"\033[7m\033[1m{C_LOGO} ❯ {title}{C_RST}\033[7m{' ' * title_pad}{C_TEXT}{info_str}{C_RST}\033[K\r\n")
+                buf.append(
+                    f"\033[7m\033[1m{C_LOGO} ❯ {title}{C_RST}\033[7m{' ' * title_pad}{C_TEXT}{info_str}{C_RST}\033[K\r\n"
+                )
             else:
-                buf.append(f"\033[1m{C_SUB}   {C_RST} {C_LOGO}{title}{C_RST}{' ' * title_pad}\033[1m{C_TEXT}{info_str}{C_RST}\033[K\r\n")
+                buf.append(
+                    f"\033[1m{C_SUB}   {C_RST} {C_LOGO}{title}{C_RST}{' ' * title_pad}\033[1m{C_TEXT}{info_str}{C_RST}\033[K\r\n"
+                )
 
         if len(disp_items) > limit:
             remaining = len(disp_items) - (start_idx + limit)
@@ -274,14 +296,16 @@ def interactive_selector(filtered_list, mode_str="", lite_mode=False):
 
         window_items = disp_items[start_idx : start_idx + limit]
 
-        buf.append(f"\033[1m{C_TEXT}Found {len(disp_items)} results (showing {start_idx + 1}-{start_idx + len(window_items)}):{C_RST}\033[K\r\n")
+        buf.append(
+            f"\033[1m{C_TEXT}Found {len(disp_items)} results (showing {start_idx + 1}-{start_idx + len(window_items)}):{C_RST}\033[K\r\n"
+        )
         buf.append(f"{C_LINE}" + "━" * 80 + f"{C_RST}\033[K\r\n")
 
         for i, t in enumerate(window_items):
             actual_i = start_idx + i
             title = t.title
             score = getattr(t, "score", 1)
-            is_generic = (score == 0)
+            is_generic = score == 0
 
             prefix_len = 10 if is_generic else 0
             max_title_len = 38 - prefix_len
@@ -290,7 +314,7 @@ def interactive_selector(filtered_list, mode_str="", lite_mode=False):
                 current_w = 0
                 new_title = ""
                 for c in title:
-                    cw = 2 if unicodedata.east_asian_width(c) in ('F', 'W') else 1
+                    cw = 2 if unicodedata.east_asian_width(c) in ("F", "W") else 1
                     if current_w + cw > max_title_len - 3:
                         break
                     new_title += c
@@ -311,9 +335,13 @@ def interactive_selector(filtered_list, mode_str="", lite_mode=False):
                 title = f"\033[33m[GENERIC]{C_LOGO} {title}"
 
             if actual_i == selected_index:
-                buf.append(f"\033[7m\033[1m{C_LOGO} ❯ {title}{C_RST}\033[7m{' ' * title_pad}{C_TEXT}{info_str}{C_RST}\033[K\r\n")
+                buf.append(
+                    f"\033[7m\033[1m{C_LOGO} ❯ {title}{C_RST}\033[7m{' ' * title_pad}{C_TEXT}{info_str}{C_RST}\033[K\r\n"
+                )
             else:
-                buf.append(f"\033[1m{C_SUB}   {C_RST} {C_LOGO}{title}{C_RST}{' ' * title_pad}\033[1m{C_TEXT}{info_str}{C_RST}\033[K\r\n")
+                buf.append(
+                    f"\033[1m{C_SUB}   {C_RST} {C_LOGO}{title}{C_RST}{' ' * title_pad}\033[1m{C_TEXT}{info_str}{C_RST}\033[K\r\n"
+                )
 
         if len(disp_items) > limit:
             remaining = len(disp_items) - (start_idx + limit)
@@ -350,7 +378,7 @@ def interactive_selector(filtered_list, mode_str="", lite_mode=False):
             elif ch == "DOWN":
                 selected_index = min(len(items_to_show) - 1, selected_index + 1)
                 items_to_show = redraw()
-            elif ch == '\x05':
+            elif ch == "\x05":
                 if items_to_show:
                     return items_to_show[selected_index], True
             elif ch in ("\r", "\n"):

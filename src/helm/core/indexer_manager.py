@@ -27,13 +27,15 @@ class JackettManager:
 
         root = ET.fromstring(r.content)
         indexers = []
-        for idx in root.findall('indexer'):
-            indexers.append({
-                "id": idx.get("id"),
-                "configured": idx.get("configured") == "true",
-                "title": idx.find("title").text if idx.find("title") is not None else idx.get("id"),
-                "type": idx.find("type").text if idx.find("type") is not None else "unknown"
-            })
+        for idx in root.findall("indexer"):
+            indexers.append(
+                {
+                    "id": idx.get("id"),
+                    "configured": idx.get("configured") == "true",
+                    "title": idx.find("title").text if idx.find("title") is not None else idx.get("id"),
+                    "type": idx.find("type").text if idx.find("type") is not None else "unknown",
+                }
+            )
         return indexers
 
     def add_indexer(self, indexer_id):

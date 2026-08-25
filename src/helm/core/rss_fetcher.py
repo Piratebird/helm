@@ -25,6 +25,7 @@ class TorrentItem:
         self.size = size
         self.pubdate = pubdate
 
+
 def search_jackett(query, content_type="video"):
     jackett_url = os.getenv("JACKETT_URL", "http://localhost:9117")
     api_key = os.getenv("JACKETT_API_KEY")
@@ -34,13 +35,7 @@ def search_jackett(query, content_type="video"):
 
     url = f"{jackett_url}/api/v2.0/indexers/all/results/torznab/api"
 
-    category_map = {
-        "video": "2000,5000",
-        "games": "4000",
-        "software": "4000",
-        "books": "8000",
-        "music": "3000"
-    }
+    category_map = {"video": "2000,5000", "games": "4000", "software": "4000", "books": "8000", "music": "3000"}
 
     params = {
         "apikey": api_key,
@@ -81,19 +76,26 @@ def search_jackett(query, content_type="video"):
                 name = attr.get("name")
                 value = attr.get("value", "")
                 if name == "seeders":
-                    try: seeders = int(value)
-                    except ValueError: pass
+                    try:
+                        seeders = int(value)
+                    except ValueError:
+                        pass
                 elif name == "peers":
                     try:
                         peers = int(value)
                         leechers = peers - seeders
-                    except ValueError: pass
+                    except ValueError:
+                        pass
                 elif name == "leechers":
-                    try: leechers = int(value)
-                    except ValueError: pass
+                    try:
+                        leechers = int(value)
+                    except ValueError:
+                        pass
                 elif name == "size" and size == 0:
-                    try: size = int(value)
-                    except ValueError: pass
+                    try:
+                        size = int(value)
+                    except ValueError:
+                        pass
 
             if leechers < 0:
                 leechers = 0
@@ -104,13 +106,13 @@ def search_jackett(query, content_type="video"):
         return items
     except requests.exceptions.RequestException as e:
         logger.debug("Event: Network error while connecting to Jackett", exc_info=True)
-        raise RuntimeError(f"Jackett connection failed: {e}")
+        raise RuntimeError(f"Jackett connection failed: {e}")  # noqa: B904
     except ET.ParseError:
         logger.debug("Event: XML parsing error", exc_info=True)
-        raise RuntimeError("Invalid response from Jackett (XML Parse Error)")
+        raise RuntimeError("Invalid response from Jackett (XML Parse Error)")  # noqa: B904
     except ValueError as e:
         logger.debug("Event: Value error while parsing results", exc_info=True)
-        raise RuntimeError(f"Value error while parsing Jackett results: {e}")
+        raise RuntimeError(f"Value error while parsing Jackett results: {e}")  # noqa: B904
     except Exception as e:
         logger.debug("Event: Unexpected error parsing results", exc_info=True)
-        raise RuntimeError(f"Unexpected error parsing Jackett results: {e}")
+        raise RuntimeError(f"Unexpected error parsing Jackett results: {e}")  # noqa: B904

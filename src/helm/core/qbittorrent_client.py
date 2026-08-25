@@ -13,6 +13,7 @@ import requests
 
 _session = None
 
+
 def login_qbittorrent():
     """
     logs in to qbittorrent web ui and returns a sessio with the fresh SID cookie
@@ -52,7 +53,7 @@ def login_qbittorrent():
                 raise ConnectionError("Secondary verification request failed, authentication was not successful.")
         except Exception as e:
             # catching errors like pokemons
-            raise ConnectionError(f"Failed to verify qbittorrent authentication: {e}")
+            raise ConnectionError(f"Failed to verify qbittorrent authentication: {e}")  # noqa: B904
     else:
         raise ConnectionError(f"Failed to login to qbittorrent: HTTP {r.status_code} {r.text}")
 

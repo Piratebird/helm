@@ -414,7 +414,7 @@ if [[ "$use_vpn" =~ ^[Yy]$ ]]; then
                 vpn_extra="OPENVPN_USER=$ovpn_user"$'\n'"OPENVPN_PASSWORD=$ovpn_pass"
             fi
         else
-            echo "[INFO] For 'custom' OpenVPN, ensure you place custom.conf (and auth.conf if needed) in "$HELM_STATE"/gluetun"
+            echo "[INFO] For 'custom' OpenVPN, ensure you place custom.conf (and auth.conf if needed) in ${HELM_STATE}/gluetun"
         fi
     fi
 fi

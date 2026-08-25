@@ -17,13 +17,13 @@ def download_magnet(magnet_link, save_path="./downloads"):
         os.makedirs(save_path)
 
     settings = {
-        'listen_interfaces': '0.0.0.0:0',
-        'enable_dht': True,
-        'enable_lsd': True,
-        'enable_upnp': True,
-        'enable_natpmp': True,
-        'announce_to_all_trackers': True,
-        'announce_to_all_tiers': True
+        "listen_interfaces": "0.0.0.0:0",
+        "enable_dht": True,
+        "enable_lsd": True,
+        "enable_upnp": True,
+        "enable_natpmp": True,
+        "announce_to_all_trackers": True,
+        "announce_to_all_tiers": True,
     }
     ses = lt.session(settings)
 
@@ -47,7 +47,7 @@ def download_magnet(magnet_link, save_path="./downloads"):
         elapsed = 0
         while not handle.status().has_metadata:
             time.sleep(1)
-            sys.stdout.write('.')
+            sys.stdout.write(".")
             sys.stdout.flush()
             elapsed += 1
             if elapsed >= timeout:
@@ -62,14 +62,21 @@ def download_magnet(magnet_link, save_path="./downloads"):
         while handle.status().state != lt.torrent_status.seeding:
             s = handle.status()
 
-            state_str = ['queued', 'checking', 'downloading metadata',
-                         'downloading', 'finished', 'seeding', 'allocating']
+            state_str = [
+                "queued",
+                "checking",
+                "downloading metadata",
+                "downloading",
+                "finished",
+                "seeding",
+                "allocating",
+            ]
 
             sys.stdout.write(
-                f'\r\033[K\033[1m{s.progress * 100:.2f}%\033[0m complete '
-                f'(down: \033[32m{s.download_rate / 1000:.1f} kB/s\033[0m | '
-                f'up: \033[31m{s.upload_rate / 1000:.1f} kB/s\033[0m | '
-                f'peers: {s.num_peers}) [{state_str[s.state]}]'
+                f"\r\033[K\033[1m{s.progress * 100:.2f}%\033[0m complete "
+                f"(down: \033[32m{s.download_rate / 1000:.1f} kB/s\033[0m | "
+                f"up: \033[31m{s.upload_rate / 1000:.1f} kB/s\033[0m | "
+                f"peers: {s.num_peers}) [{state_str[s.state]}]"
             )
             sys.stdout.flush()
 
@@ -78,7 +85,9 @@ def download_magnet(magnet_link, save_path="./downloads"):
                 msg = a.message()
                 if "Permission denied" in msg or "file_open error" in msg or "access denied" in msg.lower():
                     sys.stdout.write(f"\n\n\033[31m[DISK ERROR] {msg}\033[0m\n")
-                    sys.stdout.write(f"\033[33mEnsure you have write permissions to {os.path.abspath(save_path)}\033[0m\n")
+                    sys.stdout.write(
+                        f"\033[33mEnsure you have write permissions to {os.path.abspath(save_path)}\033[0m\n"
+                    )
                     ses.pause()
                     return False
 

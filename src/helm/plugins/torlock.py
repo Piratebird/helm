@@ -6,28 +6,30 @@ from datetime import datetime, timedelta
 from html.parser import HTMLParser
 from typing import Any, Dict, List, Tuple, Union
 
-from novaprinter import prettyPrinter
-
 from helpers import download_file, retrieve_url
+from novaprinter import prettyPrinter
 
 
 class torlock:
     url = "https://www.torlock.com"
     name = "TorLock"
-    supported_categories = {'all': 'all',
-                            'anime': 'anime',
-                            'software': 'software',
-                            'games': 'game',
-                            'movies': 'movie',
-                            'music': 'music',
-                            'tv': 'television',
-                            'books': 'ebooks'}
+    supported_categories = {
+        "all": "all",
+        "anime": "anime",
+        "software": "software",
+        "games": "game",
+        "movies": "movie",
+        "music": "music",
+        "tv": "television",
+        "books": "ebooks",
+    }
 
     def download_torrent(self, info: str) -> None:
         print(download_file(info))
 
     class MyHtmlParser(HTMLParser):
-        """ Sub-class for parsing results """
+        """Sub-class for parsing results"""
+
         def __init__(self, url: str) -> None:
             HTMLParser.__init__(self)
             self.url = url
@@ -37,10 +39,7 @@ class torlock:
             self.current_item: Dict[str, Any] = {}  # dict for found item
             self.item_name: Union[str, None] = None  # key's name in current_item dict
             self.page_items = 0
-            self.parser_class = {"td": "pub_date",
-                                 "ts": "size",
-                                 "tul": "seeds",
-                                 "tdl": "leech"}
+            self.parser_class = {"td": "pub_date", "ts": "size", "tul": "seeds", "tdl": "leech"}
 
         def handle_starttag(self, tag: str, attrs: List[Tuple[str, Union[str, None]]]) -> None:
             params = dict(attrs)
@@ -58,8 +57,7 @@ class torlock:
                 if link is not None:
                     if link.startswith("/torrent"):
                         self.current_item["desc_link"] = "".join((self.url, link))
-                        self.current_item["link"] = "".join((self.url, "/tor/",
-                                                             link.split('/')[2], ".torrent"))
+                        self.current_item["link"] = "".join((self.url, "/tor/", link.split("/")[2], ".torrent"))
                         self.current_item["engine_url"] = self.url
                         self.item_found = True
                         self.item_name = "name"
@@ -78,7 +76,7 @@ class torlock:
         def handle_endtag(self, tag: str) -> None:
             if tag == "article":
                 self.article_found = False
-            elif self.item_name and (tag in ('a', 'td')):
+            elif self.item_name and (tag in ("a", "td")):
                 self.item_name = None
             elif self.item_found and tag == "tr":
                 self.item_found = False
@@ -90,7 +88,7 @@ class torlock:
                         elif self.current_item["pub_date"] == "Yesterday":
                             date = datetime.now() - timedelta(days=1)
                         else:
-                            date = datetime.strptime(self.current_item["pub_date"], '%m/%d/%Y')
+                            date = datetime.strptime(self.current_item["pub_date"], "%m/%d/%Y")
                         date = date.replace(hour=0, minute=0, second=0, microsecond=0)
                         self.current_item["pub_date"] = int(date.timestamp())
                     except Exception:  # pylint: disable=broad-exception-caught
@@ -99,8 +97,8 @@ class torlock:
                     self.page_items += 1
                 self.current_item = {}
 
-    def search(self, query: str, cat: str = 'all') -> None:
-        """ Performs search """
+    def search(self, query: str, cat: str = "all") -> None:
+        """Performs search"""
         query = query.replace("%20", "-")
         category = self.supported_categories[cat]
 
