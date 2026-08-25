@@ -41,3 +41,8 @@ helm.sh
 # IDEs
 .vscode/
 .idea/
+
+# Coverage
+.coverage
+coverage.xml
+htmlcov/

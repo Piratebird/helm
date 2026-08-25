@@ -1,28 +1,44 @@
 import os
 import sys
+
 import requests
+
 from helm.core.config_manager import load_config, save_config
+
 
 def run_wizard():
     import sys
     try:
         print("\033[1mWelcome to Helm Interactive Configuration Wizard!\033[0m")
         print("It looks like some essential configurations are missing.\n")
-        
+
         config = load_config()
-        
+
+        print("You can run Helm in two modes:")
+        print("  1. Lite Mode (Native plugins only, no media server required)")
+        print("  2. Full Automation (Requires Jackett & qBittorrent running)")
+
+        choice = input("\nDo you want to configure Jackett and qBittorrent for full automation? (y/N): ").strip().lower()
+        if choice not in ('y', 'yes'):
+            print("\n\033[32mOpting for Lite Mode. You can change this later.\033[0m\n")
+            config["LITE_MODE_ONLY"] = True
+            save_config(config)
+            return
+
+        config["LITE_MODE_ONLY"] = False
+
         # Jackett
         jackett_url = config.get("JACKETT_URL", os.getenv("JACKETT_URL", "http://localhost:9117"))
         jackett_api = config.get("JACKETT_API_KEY", os.getenv("JACKETT_API_KEY", ""))
         jackett_pwd = config.get("JACKETT_PASSWORD", os.getenv("JACKETT_PASSWORD", ""))
-        
+
         while True:
             jackett_url_input = input(f"Jackett URL [{jackett_url}]: ").strip()
             if jackett_url_input.lower() in ('exit', 'quit', 'q') or '\x03' in jackett_url_input:
                 print("\n\033[33mConfiguration aborted. later bozo!\033[0m")
                 sys.exit(0)
             if jackett_url_input: jackett_url = jackett_url_input
-            
+
             # Obscure the API key if it exists
             masked_api = f"{jackett_api[:4]}...{jackett_api[-4:]}" if len(jackett_api) > 8 else "***" if jackett_api else ""
             jackett_api_input = input(f"Jackett API Key [{masked_api}]: ").strip()
@@ -30,14 +46,14 @@ def run_wizard():
                 print("\n\033[33mConfiguration aborted. later bozo!\033[0m")
                 sys.exit(0)
             if jackett_api_input: jackett_api = jackett_api_input
-            
+
             jackett_pwd_input = input(f"Jackett Admin Password (leave blank if none) [{'***' if jackett_pwd else ''}]: ").strip()
             if jackett_pwd_input.lower() in ('exit', 'quit', 'q') or '\x03' in jackett_pwd_input:
                 print("\n\033[33mConfiguration aborted. later bozo!\033[0m")
                 sys.exit(0)
             if jackett_pwd_input: jackett_pwd = jackett_pwd_input
             # To allow clearing the password if one was set, we could allow a special string, but for now we just take the input if truthy or keep it if they just pressed enter.
-            
+
             if jackett_api:
                 # Validate Jackett
                 print("Validating Jackett connection...")
@@ -63,35 +79,35 @@ def run_wizard():
                     print(f"Jackett connection failed: {e}\n")
             else:
                 print("Jackett API key is required.\n")
-                
+
         config["JACKETT_URL"] = jackett_url
         config["JACKETT_API_KEY"] = jackett_api
         config["JACKETT_PASSWORD"] = jackett_pwd
-        
+
         # qBittorrent
         qb_webui = config.get("QB_WEBUI", os.getenv("QB_WEBUI", "http://localhost:18080"))
         qb_username = config.get("QB_USERNAME", os.getenv("QB_USERNAME", "admin"))
         qb_password = config.get("QB_PASSWORD", os.getenv("QB_PASSWORD", ""))
-        
+
         while True:
             qb_webui_input = input(f"qBittorrent WebUI URL [{qb_webui}]: ").strip()
             if qb_webui_input.lower() in ('exit', 'quit', 'q') or '\x03' in qb_webui_input:
                 print("\n\033[33mConfiguration aborted. later bozo!\033[0m")
                 sys.exit(0)
             if qb_webui_input: qb_webui = qb_webui_input
-            
+
             qb_username_input = input(f"qBittorrent Username [{qb_username}]: ").strip()
             if qb_username_input.lower() in ('exit', 'quit', 'q') or '\x03' in qb_username_input:
                 print("\n\033[33mConfiguration aborted. later bozo!\033[0m")
                 sys.exit(0)
             if qb_username_input: qb_username = qb_username_input
-            
+
             qb_password_input = input(f"qBittorrent Password [{'***' if qb_password else ''}]: ").strip()
             if qb_password_input.lower() in ('exit', 'quit', 'q') or '\x03' in qb_password_input:
                 print("\n\033[33mConfiguration aborted. later bozo!\033[0m")
                 sys.exit(0)
             if qb_password_input: qb_password = qb_password_input
-            
+
             if qb_password:
                 # Validate qBittorrent
                 print("Validating qBittorrent connection...")
@@ -111,11 +127,11 @@ def run_wizard():
                     print(f"qBittorrent connection failed: {e}\n")
             else:
                 print("qBittorrent password is required.\n")
-                
+
         config["QB_WEBUI"] = qb_webui
         config["QB_USERNAME"] = qb_username
         config["QB_PASSWORD"] = qb_password
-        
+
         save_config(config)
         print("Configuration saved to config.json!\n")
     except KeyboardInterrupt:
@@ -128,6 +144,10 @@ def run_wizard():
 
 def ensure_config():
     config = load_config()
+
+    if config.get("LITE_MODE_ONLY"):
+        return
+
     needs_wizard = False
     # Check required keys
     keys = ["JACKETT_URL", "JACKETT_API_KEY", "QB_WEBUI", "QB_USERNAME", "QB_PASSWORD"]
@@ -135,7 +155,7 @@ def ensure_config():
         if k not in config and not os.getenv(k):
             needs_wizard = True
             break
-            
+
     # Dynamically check if JACKETT_PASSWORD is required
     if not needs_wizard and "JACKETT_PASSWORD" not in config and os.getenv("JACKETT_PASSWORD") is None:
         jackett_url = config.get("JACKETT_URL", os.getenv("JACKETT_URL", "http://localhost:9117"))
@@ -146,7 +166,7 @@ def ensure_config():
                 needs_wizard = True
         except Exception:
             pass
-            
+
     if needs_wizard:
         if not sys.stdin.isatty():
             print("\n\033[33m[WARN] Missing configuration keys, but running non-interactively (e.g. Docker). Skipping interactive wizard.\033[0m\n")
@@ -154,7 +174,7 @@ def ensure_config():
         else:
             run_wizard()
             config = load_config()
-        
+
     for k in keys:
         if k in config:
             os.environ[k] = config[k]

@@ -1,6 +1,8 @@
 import os
-import requests
 import xml.etree.ElementTree as ET
+
+import requests
+
 
 class JackettManager:
     def __init__(self):
@@ -22,7 +24,7 @@ class JackettManager:
         endpoint = f"{self.url}/api/v2.0/indexers/all/results/torznab/api"
         r = requests.get(endpoint, params={"apikey": self.api_key, "t": "indexers"})
         r.raise_for_status()
-        
+
         root = ET.fromstring(r.content)
         indexers = []
         for idx in root.findall('indexer'):
@@ -40,7 +42,7 @@ class JackettManager:
         r = self.session.get(config_url)
         r.raise_for_status()
         config_payload = r.json()
-        
+
         # 2. Submit the config back
         r_post = self.session.post(config_url, json=config_payload)
         r_post.raise_for_status()

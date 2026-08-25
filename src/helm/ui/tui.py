@@ -1,18 +1,20 @@
 import os
 import sys
-import time
 import threading
+import time
+
 IS_WINDOWS = sys.platform == "win32"
 if IS_WINDOWS:
     import msvcrt
     import time
 else:
-    import tty
-    import termios
     import select
+    import termios
+    import tty
 import unicodedata
 
-from helm.ui.colors import C_LOGO, C_RST, C_ERR, C_TEXT, C_LINE, C_SUB, logo
+from helm.ui.colors import C_LINE, C_LOGO, C_RST, C_SUB, C_TEXT, logo
+
 
 def _read_key(fd):
     if IS_WINDOWS:
@@ -78,20 +80,38 @@ def animated_search(query, content_type, lite_mode=False):
     res = []
     used_lite = lite_mode
     try:
-        if not lite_mode:
-            try:
-                from helm.core.rss_fetcher import search_jackett
-                res = search_jackett(query, content_type)
-            except Exception as e:
-                # Clear the searching text temporarily to print warning
-                sys.stdout.write("\r" + " " * 30 + "\r")
-                sys.stdout.write(f"\n\033[33m[!] Jackett not available ({e}). Auto-falling back to LITE MODE...\033[0m\n")
-                sys.stdout.flush()
-                used_lite = True
+        import concurrent.futures
 
-        if used_lite:
+        def fetch_jackett():
+            from helm.core.rss_fetcher import search_jackett
+            return search_jackett(query, content_type)
+
+        def fetch_lite():
             from helm.core.lite_fetcher import search_lite
-            res = search_lite(query)
+            return search_lite(query)
+
+        if not lite_mode:
+            jackett_future = None
+            lite_future = None
+            
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                jackett_future = executor.submit(fetch_jackett)
+                lite_future = executor.submit(fetch_lite)
+                
+                try:
+                    res.extend(jackett_future.result())
+                except Exception as e:
+                    sys.stdout.write("\r" + " " * 30 + "\r")
+                    sys.stdout.write(f"\n\033[33m[!] Jackett not available ({e}). Auto-falling back to LITE MODE...\033[0m\n")
+                    sys.stdout.flush()
+                    used_lite = True
+                
+                try:
+                    res.extend(lite_future.result())
+                except Exception as e:
+                    pass
+        else:
+            res.extend(fetch_lite())
 
     finally:
         done = True
@@ -107,36 +127,37 @@ def interactive_indexer_selector(indexer_list):
     old_settings = termios.tcgetattr(fd) if not IS_WINDOWS else None
     current_input = ""
     selected_index = 0
-    
+
     def redraw():
         nonlocal selected_index
-        sys.stdout.write("\033[2J\033[H")
-        logo_crlf = logo.replace("\n", "\r\n")
-        sys.stdout.write(f"{C_LOGO}{logo_crlf}{C_RST}\r\n")
-        sys.stdout.write(f"{C_SUB}THE HELM - Indexer Management{C_RST}\r\n\r\n")
-        
+        buf = []
+        buf.append("\033[H")
+        logo_crlf = logo.replace("\n", "\033[K\r\n")
+        buf.append(f"{C_LOGO}{logo_crlf}{C_RST}\033[K\r\n")
+        buf.append(f"{C_SUB}THE HELM - Indexer Management{C_RST}\033[K\r\n\033[K\r\n")
+
         search_term = current_input.lower()
         if search_term.startswith("/"):
             search_term = search_term[1:]
 
         disp_items = [idx for idx in indexer_list if search_term in idx['title'].lower() or search_term in idx['id'].lower()]
         disp_items.sort(key=lambda x: (not x['configured'], x['title'].lower()))
-        
+
         if selected_index >= len(disp_items):
             selected_index = max(0, len(disp_items) - 1)
-            
+
         limit = 40
         start_idx = 0
         if len(disp_items) > limit:
             start_idx = max(0, selected_index - (limit // 2))
             if start_idx + limit > len(disp_items):
                 start_idx = max(0, len(disp_items) - limit)
-                
+
         window_items = disp_items[start_idx : start_idx + limit]
-        
-        sys.stdout.write(f"\033[1m{C_TEXT}Found {len(disp_items)} indexers (showing {start_idx + 1}-{start_idx + len(window_items)}):{C_RST}\r\n")
-        sys.stdout.write(f"{C_LINE}" + "━" * 80 + f"{C_RST}\r\n")
-        
+
+        buf.append(f"\033[1m{C_TEXT}Found {len(disp_items)} indexers (showing {start_idx + 1}-{start_idx + len(window_items)}):{C_RST}\033[K\r\n")
+        buf.append(f"{C_LINE}" + "━" * 80 + f"{C_RST}\033[K\r\n")
+
         for i, idx in enumerate(window_items):
             actual_i = start_idx + i
             title = idx['title']
@@ -150,28 +171,29 @@ def interactive_indexer_selector(indexer_list):
                     new_title += c
                     current_w += cw
                 title = new_title + "..."
-            
+
             status = "\033[32m[CONFIGURED]\033[0m" if idx['configured'] else "\033[31m[UNCONFIGURED]\033[0m"
             typ = idx.get('type', 'unknown')
-            
+
             title_pad = max(2, 42 - get_display_width(title))
             info_str = f"{status} {typ}"
-            
+
             if actual_i == selected_index:
-                sys.stdout.write(f"\033[7m\033[1m{C_LOGO} ❯ {title}{C_RST}\033[7m{' ' * title_pad}{C_TEXT}{info_str}{C_RST}\r\n")
+                buf.append(f"\033[7m\033[1m{C_LOGO} ❯ {title}{C_RST}\033[7m{' ' * title_pad}{C_TEXT}{info_str}{C_RST}\033[K\r\n")
             else:
-                sys.stdout.write(f"\033[1m{C_SUB}   {C_RST} {C_LOGO}{title}{C_RST}{' ' * title_pad}\033[1m{C_TEXT}{info_str}{C_RST}\r\n")
-        
+                buf.append(f"\033[1m{C_SUB}   {C_RST} {C_LOGO}{title}{C_RST}{' ' * title_pad}\033[1m{C_TEXT}{info_str}{C_RST}\033[K\r\n")
+
         if len(disp_items) > limit:
             remaining = len(disp_items) - (start_idx + limit)
             if remaining > 0:
-                sys.stdout.write(f"\r\n\033[3m{C_SUB}... and {remaining} more items below{C_RST}\033[0m\r\n")
+                buf.append(f"\033[K\r\n\033[3m{C_SUB}... and {remaining} more items below{C_RST}\033[0m\033[K\r\n")
             if start_idx > 0:
-                sys.stdout.write(f"\r\n\033[3m{C_SUB}... and {start_idx} items above{C_RST}\033[0m\r\n")
-        
-        sys.stdout.write(f"{C_LINE}" + "━" * 80 + f"{C_RST}\r\n")
+                buf.append(f"\033[K\r\n\033[3m{C_SUB}... and {start_idx} items above{C_RST}\033[0m\033[K\r\n")
+
+        buf.append(f"{C_LINE}" + "━" * 80 + f"{C_RST}\033[K\r\n")
         prompt = f"\033[1m{C_TEXT}❯ Search (Arrows=Move, Enter=Toggle Config, Esc/Ctrl-C=Exit):{C_RST} {current_input}"
-        sys.stdout.write(prompt)
+        buf.append(prompt + "\033[J")
+        sys.stdout.write("".join(buf))
         sys.stdout.flush()
         return disp_items
 
@@ -219,7 +241,7 @@ def interactive_indexer_selector(indexer_list):
             termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 
-def interactive_selector(filtered_list, mode_str=""):
+def interactive_selector(filtered_list, mode_str="", lite_mode=False):
     fd = sys.stdin.fileno() if not IS_WINDOWS else None
     old_settings = termios.tcgetattr(fd) if not IS_WINDOWS else None
     current_input = ""
@@ -227,11 +249,12 @@ def interactive_selector(filtered_list, mode_str=""):
 
     def redraw():
         nonlocal selected_index
-        sys.stdout.write("\033[2J\033[H")
+        buf = []
+        buf.append("\033[H")
 
-        logo_crlf = logo.replace("\n", "\r\n")
-        sys.stdout.write(f"{C_LOGO}{logo_crlf}{C_RST}\r\n")
-        sys.stdout.write(f"{C_SUB}THE HELM - Torrent automation MVP{mode_str}{C_RST}\r\n\r\n")
+        logo_crlf = logo.replace("\n", "\033[K\r\n")
+        buf.append(f"{C_LOGO}{logo_crlf}{C_RST}\033[K\r\n")
+        buf.append(f"{C_SUB}THE HELM - Torrent automation MVP{mode_str}{C_RST}\033[K\r\n\033[K\r\n")
 
         search_term = current_input.lower()
         if search_term.startswith("/"):
@@ -251,18 +274,18 @@ def interactive_selector(filtered_list, mode_str=""):
 
         window_items = disp_items[start_idx : start_idx + limit]
 
-        sys.stdout.write(f"\033[1m{C_TEXT}Found {len(disp_items)} results (showing {start_idx + 1}-{start_idx + len(window_items)}):{C_RST}\r\n")
-        sys.stdout.write(f"{C_LINE}" + "━" * 80 + f"{C_RST}\r\n")
+        buf.append(f"\033[1m{C_TEXT}Found {len(disp_items)} results (showing {start_idx + 1}-{start_idx + len(window_items)}):{C_RST}\033[K\r\n")
+        buf.append(f"{C_LINE}" + "━" * 80 + f"{C_RST}\033[K\r\n")
 
         for i, t in enumerate(window_items):
             actual_i = start_idx + i
             title = t.title
             score = getattr(t, "score", 1)
             is_generic = (score == 0)
-            
+
             prefix_len = 10 if is_generic else 0
             max_title_len = 38 - prefix_len
-            
+
             if get_display_width(title) > max_title_len:
                 current_w = 0
                 new_title = ""
@@ -273,7 +296,7 @@ def interactive_selector(filtered_list, mode_str=""):
                     new_title += c
                     current_w += cw
                 title = new_title + "..."
-                
+
             visible_len = prefix_len + get_display_width(title)
             title_pad = max(2, 40 - visible_len)
 
@@ -288,20 +311,26 @@ def interactive_selector(filtered_list, mode_str=""):
                 title = f"\033[33m[GENERIC]{C_LOGO} {title}"
 
             if actual_i == selected_index:
-                sys.stdout.write(f"\033[7m\033[1m{C_LOGO} ❯ {title}{C_RST}\033[7m{' ' * title_pad}{C_TEXT}{info_str}{C_RST}\r\n")
+                buf.append(f"\033[7m\033[1m{C_LOGO} ❯ {title}{C_RST}\033[7m{' ' * title_pad}{C_TEXT}{info_str}{C_RST}\033[K\r\n")
             else:
-                sys.stdout.write(f"\033[1m{C_SUB}   {C_RST} {C_LOGO}{title}{C_RST}{' ' * title_pad}\033[1m{C_TEXT}{info_str}{C_RST}\r\n")
+                buf.append(f"\033[1m{C_SUB}   {C_RST} {C_LOGO}{title}{C_RST}{' ' * title_pad}\033[1m{C_TEXT}{info_str}{C_RST}\033[K\r\n")
 
         if len(disp_items) > limit:
             remaining = len(disp_items) - (start_idx + limit)
             if remaining > 0:
-                sys.stdout.write(f"\r\n\033[3m{C_SUB}... and {remaining} more items below{C_RST}\033[0m\r\n")
+                buf.append(f"\033[K\r\n\033[3m{C_SUB}... and {remaining} more items below{C_RST}\033[0m\033[K\r\n")
             if start_idx > 0:
-                sys.stdout.write(f"\r\n\033[3m{C_SUB}... and {start_idx} items above{C_RST}\033[0m\r\n")
+                buf.append(f"\033[K\r\n\033[3m{C_SUB}... and {start_idx} items above{C_RST}\033[0m\033[K\r\n")
 
-        sys.stdout.write(f"{C_LINE}" + "━" * 80 + f"{C_RST}\r\n")
-        prompt = f"\033[1m{C_TEXT}❯ Filter (Arrows=Move, Enter=Download, Esc/Ctrl-C=Exit, Ctrl-E=Download+Teardown):{C_RST} {current_input}"
-        sys.stdout.write(prompt)
+        buf.append(f"{C_LINE}" + "━" * 80 + f"{C_RST}\033[K\r\n")
+
+        if lite_mode:
+            prompt = f"\033[1m{C_TEXT}❯ Filter (Arrows=Move, Enter=Download, Esc/Ctrl-C=Exit):{C_RST} {current_input}"
+        else:
+            prompt = f"\033[1m{C_TEXT}❯ Filter (Arrows=Move, Enter=Download, Esc/Ctrl-C=Exit, Ctrl-E=Download+Teardown):{C_RST} {current_input}"
+
+        buf.append(prompt + "\033[J")
+        sys.stdout.write("".join(buf))
         sys.stdout.flush()
         return disp_items
 

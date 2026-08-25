@@ -7,8 +7,11 @@ from html.parser import HTMLParser
 from typing import Any, Dict, List, Mapping, Tuple, Union
 from urllib.parse import unquote
 
-from helpers import retrieve_url
 from novaprinter import prettyPrinter
+
+from helm.core.logger import get_logger
+
+from helpers import retrieve_url
 
 
 class torrentproject:
@@ -91,7 +94,8 @@ class torrentproject:
                                 try:
                                     prettyPrinter(self.singleResData)  # type: ignore[arg-type] # refactor later
                                 except Exception:  # pylint: disable=broad-exception-caught
-                                    print(self.singleResData)
+                                    logger = get_logger(__name__)
+                                    logger.error(f"Event: Failed to format item {self.singleResData}", exc_info=True)
                                 self.pageRes.append(self.singleResData)
                                 self.fullResData.append(self.singleResData)
                         self.singleResData = self.get_single_data()

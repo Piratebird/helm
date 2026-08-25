@@ -22,15 +22,15 @@ def prettyPrinter(result_dict):
             size_bytes = int(float(size_str.replace('KB', '').strip()) * 1024)
         else:
             size_bytes = int(float(size_str.replace('B', '').strip()))
-            
+
         seeders = result_dict.get('seeds', -1)
         if isinstance(seeders, str):
             seeders = int(seeders) if seeders.isdigit() else -1
-            
+
         leechers = result_dict.get('leech', -1)
         if isinstance(leechers, str):
             leechers = int(leechers) if leechers.isdigit() else -1
-            
+
         item = TorrentItem(
             title=result_dict.get('name', 'Unknown'),
             link=result_dict.get('link', ''),

@@ -6,8 +6,9 @@ from datetime import datetime, timedelta
 from html.parser import HTMLParser
 from typing import Any, Dict, List, Tuple, Union
 
-from helpers import download_file, retrieve_url
 from novaprinter import prettyPrinter
+
+from helpers import download_file, retrieve_url
 
 
 class torlock:

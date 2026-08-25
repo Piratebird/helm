@@ -5,20 +5,15 @@ responsible for fetching and parsing RSS(really simple syndication) feeds from m
 
 """
 
+import email.utils
 import os
 import xml.etree.ElementTree as ET
-import requests
-import email.utils
-import datetime
-import logging
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-handler = logging.StreamHandler()
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-handler.setFormatter(formatter)
-if not logger.handlers:
-    logger.addHandler(handler)
+import requests
+
+from helm.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class TorrentItem:
@@ -34,10 +29,11 @@ def search_jackett(query, content_type="video"):
     jackett_url = os.getenv("JACKETT_URL", "http://localhost:9117")
     api_key = os.getenv("JACKETT_API_KEY")
     if not api_key:
-        raise RuntimeError("JACKETT_API_KEY environment variable not set")
-        
+        logger.info("Event: Jackett API key not configured. Seamlessly falling back to native Lite Mode plugins.")
+        return []
+
     url = f"{jackett_url}/api/v2.0/indexers/all/results/torznab/api"
-    
+
     category_map = {
         "video": "2000,5000",
         "games": "4000",
@@ -45,7 +41,7 @@ def search_jackett(query, content_type="video"):
         "books": "8000",
         "music": "3000"
     }
-    
+
     params = {
         "apikey": api_key,
         "q": query,
@@ -57,14 +53,14 @@ def search_jackett(query, content_type="video"):
     try:
         r = requests.get(url, params=params, timeout=120)
         r.raise_for_status()
-        
+
         root = ET.fromstring(r.text)
         ns = {"torznab": "http://torznab.com/schemas/2015/feed"}
         items = []
         for elem in root.findall("./channel/item"):
             title = elem.findtext("title", default="")
             link = elem.findtext("link", default="")
-            
+
             pubdate_text = elem.findtext("pubDate")
             pubdate = None
             if pubdate_text:
@@ -73,7 +69,7 @@ def search_jackett(query, content_type="video"):
                     pubdate = parsed.strftime("%Y-%m-%d")
                 except Exception:
                     pass
-            
+
             size_elem = elem.find("size")
             size = 0
             if size_elem is not None and size_elem.text and size_elem.text.isdigit():
@@ -88,7 +84,7 @@ def search_jackett(query, content_type="video"):
                     try: seeders = int(value)
                     except ValueError: pass
                 elif name == "peers":
-                    try: 
+                    try:
                         peers = int(value)
                         leechers = peers - seeders
                     except ValueError: pass
@@ -104,17 +100,17 @@ def search_jackett(query, content_type="video"):
 
             items.append(TorrentItem(title, link, seeders, leechers, size, pubdate))
         if len(items) == 0:
-            logger.debug(f"Jackett returned 0 items for query: '{query}'")
+            logger.debug(f"Event: Jackett returned 0 items for query: '{query}'")
         return items
     except requests.exceptions.RequestException as e:
-        logger.error(f"Network error while connecting to Jackett: {e}")
-        return []
-    except ET.ParseError as e:
-        logger.error(f"XML parsing error: {e}")
-        return []
+        logger.debug("Event: Network error while connecting to Jackett", exc_info=True)
+        raise RuntimeError(f"Jackett connection failed: {e}")
+    except ET.ParseError:
+        logger.debug("Event: XML parsing error", exc_info=True)
+        raise RuntimeError("Invalid response from Jackett (XML Parse Error)")
     except ValueError as e:
-        logger.error(f"Value error while parsing results: {e}")
-        return []
+        logger.debug("Event: Value error while parsing results", exc_info=True)
+        raise RuntimeError(f"Value error while parsing Jackett results: {e}")
     except Exception as e:
-        logger.error(f"Unexpected error parsing results: {e}")
-        return []
+        logger.debug("Event: Unexpected error parsing results", exc_info=True)
+        raise RuntimeError(f"Unexpected error parsing Jackett results: {e}")
