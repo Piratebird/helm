@@ -6,7 +6,7 @@ import tempfile
 import pytest
 
 # Ensure src is in the python path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 from helm.core.lite_plugin_loader import run_plugins
 
@@ -18,7 +18,7 @@ from helpers import download_file, retrieve_url
 class dummy_plugin(object):
     name = "DummyPlugin"
     url = "https://dummy.com"
-    
+
     def search(self, what, cat='all'):
         # Ensure helpers are loaded properly
         assert retrieve_url is not None
@@ -34,6 +34,7 @@ class dummy_plugin(object):
             'engine_url': self.url
         })
 """
+
 
 @pytest.fixture
 def plugin_dir():

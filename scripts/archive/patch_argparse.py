@@ -32,7 +32,12 @@ new_argparse = """        parser = argparse.ArgumentParser(
         path_opts.add_argument("--dl-dir", type=str, help="Override the directory path for downloads")"""
 
 # The regex will match from `parser = argparse.ArgumentParser...` up to right before `args = parser.parse_args()`
-content = re.sub(r'        parser = argparse\.ArgumentParser\(.*?--dl-dir", type=str, help="Override the directory path for downloads"\n        \)', new_argparse, content, flags=re.DOTALL)
+content = re.sub(
+    r'        parser = argparse\.ArgumentParser\(.*?--dl-dir", type=str, help="Override the directory path for downloads"\n        \)',
+    new_argparse,
+    content,
+    flags=re.DOTALL,
+)
 
 with open("src/helm/cli.py", "w") as f:
     f.write(content)

@@ -3,11 +3,11 @@ import os
 import sys
 import time
 
-sys.path.insert(0, os.path.abspath('src'))
+sys.path.insert(0, os.path.abspath("src"))
 from helm.core.indexer_manager import JackettManager
 from helm.core.rss_fetcher import search_jackett
 
-config_path = './docker_data/jackett/Jackett/ServerConfig.json'
+config_path = "./docker_data/jackett/Jackett/ServerConfig.json"
 
 print("Waiting for Jackett to generate ServerConfig.json...")
 for _ in range(30):
@@ -19,7 +19,7 @@ if not os.path.exists(config_path):
     print("Jackett failed to boot in time!")
     sys.exit(1)
 
-with open(config_path, 'r') as f:
+with open(config_path, "r") as f:
     config = json.load(f)
     api_key = config.get("APIKey")
 
@@ -28,13 +28,13 @@ if not api_key:
     sys.exit(1)
 
 # Ensure the .env exists for the JackettManager to read
-with open('.env', 'w') as f:
+with open(".env", "w") as f:
     f.write(f"JACKETT_API_KEY={api_key}\n")
     f.write("JACKETT_URL=http://localhost:19117\n")
 
 # Need to reload env
-os.environ['JACKETT_API_KEY'] = api_key
-os.environ['JACKETT_URL'] = "http://localhost:19117"
+os.environ["JACKETT_API_KEY"] = api_key
+os.environ["JACKETT_URL"] = "http://localhost:19117"
 
 try:
     manager = JackettManager()

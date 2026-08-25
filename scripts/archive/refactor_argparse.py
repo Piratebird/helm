@@ -5,14 +5,14 @@ with open("src/helm/cli.py", "r") as f:
     content = f.read()
 
 # Extract everything before parser = argparse.ArgumentParser
-match = re.search(r'(    parser = argparse\.ArgumentParser\()', content)
+match = re.search(r"(    parser = argparse\.ArgumentParser\()", content)
 if not match:
     print("Could not find argparse initialization")
     sys.exit(1)
 start_idx = match.start()
 
 # Extract everything after args = parser.parse_args()
-match_end = re.search(r'    args = parser\.parse_args\(\)\n', content)
+match_end = re.search(r"    args = parser\.parse_args\(\)\n", content)
 if not match_end:
     print("Could not find parse_args")
     sys.exit(1)
@@ -57,12 +57,12 @@ new_argparse = """    parser = argparse.ArgumentParser(
         # If user passed global flags but no subcommand, append 'ui'
         # Actually, it's easier to just parse normally, and if args.command is None, default it to "ui"
         pass
-        
+
     args = parser.parse_args()
-    
+
     if not args.command:
         args.command = "ui"
-        
+
     # Standardize args to not break old logic
     if args.command == "search":
         args.query = " ".join(args.query)
@@ -70,10 +70,10 @@ new_argparse = """    parser = argparse.ArgumentParser(
         args.query = None
         args.type = "video"
         args.auto = False
-        
+
     if args.command != "ui" and args.command != "search":
         args.oneshot = False
-        
+
     args.indexers = (args.command == "indexers")
     args.logs = (args.command == "logs")
     args.paths = (args.command == "paths")

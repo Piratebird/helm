@@ -8,29 +8,30 @@ from html.parser import HTMLParser
 from typing import Callable, Dict, List, Mapping, Match, Tuple, Union
 from urllib.parse import quote
 
-from novaprinter import prettyPrinter
-
 from helpers import retrieve_url
+from novaprinter import prettyPrinter
 
 
 class limetorrents:
     url = "https://www.limetorrents.fun"
     name = "LimeTorrents"
-    supported_categories = {'all': 'all',
-                            'anime': 'anime',
-                            'software': 'applications',
-                            'games': 'games',
-                            'movies': 'movies',
-                            'music': 'music',
-                            'tv': 'tv'}
+    supported_categories = {
+        "all": "all",
+        "anime": "anime",
+        "software": "applications",
+        "games": "games",
+        "movies": "movies",
+        "music": "music",
+        "tv": "tv",
+    }
 
     class MyHtmlParser(HTMLParser):
-        """ Sub-class for parsing results """
+        """Sub-class for parsing results"""
 
         def error(self, message: str) -> None:
             pass
 
-        A, TD, TR, HREF = ('a', 'td', 'tr', 'href')
+        A, TD, TR, HREF = ("a", "td", "tr", "href")
 
         def __init__(self, url: str) -> None:
             HTMLParser.__init__(self)
@@ -57,12 +58,12 @@ class limetorrents:
         def handle_starttag(self, tag: str, attrs: List[Tuple[str, Union[str, None]]]) -> None:
             params = dict(attrs)
 
-            if params.get('class') == 'table2':
+            if params.get("class") == "table2":
                 self.inside_table = True
             elif not self.inside_table:
                 return
 
-            if tag == self.TR and (params.get('bgcolor') == '#F4F4F4' or params.get('bgcolor') == '#FFFFFF'):  # noqa
+            if tag == self.TR and (params.get("bgcolor") == "#F4F4F4" or params.get("bgcolor") == "#FFFFFF"):  # noqa
                 self.inside_tr = True
                 self.column_index = -1
                 self.current_item = {"engine_url": self.url}
@@ -80,7 +81,7 @@ class limetorrents:
                 link = params["href"]
                 if link is not None and link.endswith(".html"):
                     try:
-                        safe_link = quote(self.url + link, safe='/:')
+                        safe_link = quote(self.url + link, safe="/:")
                     except KeyError:
                         safe_link = self.url + link
                     self.current_item["link"] = safe_link
@@ -89,7 +90,7 @@ class limetorrents:
         def handle_data(self, data: str) -> None:
             if self.column_name:
                 if self.column_name in ["size", "seeds", "leech"]:
-                    data = data.replace(',', '')
+                    data = data.replace(",", "")
                 elif self.column_name == "pub_date":
                     timestamp = -1
                     for pattern, calc in self.date_parsers.items():
@@ -102,7 +103,7 @@ class limetorrents:
                 self.column_name = None
 
         def handle_endtag(self, tag: str) -> None:
-            if tag == 'table':
+            if tag == "table":
                 self.inside_table = False
 
             if self.inside_tr and tag == self.TR:
@@ -120,10 +121,10 @@ class limetorrents:
         if magnet_match and magnet_match.groups():
             print(magnet_match.groups()[0] + " " + info)
         else:
-            raise ValueError('Error, please fill a bug report!')
+            raise ValueError("Error, please fill a bug report!")
 
-    def search(self, query: str, cat: str = 'all') -> None:
-        """ Performs search """
+    def search(self, query: str, cat: str = "all") -> None:
+        """Performs search"""
         query = query.replace("%20", "-")
         category = self.supported_categories[cat]
 

@@ -27,7 +27,7 @@ HELM_DL="$HOME/Downloads/helm"
 content = re.sub(
     r'HELM_CONFIG="\$HOME/\.config/helm"\nHELM_STATE="\$HOME/\.local/state/helm"\nHELM_DL="\$HOME/Downloads/helm"\n',
     os_detect_block,
-    content
+    content,
 )
 
 with open("setup.sh", "w") as f:

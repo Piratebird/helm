@@ -1,10 +1,13 @@
-
 with open("src/helm/cli.py", "r") as f:
     content = f.read()
 
 content = content.replace("                parser = argparse.ArgumentParser(", "    parser = argparse.ArgumentParser(")
-content = content.replace("            description=\"Helm - Torrent automation MVP\",", "        description=\"Helm - Torrent automation MVP\",")
-content = content.replace("            formatter_class=argparse.RawTextHelpFormatter", "        formatter_class=argparse.RawTextHelpFormatter")
+content = content.replace(
+    '            description="Helm - Torrent automation MVP",', '        description="Helm - Torrent automation MVP",'
+)
+content = content.replace(
+    "            formatter_class=argparse.RawTextHelpFormatter", "        formatter_class=argparse.RawTextHelpFormatter"
+)
 content = content.replace("        )\n\n        actions = ", "    )\n\n    actions = ")
 
 content = content.replace("        actions.add_argument", "    actions.add_argument")

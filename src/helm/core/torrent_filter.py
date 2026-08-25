@@ -4,14 +4,13 @@ filter torrents functionality based on seeds and quality
 core/torrent_filter.py
 """
 
-
 import re
 
 
 def is_negative_match(title, negatives):
     title = title.lower()
     for n in negatives:
-        if re.search(r'\b' + re.escape(n.lower()) + r'\b', title):
+        if re.search(r"\b" + re.escape(n.lower()) + r"\b", title):
             return True
     return False
 
@@ -20,7 +19,7 @@ def score_item(title, positives):
     title = title.lower()
     score = 0
     for p in positives:
-        if re.search(r'\b' + re.escape(p.lower()) + r'\b', title):
+        if re.search(r"\b" + re.escape(p.lower()) + r"\b", title):
             score += 1
     return score
 
@@ -28,7 +27,7 @@ def score_item(title, positives):
 def match_keywords(title, keywords):
     title = title.lower()
     for k in keywords:
-        if re.search(r'\b' + re.escape(k.lower()) + r'\b', title):
+        if re.search(r"\b" + re.escape(k.lower()) + r"\b", title):
             return True
     return False
 
@@ -36,25 +35,29 @@ def match_keywords(title, keywords):
 def match_quality(title, qualities):
     title = title.lower()
     for q in qualities:
-        if re.search(r'\b' + re.escape(q.lower()) + r'\b', title):
+        if re.search(r"\b" + re.escape(q.lower()) + r"\b", title):
             return True
     return False
 
 
-import hashlib
+import hashlib  # noqa: E402
 
 
 def dedupe(items):
     seen = set()
     unique = []
     for i in items:
-        link = getattr(i, 'link', '')
+        link = getattr(i, "link", "")
         if "btih:" in link.lower():
             hash_start = link.lower().find("btih:") + 5
             hash_value = link[hash_start : hash_start + 40].lower()
         else:
             # Fallback to hashing the whole link or title if not a standard magnet
-            hash_value = hashlib.md5(link.encode('utf-8')).hexdigest() if link else hashlib.md5(getattr(i, 'title', '').encode('utf-8')).hexdigest()
+            hash_value = (
+                hashlib.md5(link.encode("utf-8")).hexdigest()
+                if link
+                else hashlib.md5(getattr(i, "title", "").encode("utf-8")).hexdigest()
+            )
 
         if hash_value not in seen:
             seen.add(hash_value)
@@ -66,8 +69,8 @@ def filter_items(items, positives, negatives, min_score=0, min_seeds=0):
     results = []
 
     for item in items:
-        title = getattr(item, 'title', '')
-        seeders = getattr(item, 'seeders', 0)
+        title = getattr(item, "title", "")
+        seeders = getattr(item, "seeders", 0)
         try:
             seeders = int(seeders)
         except (ValueError, TypeError):

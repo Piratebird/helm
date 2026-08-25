@@ -12,7 +12,9 @@ def spin_up_oneshot():
 
     # Explicitly ensure all background containers are up just in case host depends_on fails
     try:
-        subprocess.run(["docker", "compose", "up", "-d", "--remove-orphans", "jackett", "qbittorrent", "flaresolverr"], check=False)
+        subprocess.run(
+            ["docker", "compose", "up", "-d", "--remove-orphans", "jackett", "qbittorrent", "flaresolverr"], check=False
+        )
     except Exception:
         pass
 
@@ -25,11 +27,15 @@ def spin_up_oneshot():
                 cid = subprocess.check_output(["docker", "compose", "ps", "-q", service_name], text=True).strip()
                 if cid:
                     # Check status
-                    status = subprocess.check_output(["docker", "inspect", "-f", "{{.State.Status}}", cid], text=True).strip()
+                    status = subprocess.check_output(
+                        ["docker", "inspect", "-f", "{{.State.Status}}", cid], text=True
+                    ).strip()
                     if status == "running":
                         return True
                     elif status == "exited":
-                        print(f"\033[31m[ERROR] Container {service_name} crashed immediately. Check 'docker compose logs {service_name}'\033[0m")
+                        print(
+                            f"\033[31m[ERROR] Container {service_name} crashed immediately. Check 'docker compose logs {service_name}'\033[0m"
+                        )
                         project_name = os.environ.get("COMPOSE_PROJECT_NAME", "helm")
                         for svc in ["jackett", "qbittorrent", "flaresolverr", "gluetun"]:
                             subprocess.run(["docker", "stop", f"{project_name}-{svc}"], capture_output=True)
@@ -108,6 +114,7 @@ def wait_for_download():
     print("\033[3m(Press Ctrl+C to cancel, or Ctrl+P then Ctrl+Q to detach and run in background)\033[0m")
 
     import helm.core.qbittorrent_client as qbc
+
     # temporarily inject webui for the wait functionality
     qb_webui = os.environ.get("QB_WEBUI", "http://qbittorrent:18080")
     session = qbc.login_qbittorrent()
@@ -129,7 +136,7 @@ def wait_for_download():
                         name = t.get("name", "Unknown")
                         if progress < 1.0:
                             all_done = False
-                            print(f"\r\033[33mDownloading '{name[:40]}...' ({progress*100:.1f}%) \033[0m", end="")
+                            print(f"\r\033[33mDownloading '{name[:40]}...' ({progress * 100:.1f}%) \033[0m", end="")
                             sys.stdout.flush()
 
                     if all_done:
@@ -149,8 +156,10 @@ def wait_for_download():
                 hashes_to_delete = [t.get("hash") for t in torrents if t.get("progress", 0.0) < 1.0]
                 if hashes_to_delete:
                     # delete torrent and downloaded data
-                    session.post(f"{qb_webui}/api/v2/torrents/delete", data={"hashes": "|".join(hashes_to_delete), "deleteFiles": "true"})
+                    session.post(
+                        f"{qb_webui}/api/v2/torrents/delete",
+                        data={"hashes": "|".join(hashes_to_delete), "deleteFiles": "true"},
+                    )
         except Exception:
             pass
         raise
-

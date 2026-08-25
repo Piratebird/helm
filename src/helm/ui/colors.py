@@ -3,6 +3,7 @@ def hex_to_ansi(hex_color):
     r, g, b = tuple(int(hex_color[i : i + 2], 16) for i in (0, 2, 4))
     return f"\033[38;2;{r};{g};{b}m"
 
+
 class Palette:
     # change color pallete or move to textual idk vro
     NAVY = hex_to_ansi("#192A56")  # Text 'The HELM'
@@ -13,6 +14,7 @@ class Palette:
     BRIGHT_MAROON = hex_to_ansi("#B33939")
     BRIGHT_BROWN = hex_to_ansi("#CD6133")
     RESET = "\033[0m"
+
 
 C_LOGO = Palette.LIGHT_NAVY
 C_SUB = Palette.BRIGHT_MAROON

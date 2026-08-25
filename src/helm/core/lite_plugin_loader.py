@@ -7,9 +7,9 @@ from helm.core.logger import get_logger
 logger = get_logger(__name__)
 
 # Ensure our plugins directory is in the path so helpers and novaprinter can be imported
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../plugins')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../plugins")))
 
-import novaprinter
+import novaprinter  # noqa: E402
 
 
 def load_plugins(plugin_dir):
@@ -23,7 +23,7 @@ def load_plugins(plugin_dir):
 
     for file in os.listdir(plugin_dir):
         # Ignore our SDK files and standard dunder files
-        if file.endswith('.py') and not file.startswith('__') and file not in ('helpers.py', 'novaprinter.py'):
+        if file.endswith(".py") and not file.startswith("__") and file not in ("helpers.py", "novaprinter.py"):
             filepath = os.path.join(plugin_dir, file)
             module_name = file[:-3]
             try:
@@ -36,23 +36,24 @@ def load_plugins(plugin_dir):
                     get_logger("")
 
                     # Intercept third-party prints by injecting a custom print into the module's globals
-                    mod.print = lambda *args, **kwargs: get_logger(module_name).debug(" ".join(str(a) for a in args))
+                    mod.print = lambda *args, **kwargs: get_logger(module_name).debug(" ".join(str(a) for a in args))  # noqa: B023
 
                     spec.loader.exec_module(mod)
 
                     # Search for the plugin class inside the module.
                     # Usually the class has a 'search' method and is not a built-in.
                     for attr_name in dir(mod):
-                        if attr_name.startswith('__'):
+                        if attr_name.startswith("__"):
                             continue
                         attr = getattr(mod, attr_name)
-                        if isinstance(attr, type) and hasattr(attr, 'search'):
+                        if isinstance(attr, type) and hasattr(attr, "search"):
                             plugins.append(attr())
                             break
             except Exception:
                 logger.debug(f"Event: Failed to load plugin {file}", exc_info=True)
 
     return plugins
+
 
 def run_plugins(query, plugin_dirs):
     novaprinter.plugin_results.clear()
@@ -67,7 +68,9 @@ def run_plugins(query, plugin_dirs):
         try:
             plugin.search(query)
         except Exception:
-            logger.debug(f"Event: Error running plugin {getattr(plugin, 'name', plugin.__class__.__name__)}", exc_info=True)
+            logger.debug(
+                f"Event: Error running plugin {getattr(plugin, 'name', plugin.__class__.__name__)}", exc_info=True
+            )
 
     # Run all plugins concurrently with a timeout
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)

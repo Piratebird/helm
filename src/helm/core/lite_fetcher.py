@@ -7,6 +7,7 @@ from helm.core.rss_fetcher import TorrentItem
 
 logger = logging.getLogger(__name__)
 
+
 def search_lite(query):
     """
     Lite mode fetcher using public APIs (e.g., apibay) without needing Jackett.
@@ -69,7 +70,6 @@ def search_lite(query):
     except Exception as e:
         logger.debug(f"Event: Apibay connection failed: {e}")
 
-
     # Torrents-csv API (Aggregator)
     torrents_csv_url = "https://torrents-csv.com/service/search"
     try:
@@ -109,9 +109,10 @@ def search_lite(query):
         r = requests.get(nyaa_url, timeout=15)
         if r.status_code == 200:
             import xml.etree.ElementTree as ET
+
             root = ET.fromstring(r.content)
-            for item in root.findall('./channel/item'):
-                title = item.findtext('title') or ""
+            for item in root.findall("./channel/item"):
+                title = item.findtext("title") or ""
                 magnet = None
                 seeders = 0
                 leechers = 0
@@ -119,23 +120,26 @@ def search_lite(query):
 
                 # Nyaa stores the magnet in the torrent namespace or in link
                 for child in item:
-                    if child.tag.endswith('seeders'):
+                    if child.tag.endswith("seeders"):
                         seeders = int(child.text or 0)
-                    elif child.tag.endswith('leechers'):
+                    elif child.tag.endswith("leechers"):
                         leechers = int(child.text or 0)
-                    elif child.tag.endswith('size'):
+                    elif child.tag.endswith("size"):
                         size_str = child.text or "0"
-                        if "GiB" in size_str: size = int(float(size_str.replace(" GiB","")) * 1024**3)
-                        elif "MiB" in size_str: size = int(float(size_str.replace(" MiB","")) * 1024**2)
-                    elif child.tag.endswith('infoHash'):
+                        if "GiB" in size_str:
+                            size = int(float(size_str.replace(" GiB", "")) * 1024**3)
+                        elif "MiB" in size_str:
+                            size = int(float(size_str.replace(" MiB", "")) * 1024**2)
+                    elif child.tag.endswith("infoHash"):
                         info_hash = child.text
                         magnet = f"magnet:?xt=urn:btih:{info_hash}&dn={requests.utils.quote(title)}&tr=http%3A%2F%2Fnyaa.tracker.wf%3A7777%2Fannounce"
 
-                pubdate = item.findtext('pubDate') or None
+                pubdate = item.findtext("pubDate") or None
                 if pubdate:
                     try:
                         # Parse "Sun, 08 Dec 2024 16:53:15 +0000"
                         from email.utils import parsedate_to_datetime
+
                         pubdate = parsedate_to_datetime(pubdate).strftime("%Y-%m-%d")
                     except Exception:
                         pass
@@ -147,13 +151,14 @@ def search_lite(query):
 
     # --- qBittorrent Plugins Integration --- #
     import os
+
     try:
         from helm.core.lite_plugin_loader import run_plugins
 
         # Define where to look for plugins
         plugin_dirs = [
-            os.path.expanduser("~/.helm_data/plugins"), # User plugins
-            os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "plugins") # Bundled plugins
+            os.path.expanduser("~/.helm_data/plugins"),  # User plugins
+            os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "plugins"),  # Bundled plugins
         ]
 
         plugin_results = run_plugins(query, plugin_dirs)
@@ -163,4 +168,3 @@ def search_lite(query):
         logger.debug(f"Event: Plugin loader failed: {e}")
 
     return items
-

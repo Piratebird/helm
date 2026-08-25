@@ -1,4 +1,3 @@
-
 with open("setup.sh", "r") as f:
     content = f.read()
 
@@ -11,7 +10,9 @@ sed -i "s|\\\"\\$HELM_CONFIG\\\"|$HELM_CONFIG|g" docker-compose.yml
 sed -i "s|\\\"\\$HELM_DL\\\"|$HELM_DL|g" docker-compose.yml
 """
 
-content = content.replace("EOF\nfi\n\ncat << EOF > \"$HELM_STATE\"/.env.docker", f"EOF\nfi\n{sed_block}\ncat << EOF > \"$HELM_STATE\"/.env.docker")
+content = content.replace(
+    'EOF\nfi\n\ncat << EOF > "$HELM_STATE"/.env.docker', f'EOF\nfi\n{sed_block}\ncat << EOF > "$HELM_STATE"/.env.docker'
+)
 
 with open("setup.sh", "w") as f:
     f.write(content)

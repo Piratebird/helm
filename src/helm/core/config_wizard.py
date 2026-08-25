@@ -8,6 +8,7 @@ from helm.core.config_manager import load_config, save_config
 
 def run_wizard():
     import sys
+
     try:
         print("\033[1mWelcome to Helm Interactive Configuration Wizard!\033[0m")
         print("It looks like some essential configurations are missing.\n")
@@ -18,8 +19,10 @@ def run_wizard():
         print("  1. Lite Mode (Native plugins only, no media server required)")
         print("  2. Full Automation (Requires Jackett & qBittorrent running)")
 
-        choice = input("\nDo you want to configure Jackett and qBittorrent for full automation? (y/N): ").strip().lower()
-        if choice not in ('y', 'yes'):
+        choice = (
+            input("\nDo you want to configure Jackett and qBittorrent for full automation? (y/N): ").strip().lower()
+        )
+        if choice not in ("y", "yes"):
             print("\n\033[32mOpting for Lite Mode. You can change this later.\033[0m\n")
             config["LITE_MODE_ONLY"] = True
             save_config(config)
@@ -34,31 +37,41 @@ def run_wizard():
 
         while True:
             jackett_url_input = input(f"Jackett URL [{jackett_url}]: ").strip()
-            if jackett_url_input.lower() in ('exit', 'quit', 'q') or '\x03' in jackett_url_input:
+            if jackett_url_input.lower() in ("exit", "quit", "q") or "\x03" in jackett_url_input:
                 print("\n\033[33mConfiguration aborted. later bozo!\033[0m")
                 sys.exit(0)
-            if jackett_url_input: jackett_url = jackett_url_input
+            if jackett_url_input:
+                jackett_url = jackett_url_input
 
             # Obscure the API key if it exists
-            masked_api = f"{jackett_api[:4]}...{jackett_api[-4:]}" if len(jackett_api) > 8 else "***" if jackett_api else ""
+            masked_api = (
+                f"{jackett_api[:4]}...{jackett_api[-4:]}" if len(jackett_api) > 8 else "***" if jackett_api else ""
+            )
             jackett_api_input = input(f"Jackett API Key [{masked_api}]: ").strip()
-            if jackett_api_input.lower() in ('exit', 'quit', 'q') or '\x03' in jackett_api_input:
+            if jackett_api_input.lower() in ("exit", "quit", "q") or "\x03" in jackett_api_input:
                 print("\n\033[33mConfiguration aborted. later bozo!\033[0m")
                 sys.exit(0)
-            if jackett_api_input: jackett_api = jackett_api_input
+            if jackett_api_input:
+                jackett_api = jackett_api_input
 
-            jackett_pwd_input = input(f"Jackett Admin Password (leave blank if none) [{'***' if jackett_pwd else ''}]: ").strip()
-            if jackett_pwd_input.lower() in ('exit', 'quit', 'q') or '\x03' in jackett_pwd_input:
+            jackett_pwd_input = input(
+                f"Jackett Admin Password (leave blank if none) [{'***' if jackett_pwd else ''}]: "
+            ).strip()
+            if jackett_pwd_input.lower() in ("exit", "quit", "q") or "\x03" in jackett_pwd_input:
                 print("\n\033[33mConfiguration aborted. later bozo!\033[0m")
                 sys.exit(0)
-            if jackett_pwd_input: jackett_pwd = jackett_pwd_input
+            if jackett_pwd_input:
+                jackett_pwd = jackett_pwd_input
             # To allow clearing the password if one was set, we could allow a special string, but for now we just take the input if truthy or keep it if they just pressed enter.
 
             if jackett_api:
                 # Validate Jackett
                 print("Validating Jackett connection...")
                 try:
-                    r = requests.get(f"{jackett_url}/api/v2.0/indexers/all/results/torznab/api?apikey={jackett_api}&t=indexers", timeout=5)
+                    r = requests.get(
+                        f"{jackett_url}/api/v2.0/indexers/all/results/torznab/api?apikey={jackett_api}&t=indexers",
+                        timeout=5,
+                    )
                     if r.status_code == 200:
                         # Also test if password works for UI APIs
                         session = requests.Session()
@@ -91,29 +104,36 @@ def run_wizard():
 
         while True:
             qb_webui_input = input(f"qBittorrent WebUI URL [{qb_webui}]: ").strip()
-            if qb_webui_input.lower() in ('exit', 'quit', 'q') or '\x03' in qb_webui_input:
+            if qb_webui_input.lower() in ("exit", "quit", "q") or "\x03" in qb_webui_input:
                 print("\n\033[33mConfiguration aborted. later bozo!\033[0m")
                 sys.exit(0)
-            if qb_webui_input: qb_webui = qb_webui_input
+            if qb_webui_input:
+                qb_webui = qb_webui_input
 
             qb_username_input = input(f"qBittorrent Username [{qb_username}]: ").strip()
-            if qb_username_input.lower() in ('exit', 'quit', 'q') or '\x03' in qb_username_input:
+            if qb_username_input.lower() in ("exit", "quit", "q") or "\x03" in qb_username_input:
                 print("\n\033[33mConfiguration aborted. later bozo!\033[0m")
                 sys.exit(0)
-            if qb_username_input: qb_username = qb_username_input
+            if qb_username_input:
+                qb_username = qb_username_input
 
             qb_password_input = input(f"qBittorrent Password [{'***' if qb_password else ''}]: ").strip()
-            if qb_password_input.lower() in ('exit', 'quit', 'q') or '\x03' in qb_password_input:
+            if qb_password_input.lower() in ("exit", "quit", "q") or "\x03" in qb_password_input:
                 print("\n\033[33mConfiguration aborted. later bozo!\033[0m")
                 sys.exit(0)
-            if qb_password_input: qb_password = qb_password_input
+            if qb_password_input:
+                qb_password = qb_password_input
 
             if qb_password:
                 # Validate qBittorrent
                 print("Validating qBittorrent connection...")
                 try:
                     session = requests.Session()
-                    r = session.post(f"{qb_webui}/api/v2/auth/login", data={"username": qb_username, "password": qb_password}, timeout=5)
+                    r = session.post(
+                        f"{qb_webui}/api/v2/auth/login",
+                        data={"username": qb_username, "password": qb_password},
+                        timeout=5,
+                    )
                     if r.status_code in (200, 204):
                         try:
                             r_verify = session.get(f"{qb_webui}/api/v2/app/version", timeout=5)
@@ -138,7 +158,9 @@ def run_wizard():
         print("\n\n\033[33mConfiguration aborted. later bozo!\033[0m")
         sys.exit(0)
     except EOFError:
-        print("\n\n\033[31m[ERROR] Cannot read input. If you are running via Docker, make sure to use the '-it' flag for interactive mode, or mount your configuration files!\033[0m")
+        print(
+            "\n\n\033[31m[ERROR] Cannot read input. If you are running via Docker, make sure to use the '-it' flag for interactive mode, or mount your configuration files!\033[0m"
+        )
         sys.exit(1)
 
 
@@ -169,7 +191,9 @@ def ensure_config():
 
     if needs_wizard:
         if not sys.stdin.isatty():
-            print("\n\033[33m[WARN] Missing configuration keys, but running non-interactively (e.g. Docker). Skipping interactive wizard.\033[0m\n")
+            print(
+                "\n\033[33m[WARN] Missing configuration keys, but running non-interactively (e.g. Docker). Skipping interactive wizard.\033[0m\n"
+            )
             # We don't exit here so the rest of the app can try to run, or fail with a native API error
         else:
             run_wizard()
@@ -179,6 +203,6 @@ def ensure_config():
         if k in config:
             os.environ[k] = config[k]
 
+
 if __name__ == "__main__":
     run_wizard()
-

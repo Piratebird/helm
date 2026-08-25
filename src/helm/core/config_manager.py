@@ -95,50 +95,213 @@ CONTENT_PROFILES = {
 NEGATIVE_KEYWORDS = {
     "games": [
         # video/tv
-        "1080p", "2160p", "720p", "web", "webrip", "bluray", "bdrip", "x264", "x265", "h264", "h265", "season", "episode", "s01", "s02",
+        "1080p",
+        "2160p",
+        "720p",
+        "web",
+        "webrip",
+        "bluray",
+        "bdrip",
+        "x264",
+        "x265",
+        "h264",
+        "h265",
+        "season",
+        "episode",
+        "s01",
+        "s02",
         # books
-        "pdf", "epub", "mobi", "azw", "azw3", "djvu", "audiobook", "m4b",
+        "pdf",
+        "epub",
+        "mobi",
+        "azw",
+        "azw3",
+        "djvu",
+        "audiobook",
+        "m4b",
         # music
-        "flac", "aac", "wav", "album", "single", "ep", "lp", "ost", "soundtrack",
+        "flac",
+        "aac",
+        "wav",
+        "album",
+        "single",
+        "ep",
+        "lp",
+        "ost",
+        "soundtrack",
     ],
     "video": [
         # games/software
-        "repack", "gog", "fitgirl", "dodi", "elamigos", "codex", "flt", "skidrow", "steamrip", "x64", "x86", "win", "linux", "mac",
+        "repack",
+        "gog",
+        "fitgirl",
+        "dodi",
+        "elamigos",
+        "codex",
+        "flt",
+        "skidrow",
+        "steamrip",
+        "x64",
+        "x86",
+        "win",
+        "linux",
+        "mac",
         # books
-        "pdf", "epub", "mobi", "azw", "azw3", "djvu", "audiobook", "m4b",
+        "pdf",
+        "epub",
+        "mobi",
+        "azw",
+        "azw3",
+        "djvu",
+        "audiobook",
+        "m4b",
         # music
-        "flac", "aac", "wav", "album", "single", "ep", "lp", "ost", "soundtrack",
+        "flac",
+        "aac",
+        "wav",
+        "album",
+        "single",
+        "ep",
+        "lp",
+        "ost",
+        "soundtrack",
     ],
     "software": [
         # video/tv
-        "1080p", "2160p", "720p", "web", "webrip", "bluray", "bdrip", "x264", "x265", "h264", "h265", "season", "episode", "s01", "s02",
+        "1080p",
+        "2160p",
+        "720p",
+        "web",
+        "webrip",
+        "bluray",
+        "bdrip",
+        "x264",
+        "x265",
+        "h264",
+        "h265",
+        "season",
+        "episode",
+        "s01",
+        "s02",
         # games
-        "repack", "gog", "fitgirl", "dodi", "elamigos", "codex", "flt", "skidrow", "steamrip",
+        "repack",
+        "gog",
+        "fitgirl",
+        "dodi",
+        "elamigos",
+        "codex",
+        "flt",
+        "skidrow",
+        "steamrip",
         # books
-        "pdf", "epub", "mobi", "azw", "azw3", "djvu", "audiobook", "m4b",
+        "pdf",
+        "epub",
+        "mobi",
+        "azw",
+        "azw3",
+        "djvu",
+        "audiobook",
+        "m4b",
         # music
-        "flac", "aac", "wav", "album", "single", "ep", "lp", "ost", "soundtrack",
+        "flac",
+        "aac",
+        "wav",
+        "album",
+        "single",
+        "ep",
+        "lp",
+        "ost",
+        "soundtrack",
     ],
     "books": [
         # video/tv
-        "1080p", "2160p", "720p", "web", "webrip", "bluray", "bdrip", "x264", "x265", "h264", "h265", "season", "episode", "s01", "s02",
+        "1080p",
+        "2160p",
+        "720p",
+        "web",
+        "webrip",
+        "bluray",
+        "bdrip",
+        "x264",
+        "x265",
+        "h264",
+        "h265",
+        "season",
+        "episode",
+        "s01",
+        "s02",
         # games/software
-        "repack", "gog", "fitgirl", "dodi", "elamigos", "codex", "flt", "skidrow", "steamrip", "x64", "x86", "win", "linux", "mac",
+        "repack",
+        "gog",
+        "fitgirl",
+        "dodi",
+        "elamigos",
+        "codex",
+        "flt",
+        "skidrow",
+        "steamrip",
+        "x64",
+        "x86",
+        "win",
+        "linux",
+        "mac",
         # music
-        "flac", "aac", "wav", "album", "single", "ep", "lp", "ost", "soundtrack",
+        "flac",
+        "aac",
+        "wav",
+        "album",
+        "single",
+        "ep",
+        "lp",
+        "ost",
+        "soundtrack",
     ],
     "music": [
         # video/tv
-        "1080p", "2160p", "720p", "web", "webrip", "bluray", "bdrip", "x264", "x265", "h264", "h265", "season", "episode", "s01", "s02",
+        "1080p",
+        "2160p",
+        "720p",
+        "web",
+        "webrip",
+        "bluray",
+        "bdrip",
+        "x264",
+        "x265",
+        "h264",
+        "h265",
+        "season",
+        "episode",
+        "s01",
+        "s02",
         # games/software
-        "repack", "gog", "fitgirl", "dodi", "elamigos", "codex", "flt", "skidrow", "steamrip", "x64", "x86", "win", "linux", "mac",
+        "repack",
+        "gog",
+        "fitgirl",
+        "dodi",
+        "elamigos",
+        "codex",
+        "flt",
+        "skidrow",
+        "steamrip",
+        "x64",
+        "x86",
+        "win",
+        "linux",
+        "mac",
         # books
-        "pdf", "epub", "mobi", "azw", "azw3", "djvu", "audiobook", "m4b"
+        "pdf",
+        "epub",
+        "mobi",
+        "azw",
+        "azw3",
+        "djvu",
+        "audiobook",
+        "m4b",
     ],
 }
 
 
-import sys
+import sys  # noqa: E402
 
 
 def get_config_dir():
@@ -153,6 +316,7 @@ def get_config_dir():
         base = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
         return os.path.join(base, "helm")
 
+
 def get_log_dir():
     if "HELM_STATE_DIR" in os.environ:
         return os.environ["HELM_STATE_DIR"]
@@ -165,6 +329,7 @@ def get_log_dir():
         base = os.environ.get("XDG_STATE_HOME", os.path.expanduser("~/.local/state"))
         return os.path.join(base, "helm", "logs")
 
+
 def get_dl_dir():
     if "HELM_DL_DIR" in os.environ:
         return os.environ["HELM_DL_DIR"]
@@ -173,10 +338,12 @@ def get_dl_dir():
     else:
         return os.path.expanduser("~/Downloads/helm")
 
+
 def get_config_file():
     config_dir = get_config_dir()
     os.makedirs(config_dir, exist_ok=True)
     return os.path.join(config_dir, "config.json")
+
 
 def _migrate_old_config():
     old_dir = os.path.expanduser("~/.helm_data")
@@ -190,6 +357,7 @@ def _migrate_old_config():
         except Exception as e:
             print(f"Failed to migrate config: {e}")
 
+
 def load_config():
     _migrate_old_config()
     config_file = get_config_file()
@@ -199,7 +367,7 @@ def load_config():
         "qualities": CONTENT_PROFILES["video"],
         "min_seeds": 3,
         "EXECUTION_MODE": "native",
-        "LITE_MODE_ONLY": False
+        "LITE_MODE_ONLY": False,
     }
 
     if not os.path.exists(config_file):
@@ -221,6 +389,7 @@ def load_config():
             print("Config file is corrupted. Backing up to config.json.bak and resetting.")
             shutil.copy(config_file, config_file + ".bak")
             return default_config
+
 
 def save_config(config):
     with open(get_config_file(), "w") as f:
