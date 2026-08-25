@@ -88,7 +88,7 @@ class eztv:
         url = f"{self.url}/search/{what.replace('%20', '-')}"
         data = b"layout=def_wlinks"
         try:
-            return retrieve_url(url, request_data=data)
+            return str(retrieve_url(url, request_data=data))
         except TypeError:
             # Older versions of retrieve_url did not support request_data/POST, se we must do the
             # request ourselves...
