@@ -1,7 +1,8 @@
+from typing import List
 from helm.core.rss_fetcher import TorrentItem
 
 # This list holds the results dumped by plugins during execution
-plugin_results: list[TorrentItem] = []
+plugin_results: List[TorrentItem] = []
 
 
 def prettyPrinter(result_dict):
