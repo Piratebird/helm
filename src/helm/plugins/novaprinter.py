@@ -1,4 +1,5 @@
 from typing import List
+
 from helm.core.rss_fetcher import TorrentItem
 
 # This list holds the results dumped by plugins during execution
