@@ -60,10 +60,18 @@ class JSONFormatter(logging.Formatter):
                 "thread",
                 "threadName",
                 "error_code",
+                "file_only",
             ]:
                 log_obj[key] = value
 
         return json.dumps(log_obj)
+
+
+class FileOnlyFilter(logging.Filter):
+    """Drops records flagged ``file_only=True`` from the console so they only reach the log file."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return not getattr(record, "file_only", False)
 
 
 class PlainTextFormatter(logging.Formatter):
@@ -105,6 +113,8 @@ def get_logger(name: str):
     console_handler.setLevel(logging.DEBUG if is_verbose else logging.WARNING)
     # Use console formatter which strips tracebacks to keep TUI clean, unless verbose
     console_handler.setFormatter(file_formatter if is_verbose else console_formatter)
+    # Keep file_only messages out of the console/TUI; they still reach the log file.
+    console_handler.addFilter(FileOnlyFilter())
 
     # File Handler
     file_handler = RotatingFileHandler(LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=3)
