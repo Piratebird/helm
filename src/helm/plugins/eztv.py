@@ -2,15 +2,12 @@
 # AUTHORS: nindogo
 # CONTRIBUTORS: Diego de las Heras (ngosang@hotmail.es)
 
-import http.client
 import re
-import urllib.error
-import urllib.request
 from datetime import datetime, timedelta
 from html.parser import HTMLParser
 from typing import Callable, Dict, List, Mapping, Match, Tuple, Union
 
-from helpers import retrieve_url
+import requests
 from novaprinter import prettyPrinter
 
 from helm.core.logger import get_logger
@@ -86,20 +83,28 @@ class eztv:
 
     def do_query(self, what: str) -> str:
         url = f"{self.url}/search/{what.replace('%20', '-')}"
-        data = b"layout=def_wlinks"
         try:
-            return str(retrieve_url(url, request_data=data))
-        except TypeError:
-            # Older versions of retrieve_url did not support request_data/POST, se we must do the
-            # request ourselves...
-            user_agent = "Mozilla/5.0 (X11; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0"
-            req = urllib.request.Request(url, data, {"User-Agent": user_agent})
-            try:
-                response: http.client.HTTPResponse = urllib.request.urlopen(req)  # nosec B310 # pylint: disable=consider-using-with
-                return response.read().decode("utf-8")
-            except urllib.error.URLError as errno:
+            r = requests.post(
+                url,
+                data=b"layout=def_wlinks",
+                headers={
+                    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0",
+                    "Referer": self.url,
+                },
+                timeout=15,
+            )
+            if r.status_code == 403:
                 logger = get_logger(__name__)
-                logger.debug(f"Event: Connection error in EZTV: {getattr(errno, 'reason', str(errno))}", exc_info=True)
+                logger.warning("Event: EZTV blocked this request (HTTP 403, likely Cloudflare). Skipping indexer.")
+                return ""
+            if r.status_code != 200:
+                logger = get_logger(__name__)
+                logger.warning(f"Event: EZTV returned HTTP {r.status_code}. Skipping indexer.")
+                return ""
+            return r.text
+        except Exception as e:
+            logger = get_logger(__name__)
+            logger.debug(f"Event: Connection error in EZTV: {e}", exc_info=True)
             return ""
 
     def search(self, what: str, cat: str = "all") -> None:

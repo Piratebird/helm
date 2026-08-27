@@ -3,14 +3,16 @@ import xml.etree.ElementTree as ET
 
 import requests
 
+from helm.core.secret_manager import get_secret
+
 
 class JackettManager:
     def __init__(self):
         self.url = os.getenv("JACKETT_URL", "http://localhost:9117")
-        self.api_key = os.getenv("JACKETT_API_KEY")
+        self.api_key = get_secret("JACKETT_API_KEY")
         if not self.api_key:
             raise RuntimeError("JACKETT_API_KEY environment variable not set")
-        self.password = os.getenv("JACKETT_PASSWORD", "")
+        self.password = get_secret("JACKETT_PASSWORD") or ""
         self.session = requests.Session()
         self._authenticate()
 

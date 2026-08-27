@@ -99,8 +99,8 @@ def get_logger(name: str):
     file_formatter = JSONFormatter() if use_json else PlainTextFormatter()
     console_formatter = ConsoleFormatter()
 
-    # Console Handler
-    console_handler = logging.StreamHandler(sys.stdout)
+    # Console Handler (stderr, so stdout stays clean for --json / TUI output)
+    console_handler = logging.StreamHandler(sys.stderr)
     is_verbose = "--verbose" in sys.argv or os.environ.get("HELM_VERBOSE", "false").lower() == "true"
     console_handler.setLevel(logging.DEBUG if is_verbose else logging.WARNING)
     # Use console formatter which strips tracebacks to keep TUI clean, unless verbose

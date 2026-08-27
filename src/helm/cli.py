@@ -1,10 +1,15 @@
 import argparse
+import json
 import os
 import sys
 
 from dotenv import load_dotenv
 
 load_dotenv(os.path.expanduser("~/.helm_data/.env"))
+
+from helm.core.secret_manager import get_secret, get_secrets_file  # noqa: E402
+
+load_dotenv(get_secrets_file())
 
 import re  # noqa: E402
 import time  # noqa: E402
@@ -153,14 +158,12 @@ def main():
 
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
             if os.path.exists(config_file):
-                import json
+                from helm.core.secret_manager import redact_config
 
                 try:
                     with open(config_file, "r") as f:
                         cfg_data = json.load(f)
-                    if "JACKETT_API_KEY" in cfg_data:
-                        cfg_data["JACKETT_API_KEY"] = "***REDACTED***"
-                    zipf.writestr("config.json", json.dumps(cfg_data, indent=4))
+                    zipf.writestr("config.json", json.dumps(redact_config(cfg_data), indent=4))
                 except Exception:
                     zipf.write(config_file, arcname="config.json")
             if os.path.exists(log_file):
@@ -173,7 +176,7 @@ def main():
         config = load_config()
         if config.get("LITE_MODE_ONLY"):
             args.lite = True
-        elif "JACKETT_API_KEY" not in config and not os.getenv("JACKETT_API_KEY"):
+        elif not os.getenv("JACKETT_API_KEY") and not get_secret("JACKETT_API_KEY"):
             try:
                 choice = (
                     input(
@@ -313,7 +316,9 @@ def main():
         search_query = re.sub(r"[^\w\s]", "", query)
 
     try:
-        all_items, args.lite = animated_search(search_query, content_type, lite_mode=args.lite)
+        all_items, args.lite = animated_search(
+            search_query, content_type, lite_mode=args.lite, show_spinner=not args.json
+        )
     except KeyboardInterrupt:
         print(f"\n{C_SUB}later bozo!{C_RST}")
         if args.oneshot:
@@ -340,7 +345,16 @@ def main():
         sys.exit(1)
 
     if args.json:
-        json_output = [{"title": t.title, "link": t.link, "seeders": getattr(t, "seeders", 0)} for t in filtered]
+        from helm.core.secret_manager import sanitize_link
+
+        json_output = [
+            {
+                "title": t.title,
+                "link": sanitize_link(t.link),
+                "seeders": getattr(t, "seeders", 0),
+            }
+            for t in filtered
+        ]
         print(json.dumps(json_output, indent=2))
         if args.oneshot:
             teardown_oneshot()

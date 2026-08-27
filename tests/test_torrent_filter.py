@@ -61,3 +61,18 @@ def test_filter_items():
     assert getattr(results[0], "score", None) == 1
     assert results[1].title == "Movie 720p"
     assert getattr(results[1], "score", None) == 0
+
+
+def test_filter_items_keeps_unknown_seeders():
+    # seeders == -1 means "unknown" (parser could not extract a value).
+    # It must not be silently discarded by the min_seeds threshold.
+    items = [
+        MockItem("Movie 1080p", seeders=-1),
+        MockItem("Movie 720p", seeders=0),
+        MockItem("Movie 1080p", seeders=2),
+    ]
+    results = filter_items(items, ["1080p", "720p"], [], min_score=0, min_seeds=3)
+
+    assert len(results) == 1
+    assert results[0].title == "Movie 1080p"
+    assert getattr(results[0], "seeders", 0) == -1

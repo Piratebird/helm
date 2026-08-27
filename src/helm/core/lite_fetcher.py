@@ -1,11 +1,11 @@
 import datetime
-import logging
 
 import requests
 
+from helm.core.logger import get_logger
 from helm.core.rss_fetcher import TorrentItem
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def search_lite(query):
@@ -15,6 +15,7 @@ def search_lite(query):
     items = []
 
     # Apibay (The Pirate Bay API)
+    before = len(items)
     apibay_url = "https://apibay.org/q.php"
     try:
         r = requests.get(apibay_url, params={"q": query}, timeout=15)
@@ -70,7 +71,10 @@ def search_lite(query):
     except Exception as e:
         logger.debug(f"Event: Apibay connection failed: {e}")
 
+    logger.info(f"Event: Apibay returned {len(items) - before} results")
+
     # Torrents-csv API (Aggregator)
+    before = len(items)
     torrents_csv_url = "https://torrents-csv.com/service/search"
     try:
         r = requests.get(torrents_csv_url, params={"q": query, "size": 100}, timeout=15)
@@ -103,8 +107,11 @@ def search_lite(query):
     except Exception as e:
         logger.debug(f"Event: Torrents-csv connection failed: {e}")
 
+    logger.info(f"Event: Torrents-csv returned {len(items) - before} results")
+
     # Nyaa RSS API (Anime/Asian content)
-    nyaa_url = f"https://nyaa.iss.one/?page=rss&q={requests.utils.quote(query)}&c=0_0&f=0"
+    before = len(items)
+    nyaa_url = f"https://nyaa.si/?page=rss&q={requests.utils.quote(query)}&c=0_0&f=0"
     try:
         r = requests.get(nyaa_url, timeout=15)
         if r.status_code == 200:
@@ -149,8 +156,12 @@ def search_lite(query):
     except Exception as e:
         logger.debug(f"Event: Nyaa connection failed: {e}")
 
+    logger.info(f"Event: Nyaa returned {len(items) - before} results")
+
     # --- qBittorrent Plugins Integration --- #
     import os
+
+    before = len(items)
 
     try:
         from helm.core.lite_plugin_loader import run_plugins
@@ -164,6 +175,7 @@ def search_lite(query):
         plugin_results = run_plugins(query, plugin_dirs)
         if plugin_results:
             items.extend(plugin_results)
+        logger.info(f"Event: Native plugins returned {len(plugin_results)} results")
     except Exception as e:
         logger.debug(f"Event: Plugin loader failed: {e}")
 

@@ -68,7 +68,7 @@ def format_size(size_bytes):
     return "????"
 
 
-def animated_search(query, content_type, lite_mode=False):
+def animated_search(query, content_type, lite_mode=False, show_spinner=True):
     done = False
 
     def animate():
@@ -82,8 +82,10 @@ def animated_search(query, content_type, lite_mode=False):
         sys.stdout.write("\r" + " " * 20 + "\r")
         sys.stdout.flush()
 
-    t = threading.Thread(target=animate)
-    t.start()
+    t = None
+    if show_spinner:
+        t = threading.Thread(target=animate)
+        t.start()
 
     res = []
     used_lite = lite_mode
@@ -127,7 +129,8 @@ def animated_search(query, content_type, lite_mode=False):
 
     finally:
         done = True
-        t.join()
+        if t is not None:
+            t.join()
 
     return res, used_lite
 

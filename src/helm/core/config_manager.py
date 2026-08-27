@@ -14,6 +14,15 @@ import shutil
 ## setting up the  URL and the API key from .env ##
 # These are loaded dynamically in the modules that need them to avoid import crashes.
 
+# Credentials that must never be persisted in config.json; they live in secrets.env.
+SECRET_KEYS = frozenset(
+    [
+        "JACKETT_API_KEY",
+        "JACKETT_PASSWORD",
+        "QB_PASSWORD",
+    ]
+)
+
 CONTENT_PROFILES = {
     "video": [
         "480p",
@@ -380,15 +389,25 @@ def load_config():
                 return default_config
 
             loaded = json.loads(content)
-            # Ensure new keys exist
+            # Ensure new keys exist (after secrets are stripped so migrations
+            # never re-introduce credentials into config.json)
             for k, v in default_config.items():
                 if k not in loaded:
                     loaded[k] = v
-            return loaded
         except json.JSONDecodeError:
             print("Config file is corrupted. Backing up to config.json.bak and resetting.")
             shutil.copy(config_file, config_file + ".bak")
             return default_config
+
+    # One-way migration: legacy secrets found in config.json move to secrets.env.
+    from helm.core.secret_manager import migrate_config_secrets
+
+    had_secrets = any(k in loaded for k in SECRET_KEYS)
+    loaded = migrate_config_secrets(loaded)
+    if had_secrets:
+        # Persist the scrubbed config so the legacy secret is removed from disk.
+        save_config(loaded)
+    return loaded
 
 
 def save_config(config):
