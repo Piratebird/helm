@@ -95,11 +95,16 @@ class eztv:
             )
             if r.status_code == 403:
                 logger = get_logger(__name__)
-                logger.warning("Event: EZTV blocked this request (HTTP 403, likely Cloudflare). Skipping indexer.")
+                logger.warning(
+                    "Event: EZTV blocked this request (HTTP 403, likely Cloudflare). Skipping indexer.",
+                    extra={"file_only": True},
+                )
                 return ""
             if r.status_code != 200:
                 logger = get_logger(__name__)
-                logger.warning(f"Event: EZTV returned HTTP {r.status_code}. Skipping indexer.")
+                logger.warning(
+                    f"Event: EZTV returned HTTP {r.status_code}. Skipping indexer.", extra={"file_only": True}
+                )
                 return ""
             return r.text
         except Exception as e:
