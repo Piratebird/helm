@@ -65,8 +65,12 @@ def run_plugins(query, plugin_dirs):
     import concurrent.futures
 
     def execute_plugin(plugin):
+        name = getattr(plugin, "name", plugin.__class__.__name__)
         try:
+            before = len(novaprinter.plugin_results)
             plugin.search(query)
+            after = len(novaprinter.plugin_results)
+            logger.info(f"Event: Plugin {name} returned {after - before} results")
         except Exception:
             logger.debug(
                 f"Event: Error running plugin {getattr(plugin, 'name', plugin.__class__.__name__)}", exc_info=True

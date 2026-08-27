@@ -11,6 +11,8 @@ import os
 
 import requests
 
+from helm.core.secret_manager import get_secret
+
 _session = None
 
 
@@ -24,7 +26,7 @@ def login_qbittorrent():
 
     qb_webui = os.getenv("QB_WEBUI", "http://localhost:8080")
     qb_username = os.getenv("QB_USERNAME", "admin")
-    qb_password = os.getenv("QB_PASSWORD")
+    qb_password = get_secret("QB_PASSWORD")
     if not qb_password:
         raise Exception("Please set QB_PASSWORD in .env file !!")
 

@@ -106,7 +106,7 @@ For more detailed tasks breakdown check [TODO.md](docs/TODO.md)
 
 ## Configuration
 
-Helm uses a combo of env variables and JSON configuration files cleanly sandboxed away from your host OS.
+Helm uses a combo of env variables and config files cleanly sandboxed away from your host OS.
 
 With the adoption of XDG standards, your configuration and state are stored natively based on your OS:
 
@@ -116,12 +116,14 @@ With the adoption of XDG standards, your configuration and state are stored nati
 
 What these do:
 
+- `config.json`: Settings only (indexers, URLs, flags) — never secrets.
+- `secrets.env`: API keys and passwords (e.g. `JACKETT_API_KEY`, `JACKETT_PASSWORD`, `QB_PASSWORD`). Written with mode `0600` and resolved with env vars taking priority.
 - `state/.env.docker`: Environment variables for the containers
 - `state/jackett/`: Jackett configuration and indexers
 - `state/qbittorrent/`: qBittorrent configuration and state
 - `Downloads/helm/`: Your downloaded files
 
-Will see how the configuration changes based on the state of the project/its version.
+The first run migrates any legacy secrets found in older `config.json` files into `secrets.env` and rewrites the config file scrubbed.
 
 ## Usage
 

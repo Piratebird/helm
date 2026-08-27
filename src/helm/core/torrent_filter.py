@@ -76,7 +76,9 @@ def filter_items(items, positives, negatives, min_score=0, min_seeds=0):
         except (ValueError, TypeError):
             seeders = 0
 
-        if seeders < min_seeds:
+        # -1 means "unknown" (the parser could not extract a value). Keep those,
+        # only discard items with a known seed count below the threshold.
+        if seeders != -1 and seeders < min_seeds:
             continue
 
         # if it containts a negative word(unrelated to the searched topic) kill the fucker

@@ -4,6 +4,7 @@ import sys
 import requests
 
 from helm.core.config_manager import load_config, save_config
+from helm.core.secret_manager import get_secret, set_secrets
 
 
 def run_wizard():
@@ -32,8 +33,8 @@ def run_wizard():
 
         # Jackett
         jackett_url = config.get("JACKETT_URL", os.getenv("JACKETT_URL", "http://localhost:9117"))
-        jackett_api = config.get("JACKETT_API_KEY", os.getenv("JACKETT_API_KEY", ""))
-        jackett_pwd = config.get("JACKETT_PASSWORD", os.getenv("JACKETT_PASSWORD", ""))
+        jackett_api = get_secret("JACKETT_API_KEY") or ""
+        jackett_pwd = get_secret("JACKETT_PASSWORD") or ""
 
         while True:
             jackett_url_input = input(f"Jackett URL [{jackett_url}]: ").strip()
@@ -94,13 +95,12 @@ def run_wizard():
                 print("Jackett API key is required.\n")
 
         config["JACKETT_URL"] = jackett_url
-        config["JACKETT_API_KEY"] = jackett_api
-        config["JACKETT_PASSWORD"] = jackett_pwd
+        set_secrets({"JACKETT_API_KEY": jackett_api, "JACKETT_PASSWORD": jackett_pwd})
 
         # qBittorrent
         qb_webui = config.get("QB_WEBUI", os.getenv("QB_WEBUI", "http://localhost:18080"))
         qb_username = config.get("QB_USERNAME", os.getenv("QB_USERNAME", "admin"))
-        qb_password = config.get("QB_PASSWORD", os.getenv("QB_PASSWORD", ""))
+        qb_password = get_secret("QB_PASSWORD") or ""
 
         while True:
             qb_webui_input = input(f"qBittorrent WebUI URL [{qb_webui}]: ").strip()
@@ -150,10 +150,10 @@ def run_wizard():
 
         config["QB_WEBUI"] = qb_webui
         config["QB_USERNAME"] = qb_username
-        config["QB_PASSWORD"] = qb_password
+        set_secrets({"QB_PASSWORD": qb_password})
 
         save_config(config)
-        print("Configuration saved to config.json!\n")
+        print("Configuration saved! (settings -> config.json, secrets -> secrets.env)\n")
     except KeyboardInterrupt:
         print("\n\n\033[33mConfiguration aborted. later bozo!\033[0m")
         sys.exit(0)
@@ -171,15 +171,19 @@ def ensure_config():
         return
 
     needs_wizard = False
-    # Check required keys
-    keys = ["JACKETT_URL", "JACKETT_API_KEY", "QB_WEBUI", "QB_USERNAME", "QB_PASSWORD"]
+    # Check required settings (secrets are resolved via the secret store)
+    keys = ["JACKETT_URL", "QB_WEBUI", "QB_USERNAME"]
     for k in keys:
         if k not in config and not os.getenv(k):
             needs_wizard = True
             break
+    for k in ["JACKETT_API_KEY", "QB_PASSWORD"]:
+        if not needs_wizard and not get_secret(k):
+            needs_wizard = True
+            break
 
     # Dynamically check if JACKETT_PASSWORD is required
-    if not needs_wizard and "JACKETT_PASSWORD" not in config and os.getenv("JACKETT_PASSWORD") is None:
+    if not needs_wizard and not get_secret("JACKETT_PASSWORD"):
         jackett_url = config.get("JACKETT_URL", os.getenv("JACKETT_URL", "http://localhost:9117"))
         try:
             session = requests.Session()
@@ -202,6 +206,14 @@ def ensure_config():
     for k in keys:
         if k in config:
             os.environ[k] = config[k]
+
+    # Push all resolved secrets into the environment so native modules can use them.
+    from helm.core.config_manager import SECRET_KEYS
+
+    for k in SECRET_KEYS:
+        value = get_secret(k)
+        if value:
+            os.environ[k] = value
 
 
 if __name__ == "__main__":

@@ -3,6 +3,8 @@
 *.env
 .env.*
 !.env.example
+# Secret store (created by the config wizard, 0600 permissions)
+secrets.env
 
 # Virtual envs
 venv/
