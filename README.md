@@ -24,6 +24,7 @@
   - [Installation](#installation)
   - [Why this exists](#why-this-exists)
   - [Roadmap](#roadmap)
+  - [Changelog](#changelog)
   - [Configuration](#configuration)
   - [Usage](#usage)
   - [Disclaimer](#disclaimer)
@@ -103,6 +104,12 @@ Helm is actively roaming the 7seas and trying to get more treasures:
 - Better indexer management.
 
 For more detailed tasks breakdown check [TODO.md](docs/TODO.md)
+
+## Changelog
+
+All notable changes are tracked in [CHANGELOG.md](CHANGELOG.md).
+
+**Latest release: [0.9.2](CHANGELOG.md#092---2026-08-28)** — 1337x, BitTorrented and SubsPlease indexers plus EZTV now on its JSON API (`the boys` +153, `dune` +74, `one piece` +84 raw results), `--json` output no longer corrupted on fresh installs. See the full file for everything that came before.
 
 ## Configuration
 

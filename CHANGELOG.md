@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.2] - 2026-08-28
+### Added
+- **BitTorrented indexer** (`src/helm/plugins/bittorrented.py`): JSON search API over a DHT-crawled image library, with real swarm counts. +50 results per search.
+- **1337x indexer** (`src/helm/plugins/x1337.py`): HTML search with mirror rotation (`1337x.to`, `1337x.st`, `x1337x.ws`, `1337xx.to`), magnets pulled from the top-seeded detail pages only, and a relevance gate that discards the generic fallback list a mirror serves on a miss. Only reaches Cloudflare-cleared mirrors, so results vary by network.
+- **SubsPlease indexer** (`src/helm/plugins/subsplease.py`): JSON API over recent anime with magnets embedded (base32 info hashes supported). Animetitles only; reports unknown seeds since the source carries no swarm data.
+- Tests for the EZTV, 1337x, SubsPlease and BitTorrented plugin parsing, relevance gating, and connection-failure fallbacks.
+
+### Changed
+- **EZTV indexer now uses the public JSON API** (`eztvx.to/api/get-torrents`) instead of the Cloudflare-blocked HTML search; the API is browse-only (no search param), so titles are filtered client-side from the latest 100 releases.
+- Measured raw-result lift over 0.9.1 (`the boys` +153, `dune` +74, `one piece` +84), with 1337x, BitTorrented and SubsPlease all contributing zero or no-op on failure.
+
+### Fixed
+- `helm search --json` on a fresh install (no Jackett config) no longer emits the interactive "No configuration found" prompt into the JSON stream; it now falls back to Lite Mode silently and keeps stdout machine-readable.
+
 ## [0.9.1] - 2026-08-28
 ### Added
 - **YTS indexer** (`src/helm/plugins/yts.py`): pulls movie releases from the `yts.lt` YIFY API (returns 200 without Cloudflare; `yts.mx` is intermittently down) and emits magnets for every quality/torrent per title. +45 results on a `dune` search.
