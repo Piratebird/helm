@@ -80,3 +80,30 @@ def test_search_with_no_results_exits_one(monkeypatch, capsys):
         assert exc_info.value.code == 1
         out, _ = capsys.readouterr()
         assert json.loads(out) == []
+
+
+def test_json_without_config_defaults_to_lite_without_prompting(monkeypatch, capsys):
+    # A fresh install with no Jackett key must never emit the interactive
+    # "No configuration found" prompt into the JSON stream.
+    with tempfile.TemporaryDirectory() as tmp:
+        monkeypatch.setenv("HELM_CONFIG_DIR", tmp)
+        monkeypatch.delenv("JACKETT_API_KEY", raising=False)
+        captured = {}
+
+        def fake_search(query, content_type, lite_mode=False, show_spinner=True):
+            captured["lite_mode"] = lite_mode
+            return (_make_items(), lite_mode)
+
+        monkeypatch.setattr(helm.cli, "animated_search", fake_search)
+        monkeypatch.setattr(sys, "argv", ["helm", "search", "--json", "ubuntu"])
+
+        with pytest.raises(SystemExit) as exc_info:
+            helm.cli.main()
+
+        assert exc_info.value.code == 0
+        out, _ = capsys.readouterr()
+        # stdout must be parseable as pure JSON with no prompt text
+        data = json.loads(out)
+        assert len(data) == 2
+        assert captured["lite_mode"] is True
+        assert "No configuration found" not in out

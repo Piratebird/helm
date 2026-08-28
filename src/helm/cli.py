@@ -193,25 +193,34 @@ def main():
         if config.get("LITE_MODE_ONLY"):
             args.lite = True
         elif not os.getenv("JACKETT_API_KEY") and not get_secret("JACKETT_API_KEY"):
-            try:
-                choice = (
-                    input(
-                        f"\n\033[1m{C_TEXT}? No configuration found. Would you like to run in Lite Mode (zero setup)? [Y/n]:{C_RST} "
-                    )
-                    .strip()
-                    .lower()
-                )
-                if choice != "n":
-                    args.lite = True
-                    config["LITE_MODE_ONLY"] = True
-                    from helm.core.config_manager import save_config
+            if args.json:
+                # Machine-readable output must never interleave prompts; fall
+                # back to Lite Mode silently instead of asking the user.
+                args.lite = True
+                config["LITE_MODE_ONLY"] = True
+                from helm.core.config_manager import save_config
 
-                    save_config(config)
-                else:
-                    ensure_config()
-            except (KeyboardInterrupt, EOFError):
-                print(f"\n{C_SUB}later bozo!{C_RST}")
-                sys.exit(0)
+                save_config(config)
+            else:
+                try:
+                    choice = (
+                        input(
+                            f"\n\033[1m{C_TEXT}? No configuration found. Would you like to run in Lite Mode (zero setup)? [Y/n]:{C_RST} "
+                        )
+                        .strip()
+                        .lower()
+                    )
+                    if choice != "n":
+                        args.lite = True
+                        config["LITE_MODE_ONLY"] = True
+                        from helm.core.config_manager import save_config
+
+                        save_config(config)
+                    else:
+                        ensure_config()
+                except (KeyboardInterrupt, EOFError):
+                    print(f"\n{C_SUB}later bozo!{C_RST}")
+                    sys.exit(0)
         else:
             ensure_config()
 
