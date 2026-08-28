@@ -17,6 +17,7 @@ Values set through the interactive wizard are written straight to secrets.env.
 """
 
 import os
+import tempfile
 
 from helm.core.config_manager import SECRET_KEYS, get_config_dir
 
@@ -79,7 +80,9 @@ def get_secret(key, default=None):
 def set_secrets(mapping):
     """
     Merge *mapping* into secrets.env, preserving any existing secrets.
-    Creates the file with 0600 permissions if it does not exist yet.
+
+    Writes atomically (temp file + os.replace) so a crash can never truncate the
+    store, and enforces mode 0600 regardless of any pre-existing file permissions.
     """
     secrets = load_secrets()
     secrets.update({k: str(v) for k, v in mapping.items() if v is not None})
@@ -91,10 +94,21 @@ def set_secrets(mapping):
     if content:
         content += "\n"
 
-    fd = os.open(secrets_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(secrets_path), prefix=".secrets-", suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+        # mkstemp creates 0600, but chmod again in case umask interfered
+        os.chmod(tmp_path, 0o600)
+        os.replace(tmp_path, secrets_path)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except FileNotFoundError:
+            pass
+        raise
     finally:
         _invalidate_cache()
 

@@ -1,3 +1,15 @@
+# Template docker-compose.yml.
+#
+# This is NOT used directly by docker/podman compose: `./setup.sh` copies it,
+# substitutes your real HELM_CONFIG / HELM_STATE / HELM_DL paths, and writes the
+# result to `./docker-compose.yml`. The generated file is gitignored.
+#
+# If you want a VPN (gluetun) or Podman, run `./setup.sh` again and pick the
+# appropriate options rather than editing the generated file.
+#
+# The ${HELM_*} variables below are interpolated by `docker compose` itself when
+# those variables are exported, so this template is also directly usable.
+
 services:
   jackett:
     container_name: "${COMPOSE_PROJECT_NAME:-helm}-jackett"
@@ -21,8 +33,8 @@ services:
     security_opt:
       - label=disable
     volumes:
-      - /home/piratebird/.local/state/helm/jackett:/config
-      - /home/piratebird/Downloads/helm:/downloads
+      - ${HELM_STATE}/jackett:/config
+      - ${HELM_DL}:/downloads
     ports:
       - 19117:9117
     restart: unless-stopped
@@ -60,11 +72,11 @@ services:
     stdin_open: true
     tty: true
     env_file:
-      - /home/piratebird/.local/state/helm/.env.docker
+      - ${HELM_STATE}/.env.docker
     security_opt:
       - label=disable
     volumes:
-      - /home/piratebird/.config/helm/config.json:/app/config.json
+      - ${HELM_CONFIG}/config.json:/app/config.json
       - ${HOST_PWD:-.}/src:/app/src
       - ${HOST_PWD:-.}/docker-compose.yml:/app/docker-compose.yml
       - /var/run/docker.sock:/var/run/docker.sock
@@ -94,8 +106,8 @@ services:
     security_opt:
       - label=disable
     volumes:
-      - /home/piratebird/.local/state/helm/qbittorrent:/config
-      - /home/piratebird/Downloads/helm:/downloads
+      - ${HELM_STATE}/qbittorrent:/config
+      - ${HELM_DL}:/downloads
     ports:
       - 18080:18080
       - 6881:6881

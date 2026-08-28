@@ -2,13 +2,17 @@ import os
 import shutil
 import sys
 import tempfile
+import threading
 
 import pytest
 
 # Ensure src is in the python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src/helm/plugins")))
 
-from helm.core.lite_plugin_loader import run_plugins
+import novaprinter  # noqa: E402
+
+from helm.core.lite_plugin_loader import run_plugins  # noqa: E402
 
 # A dummy plugin script mimicking a qBittorrent plugin
 DUMMY_PLUGIN_CODE = """
@@ -75,3 +79,33 @@ def test_plugin_loader_handles_empty_dir():
         assert len(results) == 0
     finally:
         shutil.rmtree(temp_dir)
+
+
+def test_plugin_results_are_thread_local():
+    # Two plugins running concurrently each see only the items they emit; a
+    # stalled plugin can never append into another thread's (or search's) results.
+    collected = {}
+
+    def worker(tag):
+        novaprinter.prettyPrinter(
+            {"name": tag, "link": "magnet:?xt=urn:btih:1111", "size": "1 MB", "seeds": 1, "leech": 0}
+        )
+        collected[tag] = [item.title for item in novaprinter.get_results()]
+
+    threads = [threading.Thread(target=worker, args=(tag,)) for tag in ("a", "b")]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert collected["a"] == ["a"]
+    assert collected["b"] == ["b"]
+
+
+def test_run_plugins_does_not_leak_between_runs(plugin_dir):
+    # Repeated searches must not accumulate results (regression test for the
+    # shared-global-list race that polluted later queries).
+    first = run_plugins("ubuntu", [plugin_dir])
+    second = run_plugins("ubuntu", [plugin_dir])
+    assert len(first) == 1
+    assert len(second) == 1

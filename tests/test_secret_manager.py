@@ -32,6 +32,22 @@ def test_secrets_file_is_0600(monkeypatch):
         assert _is_0600(get_secrets_file())
 
 
+def test_set_secrets_tightens_preexisting_loose_permissions(monkeypatch):
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        monkeypatch.setenv("HELM_CONFIG_DIR", tmpdirname)
+        path = get_secrets_file()
+        with open(path, "w") as f:
+            f.write("OLD=1\n")
+        os.chmod(path, 0o644)
+
+        set_secrets({"NEW_KEY": "val"})
+
+        assert _is_0600(get_secrets_file())
+        secrets = load_secrets()
+        assert secrets["OLD"] == "1"
+        assert secrets["NEW_KEY"] == "val"
+
+
 def test_secrets_file_preserves_existing(monkeypatch):
     with tempfile.TemporaryDirectory() as tmpdirname:
         monkeypatch.setenv("HELM_CONFIG_DIR", tmpdirname)

@@ -10,6 +10,7 @@ once the user use "helm" once later on it'll be just detetced and loaded
 import json
 import os
 import shutil
+import sys
 
 ## setting up the  URL and the API key from .env ##
 # These are loaded dynamically in the modules that need them to avoid import crashes.
@@ -101,216 +102,24 @@ CONTENT_PROFILES = {
     ],
 }
 
-NEGATIVE_KEYWORDS = {
-    "games": [
-        # video/tv
-        "1080p",
-        "2160p",
-        "720p",
-        "web",
-        "webrip",
-        "bluray",
-        "bdrip",
-        "x264",
-        "x265",
-        "h264",
-        "h265",
-        "season",
-        "episode",
-        "s01",
-        "s02",
-        # books
-        "pdf",
-        "epub",
-        "mobi",
-        "azw",
-        "azw3",
-        "djvu",
-        "audiobook",
-        "m4b",
-        # music
-        "flac",
-        "aac",
-        "wav",
-        "album",
-        "single",
-        "ep",
-        "lp",
-        "ost",
-        "soundtrack",
-    ],
-    "video": [
-        # games/software
-        "repack",
-        "gog",
-        "fitgirl",
-        "dodi",
-        "elamigos",
-        "codex",
-        "flt",
-        "skidrow",
-        "steamrip",
-        "x64",
-        "x86",
-        "win",
-        "linux",
-        "mac",
-        # books
-        "pdf",
-        "epub",
-        "mobi",
-        "azw",
-        "azw3",
-        "djvu",
-        "audiobook",
-        "m4b",
-        # music
-        "flac",
-        "aac",
-        "wav",
-        "album",
-        "single",
-        "ep",
-        "lp",
-        "ost",
-        "soundtrack",
-    ],
-    "software": [
-        # video/tv
-        "1080p",
-        "2160p",
-        "720p",
-        "web",
-        "webrip",
-        "bluray",
-        "bdrip",
-        "x264",
-        "x265",
-        "h264",
-        "h265",
-        "season",
-        "episode",
-        "s01",
-        "s02",
-        # games
-        "repack",
-        "gog",
-        "fitgirl",
-        "dodi",
-        "elamigos",
-        "codex",
-        "flt",
-        "skidrow",
-        "steamrip",
-        # books
-        "pdf",
-        "epub",
-        "mobi",
-        "azw",
-        "azw3",
-        "djvu",
-        "audiobook",
-        "m4b",
-        # music
-        "flac",
-        "aac",
-        "wav",
-        "album",
-        "single",
-        "ep",
-        "lp",
-        "ost",
-        "soundtrack",
-    ],
-    "books": [
-        # video/tv
-        "1080p",
-        "2160p",
-        "720p",
-        "web",
-        "webrip",
-        "bluray",
-        "bdrip",
-        "x264",
-        "x265",
-        "h264",
-        "h265",
-        "season",
-        "episode",
-        "s01",
-        "s02",
-        # games/software
-        "repack",
-        "gog",
-        "fitgirl",
-        "dodi",
-        "elamigos",
-        "codex",
-        "flt",
-        "skidrow",
-        "steamrip",
-        "x64",
-        "x86",
-        "win",
-        "linux",
-        "mac",
-        # music
-        "flac",
-        "aac",
-        "wav",
-        "album",
-        "single",
-        "ep",
-        "lp",
-        "ost",
-        "soundtrack",
-    ],
-    "music": [
-        # video/tv
-        "1080p",
-        "2160p",
-        "720p",
-        "web",
-        "webrip",
-        "bluray",
-        "bdrip",
-        "x264",
-        "x265",
-        "h264",
-        "h265",
-        "season",
-        "episode",
-        "s01",
-        "s02",
-        # games/software
-        "repack",
-        "gog",
-        "fitgirl",
-        "dodi",
-        "elamigos",
-        "codex",
-        "flt",
-        "skidrow",
-        "steamrip",
-        "x64",
-        "x86",
-        "win",
-        "linux",
-        "mac",
-        # books
-        "pdf",
-        "epub",
-        "mobi",
-        "azw",
-        "azw3",
-        "djvu",
-        "audiobook",
-        "m4b",
-    ],
-}
+# Ad-hoc terms that are not keyword lists of another category but are still
+# strong signals that a result belongs elsewhere (episode-related media terms
+# are irrelevant for everything except video).
+RELATED_MEDIA_TERMS = ["season", "episode", "s01", "s02"]
 
 
-import sys  # noqa: E402
+def _build_negative_keywords():
+    """Each category's negatives are the union of every *other* category's positives."""
+    negatives = {}
+    for cat in CONTENT_PROFILES:
+        derived = [kw for other, kws in CONTENT_PROFILES.items() if other != cat for kw in kws]
+        if cat != "video":
+            derived += RELATED_MEDIA_TERMS
+        negatives[cat] = sorted(set(derived))
+    return negatives
+
+
+NEGATIVE_KEYWORDS = _build_negative_keywords()
 
 
 def get_config_dir():

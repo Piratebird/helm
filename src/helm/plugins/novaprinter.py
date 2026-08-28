@@ -1,9 +1,23 @@
+import threading
 from typing import List
 
 from helm.core.rss_fetcher import TorrentItem
 
-# This list holds the results dumped by plugins during execution
-plugin_results: List[TorrentItem] = []
+
+class _ThreadLocalResults(threading.local):
+    """Per-thread collector so a stalled plugin thread can never append results into another search."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.items: List[TorrentItem] = []
+
+
+_local_results = _ThreadLocalResults()
+
+
+def get_results() -> List[TorrentItem]:
+    """Return the calling thread's private result list (used by the loader)."""
+    return _local_results.items
 
 
 def prettyPrinter(result_dict):
@@ -42,6 +56,6 @@ def prettyPrinter(result_dict):
             seeders=seeders,
             leechers=leechers,
         )
-        plugin_results.append(item)
+        _local_results.items.append(item)
     except Exception:
         pass
