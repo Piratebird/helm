@@ -5,6 +5,23 @@ import time
 
 import requests
 
+# The CLI runs inside the mini-helm container, whose docker socket is mounted at
+# /var/run/docker.sock. Both Docker and Podman provide that socket, so the docker
+# CLI works for either engine; override via HELM_DOCKER_CMD if you ever run the
+# CLI without the socket (e.g. native mode with a remote daemon).
+DOCKER_CMD = os.environ.get("HELM_DOCKER_CMD", "docker")
+
+CONTAINER_SERVICES = frozenset(["jackett", "qbittorrent", "flaresolverr", "gluetun"])
+
+
+def _docker_run(args, **kwargs):
+    return subprocess.run([DOCKER_CMD] + args, **kwargs)
+
+
+def _container_name(service):
+    project = os.environ.get("COMPOSE_PROJECT_NAME", "helm")
+    return f"{project}-{service}"
+
 
 def spin_up_oneshot():
     print("\n\033[1m\033[36mInitializing One-Shot Ephemeral Stack...\033[0m")
@@ -12,8 +29,9 @@ def spin_up_oneshot():
 
     # Explicitly ensure all background containers are up just in case host depends_on fails
     try:
-        subprocess.run(
-            ["docker", "compose", "up", "-d", "--remove-orphans", "jackett", "qbittorrent", "flaresolverr"], check=False
+        _docker_run(
+            ["compose", "up", "-d", "--remove-orphans", "jackett", "qbittorrent", "flaresolverr"],
+            check=False,
         )
     except Exception:
         pass
@@ -24,11 +42,11 @@ def spin_up_oneshot():
         while elapsed < timeout:
             try:
                 # Get container ID
-                cid = subprocess.check_output(["docker", "compose", "ps", "-q", service_name], text=True).strip()
+                cid = subprocess.check_output([DOCKER_CMD, "compose", "ps", "-q", service_name], text=True).strip()
                 if cid:
                     # Check status
                     status = subprocess.check_output(
-                        ["docker", "inspect", "-f", "{{.State.Status}}", cid], text=True
+                        [DOCKER_CMD, "inspect", "-f", "{{.State.Status}}", cid], text=True
                     ).strip()
                     if status == "running":
                         return True
@@ -36,9 +54,8 @@ def spin_up_oneshot():
                         print(
                             f"\033[31m[ERROR] Container {service_name} crashed immediately. Check 'docker compose logs {service_name}'\033[0m"
                         )
-                        project_name = os.environ.get("COMPOSE_PROJECT_NAME", "helm")
-                        for svc in ["jackett", "qbittorrent", "flaresolverr", "gluetun"]:
-                            subprocess.run(["docker", "stop", f"{project_name}-{svc}"], capture_output=True)
+                        for svc in CONTAINER_SERVICES:
+                            _docker_run(["stop", _container_name(svc)], capture_output=True)
                         sys.exit(1)
             except Exception:
                 pass
@@ -57,7 +74,7 @@ def spin_up_oneshot():
     jackett_ready = False
     for _ in range(30):
         try:
-            r = requests.get(f"{jackett_url}/UI/Dashboard")
+            r = requests.get(f"{jackett_url}/UI/Dashboard", timeout=5)
             if r.status_code in [200, 401]:
                 jackett_ready = True
                 break
@@ -73,7 +90,7 @@ def spin_up_oneshot():
     flaresolverr_ready = False
     for _ in range(30):
         try:
-            r = requests.get(flaresolverr_url)
+            r = requests.get(flaresolverr_url, timeout=5)
             if "ready" in r.text.lower() or r.status_code == 200:
                 flaresolverr_ready = True
                 break
@@ -90,18 +107,11 @@ def spin_up_oneshot():
 def teardown_oneshot():
     print("\n\033[1m\033[33mTearing down the ephemeral stack to save processing power...\033[0m")
     try:
-        project_name = os.environ.get("COMPOSE_PROJECT_NAME", "helm")
-        containers = [
-            f"{project_name}-jackett",
-            f"{project_name}-qbittorrent",
-            f"{project_name}-flaresolverr",
-            f"{project_name}-gluetun",
-        ]
         # Stop containers individually via 'docker stop' instead of 'docker compose stop'
         # to avoid network namespace destruction that triggers "rootless netns: permission denied"
-        for c in containers:
+        for svc in CONTAINER_SERVICES:
             try:
-                subprocess.run(["docker", "stop", c], capture_output=True)
+                _docker_run(["stop", _container_name(svc)], capture_output=True)
             except KeyboardInterrupt:
                 pass
         print("\033[1m\033[32mAll containers stopped cleanly. Your RAM is free!\033[0m")
@@ -123,7 +133,7 @@ def wait_for_download():
     try:
         while True:
             try:
-                r = session.get(f"{qb_webui}/api/v2/torrents/info")
+                r = session.get(f"{qb_webui}/api/v2/torrents/info", timeout=15)
                 if r.status_code == 200:
                     torrents = r.json()
                     if not torrents:
@@ -150,7 +160,7 @@ def wait_for_download():
         print("\n\033[31mDownload cancelled by user!\033[0m")
         print("\033[3mRemoving unfinished torrents from qBittorrent...\033[0m")
         try:
-            r = session.get(f"{qb_webui}/api/v2/torrents/info")
+            r = session.get(f"{qb_webui}/api/v2/torrents/info", timeout=15)
             if r.status_code == 200:
                 torrents = r.json()
                 hashes_to_delete = [t.get("hash") for t in torrents if t.get("progress", 0.0) < 1.0]
@@ -159,6 +169,7 @@ def wait_for_download():
                     session.post(
                         f"{qb_webui}/api/v2/torrents/delete",
                         data={"hashes": "|".join(hashes_to_delete), "deleteFiles": "true"},
+                        timeout=15,
                     )
         except Exception:
             pass

@@ -139,6 +139,53 @@ def get_display_width(s):
     return sum(2 if unicodedata.east_asian_width(c) in ("F", "W") else 1 for c in s)
 
 
+def _truncate_to_width(text, max_width):
+    """Truncate *text* to *max_width* display columns, appending '...' when cut."""
+    if get_display_width(text) <= max_width:
+        return text
+    current_w = 0
+    cut = ""
+    for c in text:
+        cw = 2 if unicodedata.east_asian_width(c) in ("F", "W") else 1
+        if current_w + cw > max_width - 3:
+            break
+        cut += c
+        current_w += cw
+    return cut + "..."
+
+
+def _paginate(count, selected, limit):
+    """Return (start_index, stop_index) for a scrolled window of size *limit*."""
+    if count <= limit:
+        return 0, count
+    start = max(0, selected - (limit // 2))
+    if start + limit > count:
+        start = max(0, count - limit)
+    return start, min(count, start + limit)
+
+
+def _append_scroll_footer(buf, count, start, stop, limit):
+    if count <= limit:
+        return
+    remaining = count - stop
+    if remaining > 0:
+        buf.append(f"\033[K\r\n\033[3m{C_SUB}... and {remaining} more items below{C_RST}\033[0m\033[K\r\n")
+    if start > 0:
+        buf.append(f"\033[K\r\n\033[3m{C_SUB}... and {start} items above{C_RST}\033[0m\033[K\r\n")
+
+
+def _enter_raw_input(fd):
+    if not IS_WINDOWS:
+        tty.setraw(sys.stdin.fileno())
+    sys.stdout.write("\033[?25l")
+
+
+def _exit_raw_input(fd, old_settings):
+    sys.stdout.write("\033[?25h")
+    if not IS_WINDOWS:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+
 def interactive_indexer_selector(indexer_list):
     fd = sys.stdin.fileno() if not IS_WINDOWS else None
     old_settings = termios.tcgetattr(fd) if not IS_WINDOWS else None
@@ -166,13 +213,9 @@ def interactive_indexer_selector(indexer_list):
             selected_index = max(0, len(disp_items) - 1)
 
         limit = 40
-        start_idx = 0
-        if len(disp_items) > limit:
-            start_idx = max(0, selected_index - (limit // 2))
-            if start_idx + limit > len(disp_items):
-                start_idx = max(0, len(disp_items) - limit)
+        start_idx, stop_idx = _paginate(len(disp_items), selected_index, limit)
 
-        window_items = disp_items[start_idx : start_idx + limit]
+        window_items = disp_items[start_idx:stop_idx]
 
         buf.append(
             f"\033[1m{C_TEXT}Found {len(disp_items)} indexers (showing {start_idx + 1}-{start_idx + len(window_items)}):{C_RST}\033[K\r\n"
@@ -181,17 +224,7 @@ def interactive_indexer_selector(indexer_list):
 
         for i, idx in enumerate(window_items):
             actual_i = start_idx + i
-            title = idx["title"]
-            if get_display_width(title) > 40:
-                current_w = 0
-                new_title = ""
-                for c in title:
-                    cw = 2 if unicodedata.east_asian_width(c) in ("F", "W") else 1
-                    if current_w + cw > 37:
-                        break
-                    new_title += c
-                    current_w += cw
-                title = new_title + "..."
+            title = _truncate_to_width(idx["title"], 40)
 
             status = "\033[32m[CONFIGURED]\033[0m" if idx["configured"] else "\033[31m[UNCONFIGURED]\033[0m"
             typ = idx.get("type", "unknown")
@@ -208,12 +241,7 @@ def interactive_indexer_selector(indexer_list):
                     f"\033[1m{C_SUB}   {C_RST} {C_LOGO}{title}{C_RST}{' ' * title_pad}\033[1m{C_TEXT}{info_str}{C_RST}\033[K\r\n"
                 )
 
-        if len(disp_items) > limit:
-            remaining = len(disp_items) - (start_idx + limit)
-            if remaining > 0:
-                buf.append(f"\033[K\r\n\033[3m{C_SUB}... and {remaining} more items below{C_RST}\033[0m\033[K\r\n")
-            if start_idx > 0:
-                buf.append(f"\033[K\r\n\033[3m{C_SUB}... and {start_idx} items above{C_RST}\033[0m\033[K\r\n")
+        _append_scroll_footer(buf, len(disp_items), start_idx, stop_idx, limit)
 
         buf.append(f"{C_LINE}" + "━" * 80 + f"{C_RST}\033[K\r\n")
         prompt = f"\033[1m{C_TEXT}❯ Search (Arrows=Move, Enter=Toggle Config, Esc/Ctrl-C=Exit):{C_RST} {current_input}"
@@ -223,9 +251,7 @@ def interactive_indexer_selector(indexer_list):
         return disp_items
 
     try:
-        if not IS_WINDOWS:
-            tty.setraw(sys.stdin.fileno())
-        sys.stdout.write("\033[?25l")
+        _enter_raw_input(fd)
         items_to_show = redraw()
 
         while True:
@@ -261,9 +287,7 @@ def interactive_indexer_selector(indexer_list):
                     selected_index = 0
                     items_to_show = redraw()
     finally:
-        sys.stdout.write("\033[?25h")
-        if not IS_WINDOWS:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        _exit_raw_input(fd, old_settings)
 
 
 def interactive_selector(filtered_list, mode_str="", lite_mode=False):
@@ -291,13 +315,9 @@ def interactive_selector(filtered_list, mode_str="", lite_mode=False):
             selected_index = max(0, len(disp_items) - 1)
 
         limit = 40
-        start_idx = 0
-        if len(disp_items) > limit:
-            start_idx = max(0, selected_index - (limit // 2))
-            if start_idx + limit > len(disp_items):
-                start_idx = max(0, len(disp_items) - limit)
+        start_idx, stop_idx = _paginate(len(disp_items), selected_index, limit)
 
-        window_items = disp_items[start_idx : start_idx + limit]
+        window_items = disp_items[start_idx:stop_idx]
 
         buf.append(
             f"\033[1m{C_TEXT}Found {len(disp_items)} results (showing {start_idx + 1}-{start_idx + len(window_items)}):{C_RST}\033[K\r\n"
@@ -313,16 +333,7 @@ def interactive_selector(filtered_list, mode_str="", lite_mode=False):
             prefix_len = 10 if is_generic else 0
             max_title_len = 38 - prefix_len
 
-            if get_display_width(title) > max_title_len:
-                current_w = 0
-                new_title = ""
-                for c in title:
-                    cw = 2 if unicodedata.east_asian_width(c) in ("F", "W") else 1
-                    if current_w + cw > max_title_len - 3:
-                        break
-                    new_title += c
-                    current_w += cw
-                title = new_title + "..."
+            title = _truncate_to_width(title, max_title_len)
 
             visible_len = prefix_len + get_display_width(title)
             title_pad = max(2, 40 - visible_len)
@@ -346,12 +357,7 @@ def interactive_selector(filtered_list, mode_str="", lite_mode=False):
                     f"\033[1m{C_SUB}   {C_RST} {C_LOGO}{title}{C_RST}{' ' * title_pad}\033[1m{C_TEXT}{info_str}{C_RST}\033[K\r\n"
                 )
 
-        if len(disp_items) > limit:
-            remaining = len(disp_items) - (start_idx + limit)
-            if remaining > 0:
-                buf.append(f"\033[K\r\n\033[3m{C_SUB}... and {remaining} more items below{C_RST}\033[0m\033[K\r\n")
-            if start_idx > 0:
-                buf.append(f"\033[K\r\n\033[3m{C_SUB}... and {start_idx} items above{C_RST}\033[0m\033[K\r\n")
+        _append_scroll_footer(buf, len(disp_items), start_idx, stop_idx, limit)
 
         buf.append(f"{C_LINE}" + "━" * 80 + f"{C_RST}\033[K\r\n")
 
@@ -366,9 +372,7 @@ def interactive_selector(filtered_list, mode_str="", lite_mode=False):
         return disp_items
 
     try:
-        if not IS_WINDOWS:
-            tty.setraw(sys.stdin.fileno())
-        sys.stdout.write("\033[?25l")
+        _enter_raw_input(fd)
         items_to_show = redraw()
 
         while True:
@@ -407,6 +411,4 @@ def interactive_selector(filtered_list, mode_str="", lite_mode=False):
                     selected_index = 0
                     items_to_show = redraw()
     finally:
-        sys.stdout.write("\033[?25h")
-        if not IS_WINDOWS:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        _exit_raw_input(fd, old_settings)

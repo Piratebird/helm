@@ -1,7 +1,11 @@
 import datetime
+import os
+import xml.etree.ElementTree as ET
+from email.utils import parsedate_to_datetime
 
 import requests
 
+from helm.core.config_manager import get_config_dir
 from helm.core.logger import get_logger
 from helm.core.rss_fetcher import TorrentItem
 
@@ -115,8 +119,6 @@ def search_lite(query):
     try:
         r = requests.get(nyaa_url, timeout=15)
         if r.status_code == 200:
-            import xml.etree.ElementTree as ET
-
             root = ET.fromstring(r.content)
             for item in root.findall("./channel/item"):
                 title = item.findtext("title") or ""
@@ -145,8 +147,6 @@ def search_lite(query):
                 if pubdate:
                     try:
                         # Parse "Sun, 08 Dec 2024 16:53:15 +0000"
-                        from email.utils import parsedate_to_datetime
-
                         pubdate = parsedate_to_datetime(pubdate).strftime("%Y-%m-%d")
                     except Exception:
                         pass
@@ -159,8 +159,6 @@ def search_lite(query):
     logger.info(f"Event: Nyaa returned {len(items) - before} results")
 
     # --- qBittorrent Plugins Integration --- #
-    import os
-
     before = len(items)
 
     try:
@@ -168,7 +166,7 @@ def search_lite(query):
 
         # Define where to look for plugins
         plugin_dirs = [
-            os.path.expanduser("~/.helm_data/plugins"),  # User plugins
+            os.path.join(get_config_dir(), "plugins"),  # User plugins (XDG config dir)
             os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "plugins"),  # Bundled plugins
         ]
 

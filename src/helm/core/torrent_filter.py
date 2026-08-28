@@ -4,6 +4,7 @@ filter torrents functionality based on seeds and quality
 core/torrent_filter.py
 """
 
+import hashlib
 import re
 
 
@@ -38,9 +39,6 @@ def match_quality(title, qualities):
         if re.search(r"\b" + re.escape(q.lower()) + r"\b", title):
             return True
     return False
-
-
-import hashlib  # noqa: E402
 
 
 def dedupe(items):

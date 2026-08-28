@@ -1,18 +1,15 @@
 import argparse
 import json
 import os
+import re
 import sys
+import time
 
 from dotenv import load_dotenv
-
-load_dotenv(os.path.expanduser("~/.helm_data/.env"))
 
 from helm.core.secret_manager import get_secret, get_secrets_file  # noqa: E402
 
 load_dotenv(get_secrets_file())
-
-import re  # noqa: E402
-import time  # noqa: E402
 
 from helm.core.config_manager import CONTENT_PROFILES, NEGATIVE_KEYWORDS, load_config  # noqa: E402
 from helm.core.config_wizard import ensure_config  # noqa: E402
@@ -22,6 +19,25 @@ from helm.core.qbittorrent_client import add_magnet  # noqa: E402
 from helm.core.torrent_filter import dedupe, filter_items  # noqa: E402
 from helm.ui.colors import C_ERR, C_LOGO, C_RST, C_SUB, C_TEXT, logo  # noqa: E402
 from helm.ui.tui import animated_search, interactive_indexer_selector, interactive_selector  # noqa: E402
+
+
+def _send_magnet(selected, lite_mode, json_mode=False, success_msg="Torrent sent successfully :)"):
+    """Send a torrent to qBittorrent, falling back to the built-in downloader if it is unavailable."""
+    if lite_mode:
+        from helm.core.lite_downloader import download_magnet
+
+        download_magnet(selected.link)
+        return
+
+    try:
+        add_magnet(selected.link)
+        if not json_mode:
+            print(f"{C_TEXT}{success_msg}{C_RST}")
+    except Exception as e:
+        print(f"\n\033[33m[!] qBittorrent not available ({e}). Falling back to LITE MODE downloader...\033[0m\n")
+        from helm.core.lite_downloader import download_magnet
+
+        download_magnet(selected.link)
 
 
 def main():
@@ -362,51 +378,20 @@ def main():
 
     if args.auto:
         selected = filtered[0]
-        if args.lite:
-            from helm.core.lite_downloader import download_magnet
-
-            download_magnet(selected.link)
-        else:
-            try:
-                add_magnet(selected.link)
-                if not args.json:
-                    print(f"{C_TEXT}Top torrent sent successfully :){C_RST}")
-            except Exception as e:
-                print(
-                    f"\n\033[33m[!] qBittorrent not available ({e}). Falling back to LITE MODE downloader...\033[0m\n"
-                )
-                from helm.core.lite_downloader import download_magnet
-
-                download_magnet(selected.link)
-
-            if args.oneshot:
-                wait_for_download()
-                teardown_oneshot()
+        _send_magnet(selected, args.lite, args.json, success_msg="Top torrent sent successfully :)")
+        if args.oneshot and not args.lite:
+            wait_for_download()
+            teardown_oneshot()
 
         sys.exit(0)
 
     do_teardown = False
     try:
         selected, do_teardown = interactive_selector(filtered, mode_str, lite_mode=args.lite)
-        if args.lite:
-            from helm.core.lite_downloader import download_magnet
-
-            download_magnet(selected.link)
-        else:
-            try:
-                add_magnet(selected.link)
-                print(f"\n{C_TEXT}Torrent sent successfully :){C_RST}")
-            except Exception as e:
-                print(
-                    f"\n\033[33m[!] qBittorrent not available ({e}). Falling back to LITE MODE downloader...\033[0m\n"
-                )
-                from helm.core.lite_downloader import download_magnet
-
-                download_magnet(selected.link)
-
-            if args.oneshot or do_teardown:
-                wait_for_download()
-                teardown_oneshot()
+        _send_magnet(selected, args.lite, args.json)
+        if (args.oneshot or do_teardown) and not args.lite:
+            wait_for_download()
+            teardown_oneshot()
 
     except KeyboardInterrupt:
         print(f"\n{C_SUB}later bozo!{C_RST}")

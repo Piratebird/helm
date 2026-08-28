@@ -1,3 +1,4 @@
+import concurrent.futures
 import importlib.util
 import os
 import sys
@@ -55,35 +56,40 @@ def load_plugins(plugin_dir):
     return plugins
 
 
-def run_plugins(query, plugin_dirs):
-    novaprinter.plugin_results.clear()
+def _execute_plugin(plugin, query):
+    name = getattr(plugin, "name", plugin.__class__.__name__)
+    collector = novaprinter.get_results()
+    collector.clear()  # pooled worker threads keep their thread-local between runs
+    before = len(collector)
+    try:
+        plugin.search(query)
+    except Exception:
+        logger.debug(f"Event: Error running plugin {name}", exc_info=True)
+    after = len(collector)
+    logger.info(f"Event: Plugin {name} returned {after - before} results")
+    return collector
 
+
+def run_plugins(query, plugin_dirs):
     plugins = []
     for d in plugin_dirs:
         plugins.extend(load_plugins(d))
 
-    import concurrent.futures
-
-    def execute_plugin(plugin):
-        name = getattr(plugin, "name", plugin.__class__.__name__)
-        try:
-            before = len(novaprinter.plugin_results)
-            plugin.search(query)
-            after = len(novaprinter.plugin_results)
-            logger.info(f"Event: Plugin {name} returned {after - before} results")
-        except Exception:
-            logger.debug(
-                f"Event: Error running plugin {getattr(plugin, 'name', plugin.__class__.__name__)}", exc_info=True
-            )
-
-    # Run all plugins concurrently with a timeout
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
-    futures = [executor.submit(execute_plugin, p) for p in plugins]
-    concurrent.futures.wait(futures, timeout=15)
-    # Shut down without waiting for stalled threads to finish so the UI stays snappy
+    futures = [executor.submit(_execute_plugin, p, query) for p in plugins]
+    # Give slow-but-alive plugins up to 30s; each plugin's own HTTP requests
+    # already time out at ~15s so a hung socket is the only straggler.
+    done, _ = concurrent.futures.wait(futures, timeout=30)
+    # Abandon stragglers so the UI stays snappy. Their future writes land in a
+    # private thread-local collector (never the return value), so they cannot
+    # contaminate this or any later search.
     executor.shutdown(wait=False)
 
-    results = list(novaprinter.plugin_results)
-    novaprinter.plugin_results.clear()
+    results = []
+    for future in done:
+        try:
+            results.extend(future.result())
+        except Exception:
+            logger.debug("Event: Failed to collect plugin results", exc_info=True)
 
     return results
