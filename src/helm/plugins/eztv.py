@@ -1,120 +1,68 @@
-# VERSION: 1.23
-# AUTHORS: nindogo
-# CONTRIBUTORS: Diego de las Heras (ngosang@hotmail.es)
+# VERSION: 2.0
+# AUTHORS: helm
 
-import re
-from datetime import datetime, timedelta
-from html.parser import HTMLParser
-from typing import Callable, Dict, List, Mapping, Match, Tuple, Union
+# The HTML search endpoint (eztvx.to/search/... ) is Cloudflare-blocked (HTTP
+# 403 "Just a moment"), so this plugin uses eztvx.to's public JSON API instead.
+# The API exposes the latest releases (no server-side search): matching titles
+# are filtered client-side from the most recent 100 episodes.
 
 import requests
 from novaprinter import prettyPrinter
 
 from helm.core.logger import get_logger
 
+logger = get_logger(__name__)
 
-class eztv:
+
+class eztv(object):
     name = "EZTV"
-    url = "https://eztvx.to/"
-    supported_categories = {"all": "all", "tv": "tv"}
+    url = "https://eztvx.to"
+    supported_categories = {"all": "all", "tv": "all"}
 
-    class MyHtmlParser(HTMLParser):
-        A, TD, TR, TABLE = ("a", "td", "tr", "table")
-
-        """ Sub-class for parsing results """
-
-        def __init__(self, url: str) -> None:
-            HTMLParser.__init__(self)
-            self.url = url
-
-            now = datetime.now()
-            self.date_parsers: Mapping[str, Callable[[Match[str]], datetime]] = {
-                r"(\d+)h\s+(\d+)m": lambda m: now - timedelta(hours=int(m[1]), minutes=int(m[2])),
-                r"(\d+)d\s+(\d+)h": lambda m: now - timedelta(days=int(m[1]), hours=int(m[2])),
-                r"(\d+)\s+weeks?": lambda m: now - timedelta(weeks=int(m[1])),
-                r"(\d+)\s+mo": lambda m: now - timedelta(days=int(m[1]) * 30),
-                r"(\d+)\s+years?": lambda m: now - timedelta(days=int(m[1]) * 365),
-            }
-            self.in_table_row = False
-            self.current_item: Dict[str, object] = {}
-
-        def handle_starttag(self, tag: str, attrs: List[Tuple[str, Union[str, None]]]) -> None:
-            def getStr(d: Mapping[str, Union[str, None]], key: str) -> str:
-                value = d.get(key, "")
-                return value if value is not None else ""
-
-            params = dict(attrs)
-
-            if params.get("class") == "forum_header_border" and params.get("name") == "hover":
-                self.in_table_row = True
-                self.current_item = {}
-                self.current_item["seeds"] = -1
-                self.current_item["leech"] = -1
-                self.current_item["size"] = -1
-                self.current_item["engine_url"] = self.url
-                self.current_item["pub_date"] = -1
-
-            if tag == self.A and self.in_table_row and params.get("class") == "magnet":
-                self.current_item["link"] = params.get("href")
-
-            if tag == self.A and self.in_table_row and params.get("class") == "epinfo":
-                self.current_item["desc_link"] = self.url + getStr(params, "href")
-                self.current_item["name"] = getStr(params, "title").split(" (")[0]
-
-        def handle_data(self, data: str) -> None:
-            data = data.replace(",", "")
-            if self.in_table_row and (data.endswith(" KB") or data.endswith(" MB") or data.endswith(" GB")):
-                self.current_item["size"] = data
-
-            elif self.in_table_row and data.isnumeric():
-                self.current_item["seeds"] = int(data)
-
-            elif self.in_table_row:  # Check for a relative time
-                for pattern, calc in self.date_parsers.items():
-                    m = re.match(pattern, data)
-                    if m:
-                        self.current_item["pub_date"] = int(calc(m).timestamp())
-                        break
-
-        def handle_endtag(self, tag: str) -> None:
-            if self.in_table_row and tag == self.TR:
-                prettyPrinter(self.current_item)  # type: ignore[arg-type] # refactor later
-                self.in_table_row = False
-
-    def do_query(self, what: str) -> str:
-        url = f"{self.url}/search/{what.replace('%20', '-')}"
+    def search(self, what, cat="all"):
+        query = what.strip().lower()
         try:
-            r = requests.post(
-                url,
-                data=b"layout=def_wlinks",
-                headers={
-                    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0",
-                    "Referer": self.url,
-                },
+            r = requests.get(
+                f"{self.url}/api/get-torrents",
+                params={"limit": 100, "page": 1},
+                headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) helm/0.9.1"},
                 timeout=15,
             )
-            if r.status_code == 403:
-                logger = get_logger(__name__)
-                logger.warning(
-                    "Event: EZTV blocked this request (HTTP 403, likely Cloudflare). Skipping indexer.",
-                    extra={"file_only": True},
-                )
-                return ""
-            if r.status_code != 200:
-                logger = get_logger(__name__)
-                logger.warning(
-                    f"Event: EZTV returned HTTP {r.status_code}. Skipping indexer.", extra={"file_only": True}
-                )
-                return ""
-            return r.text
+            r.raise_for_status()
+            payload = r.json()
         except Exception as e:
-            logger = get_logger(__name__)
-            logger.debug(f"Event: Connection error in EZTV: {e}", exc_info=True)
-            return ""
+            logger.debug(f"Event: EZTV API connection failed: {e}")
+            return
 
-    def search(self, what: str, cat: str = "all") -> None:
-        eztv_html = self.do_query(what)
+        for torrent in payload.get("torrents") or []:
+            title = torrent.get("title") or torrent.get("filename") or ""
+            if not title:
+                continue
+            if query and query not in title.lower():
+                continue
 
-        eztv_parser = self.MyHtmlParser(self.url)
-        eztv_parser.feed(eztv_html)
-        eztv_parser.close()
+            info_hash = (torrent.get("hash") or "").lower()
+            if not info_hash:
+                continue
+
+            magnet = torrent.get("magnet_url") or ""
+            if not magnet:
+                magnet = f"magnet:?xt=urn:btih:{info_hash}&dn={requests.utils.quote(title)}"
+
+            try:
+                size = int(torrent.get("size_bytes") or 0)
+            except (TypeError, ValueError):
+                size = 0
+
+            prettyPrinter(
+                {
+                    "name": title,
+                    "link": magnet,
+                    "size": f"{size} B",
+                    "seeds": str(torrent.get("seeds", 0) or 0),
+                    "leech": str(torrent.get("peers", 0) or 0),
+                    "engine_url": self.url,
+                    "desc_link": f"https://eztvx.to/ep/{info_hash}",
+                    "pub_date": int(torrent.get("date_released_unix") or 0),
+                }
+            )
