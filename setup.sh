@@ -39,12 +39,17 @@ while [[ $# -gt 0 ]]; do
       HELM_DL="$2"
       shift 2
       ;;
+    --skip-prompts)
+      SKIP_PROMPTS=1
+      shift
+      ;;
     --help)
       echo "Usage: ./setup.sh [OPTIONS]"
       echo "Options:"
       echo "  --config-dir <path>       Set configuration directory (default: OS native config path)"
       echo "  --state-dir <path>        Set state directory (default: OS native state path)"
       echo "  --downloads-dir <path>    Set downloads directory (default: ~/Downloads/helm)"
+      echo "  --skip-prompts            Run silently with default values"
       exit 0
       ;;
     *)
@@ -65,13 +70,17 @@ echo "        Helm Application Setup Script      "
 echo "==========================================="
 echo ""
 
-echo "How would you like to install the required services (Jackett & qBittorrent)?"
-echo "  [1] Docker (Recommended) - Uses standard docker-compose, isolates dependencies."
-echo "  [2] Podman               - Daemonless, rootless containers for lower memory overhead."
-echo "  [3] Native               - Installs directly to your OS (/opt/Jackett & /usr/bin/qbittorrent). Highest performance but clutters OS."
-read -r -p "Choose your installation method (1/2/3, default 1): " install_mode
-install_mode=${install_mode:-1}
-echo ""
+if [ -n "$SKIP_PROMPTS" ]; then
+    install_mode=1
+else
+    echo "How would you like to install the required services (Jackett & qBittorrent)?"
+    echo "  [1] Docker (Recommended) - Uses standard docker-compose, isolates dependencies."
+    echo "  [2] Podman               - Daemonless, rootless containers for lower memory overhead."
+    echo "  [3] Native               - Installs directly to your OS (/opt/Jackett & /usr/bin/qbittorrent). Highest performance but clutters OS."
+    read -r -p "Choose your installation method (1/2/3, default 1): " install_mode
+    install_mode=${install_mode:-1}
+    echo ""
+fi
 
 check_docker() {
     if ! command -v docker &> /dev/null; then
@@ -130,8 +139,12 @@ check_docker() {
 check_podman() {
     if ! command -v podman &> /dev/null; then
         echo "[-] Podman is not installed."
-        read -r -p "Would you like this script to install Podman automatically? [Y/n]: " auto_install
-        auto_install=${auto_install:-Y}
+        if [ -n "$SKIP_PROMPTS" ]; then
+            auto_install="Y"
+        else
+            read -r -p "Would you like this script to install Podman automatically? [Y/n]: " auto_install
+            auto_install=${auto_install:-Y}
+        fi
         
         if [[ ! "$auto_install" =~ ^[Yy]$ ]]; then
             echo "Please install Podman manually and re-run the script."
@@ -206,8 +219,12 @@ install_native() {
     
     if [ "$needs_install" -eq 1 ]; then
         echo "[-] Some native dependencies (qbittorrent-nox, wget, libicu, etc.) are missing."
-        read -r -p "Would you like this script to install them automatically? [Y/n]: " auto_install
-        auto_install=${auto_install:-Y}
+        if [ -n "$SKIP_PROMPTS" ]; then
+            auto_install="Y"
+        else
+            read -r -p "Would you like this script to install them automatically? [Y/n]: " auto_install
+            auto_install=${auto_install:-Y}
+        fi
         
         if [[ ! "$auto_install" =~ ^[Yy]$ ]]; then
             echo "Please install them manually and re-run the script."
@@ -268,19 +285,29 @@ mkdir -p "$HELM_CONFIG"
 touch "$HELM_CONFIG/config.json"
 
 echo ""
-echo "How would you like to run Helm?"
-echo "  [1] Permanent (Always-On) - Containers run 24/7 in the background."
-echo "  [2] Ephemeral (One-Shot)  - Containers spin up only when downloading, then tear down."
-read -r -p "Choose your mode (1/2, default 2): " run_mode
-run_mode=${run_mode:-2}
-echo ""
+if [ -n "$SKIP_PROMPTS" ]; then
+    run_mode=2
+else
+    echo "How would you like to run Helm?"
+    echo "  [1] Permanent (Always-On) - Containers run 24/7 in the background."
+    echo "  [2] Ephemeral (One-Shot)  - Containers spin up only when downloading, then tear down."
+    read -r -p "Choose your mode (1/2, default 2): " run_mode
+    run_mode=${run_mode:-2}
+    echo ""
+fi
 
-read -r -p "Enter Jackett API Key (press Enter to auto-extract later): " JACKETT_API
-read -r -p "Enter qBittorrent Username (default: admin): " qb_user
-qb_user=${qb_user:-admin}
+if [ -n "$SKIP_PROMPTS" ]; then
+    JACKETT_API=""
+    qb_user="admin"
+    use_vpn="n"
+else
+    read -r -p "Enter Jackett API Key (press Enter to auto-extract later): " JACKETT_API
+    read -r -p "Enter qBittorrent Username (default: admin): " qb_user
+    qb_user=${qb_user:-admin}
 
-echo ""
-read -r -p "Do you want to route qBittorrent through a VPN using Gluetun? (y/N): " use_vpn
+    echo ""
+    read -r -p "Do you want to route qBittorrent through a VPN using Gluetun? (y/N): " use_vpn
+fi
 
 # Write docker-compose.yml
 cat << 'EOF' > docker-compose.yml
@@ -684,7 +711,11 @@ EOF
 else
     echo "Containers are left running 24/7 in the background."
     echo ""
-    read -r -p "Do you want to create a systemd service to start Helm automatically on boot? (y/N): " install_systemd
+    if [ -n "$SKIP_PROMPTS" ]; then
+        install_systemd="n"
+    else
+        read -r -p "Do you want to create a systemd service to start Helm automatically on boot? (y/N): " install_systemd
+    fi
     if [[ "$install_systemd" =~ ^[Yy]$ ]]; then
         echo "Creating systemd service..."
         cat << EOF | sudo tee /etc/systemd/system/helm-app.service > /dev/null

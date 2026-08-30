@@ -66,15 +66,18 @@ helm
 ```
 
 ### Container Setup (Full Mode)
-If you are on a Mac, the easiest way to get the required container engine is via Homebrew:
-```bash
-# To install Docker Desktop:
-brew install --cask docker
 
-# OR to install Podman Desktop:
-brew install podman podman-desktop podman-compose
+**Instant Terminal Installation:**
+For a fully automated setup that skips cloning the repository manually, run:
+```bash
+bash <(curl -sL https://raw.githubusercontent.com/Piratebird/helm/main/setup.sh)
+
+# Or for a completely silent install using defaults (Docker, Ephemeral mode):
+bash <(curl -sL https://raw.githubusercontent.com/Piratebird/helm/main/setup.sh) --skip-prompts
 ```
 
+**Manual Source Installation:**
+If you prefer to inspect the source and install manually:
 ```bash
 # Clone the repo
 git clone https://github.com/Piratebird/helm.git
@@ -109,7 +112,7 @@ For more detailed tasks breakdown check [TODO.md](docs/TODO.md)
 
 All notable changes are tracked in [CHANGELOG.md](CHANGELOG.md).
 
-**Latest release: [0.9.2](CHANGELOG.md#092---2026-08-28)** — 1337x, BitTorrented and SubsPlease indexers plus EZTV now on its JSON API (`the boys` +153, `dune` +74, `one piece` +84 raw results), `--json` output no longer corrupted on fresh installs. See the full file for everything that came before.
+**Latest release: [0.9.3](CHANGELOG.md#093---2026-08-30)** — Frictionless Onboarding! Added `helm init` for native Python-based Docker bootstrapping, `--skip-prompts` for silent shell installations, and a new `curl` one-liner to get started instantly. See the full file for everything that came before.
 
 ## Configuration
 
