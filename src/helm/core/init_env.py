@@ -127,7 +127,7 @@ def bootstrap_env():
     dl_dir = get_dl_dir()
     project_name = "helm"
 
-    print(f"Using paths:\\n  Config:    {config_dir}\\n  State:     {state_dir}\\n  Downloads: {dl_dir}\\n")
+    print(f"Using paths:\n  Config:    {config_dir}\n  State:     {state_dir}\n  Downloads: {dl_dir}\n")
 
     os.makedirs(os.path.join(state_dir, "jackett", "Jackett", "Indexers"), exist_ok=True)
     os.makedirs(os.path.join(state_dir, "qbittorrent", "qBittorrent"), exist_ok=True)
@@ -141,16 +141,16 @@ def bootstrap_env():
             f.write("{}")
 
     install_mode = input(
-        "How would you like to install the required services?\\n  [1] Docker (Recommended)\\n  [2] Podman\\nChoose (1/2, default 1): "
+        "How would you like to install the required services?\n  [1] Docker (Recommended)\n  [2] Podman\nChoose (1/2, default 1): "
     ).strip()
     docker_cmd = "podman" if install_mode == "2" else "docker"
     compose_cmd = [docker_cmd, "compose"]
 
     run_mode = input(
-        "\\nHow would you like to run Helm?\\n  [1] Permanent (Always-On)\\n  [2] Ephemeral (One-Shot)\\nChoose (1/2, default 2): "
+        "\nHow would you like to run Helm?\n  [1] Permanent (Always-On)\n  [2] Ephemeral (One-Shot)\nChoose (1/2, default 2): "
     ).strip()
 
-    use_vpn = input("\\nDo you want to route qBittorrent through a VPN using Gluetun? (y/N): ").strip().lower()
+    use_vpn = input("\nDo you want to route qBittorrent through a VPN using Gluetun? (y/N): ").strip().lower()
 
     vpn_provider = ""
     vpn_type = ""
@@ -164,19 +164,19 @@ def bootstrap_env():
         elif vpn_type == "openvpn" and vpn_provider != "custom":
             ovpn_user = input("Enter OpenVPN Username (or token): ").strip()
             ovpn_pass = input("Enter OpenVPN Password (leave blank if using token): ").strip()
-            vpn_extra = f"OPENVPN_USER={ovpn_user}\\nOPENVPN_PASSWORD={ovpn_pass}"
+            vpn_extra = f"OPENVPN_USER={ovpn_user}\nOPENVPN_PASSWORD={ovpn_pass}"
 
     compose_yaml = DOCKER_COMPOSE_BASE.format(project_name=project_name, state_dir=state_dir, dl_dir=dl_dir)
 
     if use_vpn == "y":
         compose_yaml += GLUETUN_BASE.format(project_name=project_name, state_dir=state_dir)
         qb_network = 'network_mode: "service:gluetun"'
-        qb_depends = "depends_on:\\n      - gluetun"
+        qb_depends = "depends_on:\n      - gluetun"
         qb_ports = ""
     else:
         qb_network = ""
         qb_depends = ""
-        qb_ports = "ports:\\n      - 18080:18080\\n      - 6881:6881\\n      - 6881:6881/udp"
+        qb_ports = "ports:\n      - 18080:18080\n      - 6881:6881\n      - 6881:6881/udp"
 
     compose_yaml += QBITTORRENT_BASE.format(
         project_name=project_name,
@@ -210,7 +210,7 @@ VPN_TYPE={vpn_type}
     with open(os.path.join(state_dir, ".env.docker"), "w") as f:
         f.write(env_docker_content)
 
-    print("\\nPre-seeding qBittorrent configuration...")
+    print("\nPre-seeding qBittorrent configuration...")
     qb_conf = """[Preferences]
 WebUI\\Password_PBKDF2="@ByteArray(ARQ77eY1NUZaQsuDHbIMCA==:0WMRkYTUWVT9wVvdDtHAjU9b3b7uB8NR1Gur2hmQCvCDpm39Q+PsIfSYvgkvpe7L5yL8YQv8EaV7t8mP308QWg==)"
 WebUI\\Username=admin
@@ -221,7 +221,7 @@ WebUI\\LocalHostAuth=false
     with open(os.path.join(state_dir, "qbittorrent", "qBittorrent", "qBittorrent.conf"), "w") as f:
         f.write(qb_conf)
 
-    print("\\nStarting containers to initialize Jackett...")
+    print("\nStarting containers to initialize Jackett...")
 
     subprocess.run(
         compose_cmd + ["-f", compose_path, "up", "-d", "--remove-orphans", "jackett", "qbittorrent", "flaresolverr"],
@@ -250,7 +250,7 @@ WebUI\\LocalHostAuth=false
         print("[+] Successfully grabbed Jackett API Key.")
 
     if run_mode != "1":
-        print("\\nTearing down containers for Ephemeral (One-Shot) mode...")
+        print("\nTearing down containers for Ephemeral (One-Shot) mode...")
         subprocess.run(compose_cmd + ["-f", compose_path, "stop"], check=False)
 
-    print("\\nSetup is complete! You can now use helm.")
+    print("\nSetup is complete! You can now use helm.")

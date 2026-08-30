@@ -142,7 +142,10 @@ def main():
     if args.command == "init":
         from helm.core.init_env import bootstrap_env
 
-        bootstrap_env()
+        try:
+            bootstrap_env()
+        except (KeyboardInterrupt, EOFError):
+            print(f"\n{C_SUB}later bozo!{C_RST}")
         sys.exit(0)
 
     if args.command == "paths":

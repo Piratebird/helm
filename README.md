@@ -112,7 +112,7 @@ For more detailed tasks breakdown check [TODO.md](docs/TODO.md)
 
 All notable changes are tracked in [CHANGELOG.md](CHANGELOG.md).
 
-**Latest release: [0.9.3](CHANGELOG.md#093---2026-08-30)** — Frictionless Onboarding! Added `helm init` for native Python-based Docker bootstrapping, `--skip-prompts` for silent shell installations, and a new `curl` one-liner to get started instantly. See the full file for everything that came before.
+**Latest release: [0.9.4](CHANGELOG.md#094---2026-08-30)** — Hotfix for `helm init` prompt spacing and graceful `Ctrl+C` exits. See the full file for everything that came before.
 
 ## Configuration
 

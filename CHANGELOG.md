@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.4] - 2026-08-30
+### Fixed
+- Fixed literal `\n` characters rendering incorrectly as `\\n` during the `helm init` interactive prompts.
+- Added graceful `KeyboardInterrupt` handling to `helm init` so pressing `Ctrl+C` exits cleanly without a traceback stack.
+
 ## [0.9.3] - 2026-08-30
 ### Added
 - **Zero-Touch Bootstrapping (`helm init`)**: Added an `init` subcommand to the Python CLI that natively bootstraps the Docker/Podman container environment. Users installing via `pip install helm-torrent` can now skip the bash installer completely.
