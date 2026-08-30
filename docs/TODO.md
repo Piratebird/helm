@@ -36,10 +36,10 @@
 ### 3. Distribution & Installation
 - [x] **Publish to PyPI (`pip install helm-torrent`):**
   - [x] Restructure directory to standard Python package layout.
-  - [ ] Implement `helm init` to automatically bootstrap the Docker environment on first run.
-- [ ] **Fully Automated Setup Script:**
-  - [ ] Add a "skip-prompts" flag to `setup.sh` that auto-generates passwords and pulls Jackett API keys completely silently.
-  - [ ] Provide a curl one-liner for instant terminal installation.
+  - [x] Implement `helm init` to automatically bootstrap the Docker environment on first run.
+- [x] **Fully Automated Setup Script:**
+  - [x] Add a "skip-prompts" flag to `setup.sh` that auto-generates passwords and pulls Jackett API keys completely silently.
+  - [x] Provide a curl one-liner for instant terminal installation.
 
 ### 4. Headless & Server Mode
 - [ ] **Daemon Background Processes:** Add a `--daemon` flag to run operations silently in the background.

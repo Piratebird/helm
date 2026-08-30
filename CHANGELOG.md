@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.3] - 2026-08-30
+### Added
+- **Zero-Touch Bootstrapping (`helm init`)**: Added an `init` subcommand to the Python CLI that natively bootstraps the Docker/Podman container environment. Users installing via `pip install helm-torrent` can now skip the bash installer completely.
+- **Silent Installation Flag**: Added a `--skip-prompts` flag to `setup.sh` for fully automated, non-interactive installations using default settings (Docker, Ephemeral Mode, no VPN).
+- **One-Liner Installation**: Added a single `curl` command to `README.md` for instant terminal setup without manual cloning.
+
+### Changed
+- `oneshot.py` now resolves `docker-compose.yml` natively from the XDG state directory (`~/.local/state/helm`) rather than relying on the current working directory, preventing crashes when running `helm` globally.
+
 ## [0.9.2] - 2026-08-28
 ### Added
 - **BitTorrented indexer** (`src/helm/plugins/bittorrented.py`): JSON search API over a DHT-crawled image library, with real swarm counts. +50 results per search.

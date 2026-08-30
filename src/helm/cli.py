@@ -75,6 +75,12 @@ def main():
     subparsers = parser.add_subparsers(dest="command", title="Commands", metavar="<command>")
 
     # UI
+    # Init
+    subparsers.add_parser(
+        "init", help="Bootstrap and initialize the container environment natively", parents=[base_parser]
+    )
+
+    # UI
     subparsers.add_parser(
         "ui", help="Launch the interactive terminal UI (Default if no command given)", parents=[base_parser]
     )
@@ -132,6 +138,12 @@ def main():
         os.environ["HELM_DL_DIR"] = os.path.abspath(args.dl_dir)
 
     get_logger("")  # Initialize root logger after directory overrides
+
+    if args.command == "init":
+        from helm.core.init_env import bootstrap_env
+
+        bootstrap_env()
+        sys.exit(0)
 
     if args.command == "paths":
         from helm.core.config_manager import get_config_dir, get_dl_dir, get_log_dir
