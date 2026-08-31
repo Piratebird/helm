@@ -66,6 +66,8 @@ def _execute_plugin(plugin, query):
     except Exception:
         logger.debug(f"Event: Error running plugin {name}", exc_info=True)
     after = len(collector)
+    for item in collector:
+        item.indexer = name
     logger.info(f"Event: Plugin {name} returned {after - before} results")
     return collector
 

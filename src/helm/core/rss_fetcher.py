@@ -18,13 +18,14 @@ logger = get_logger(__name__)
 
 
 class TorrentItem:
-    def __init__(self, title, link, seeders, leechers=0, size=0, pubdate=None):
+    def __init__(self, title, link, seeders, leechers=0, size=0, pubdate=None, indexer="Unknown"):
         self.title = title
         self.link = link
         self.seeders = seeders
         self.leechers = leechers
         self.size = size
         self.pubdate = pubdate
+        self.indexer = indexer
 
 
 CATEGORY_MAP = {"video": "2000,5000", "games": "4000", "software": "4000", "books": "8000", "music": "3000"}
@@ -82,7 +83,10 @@ def _parse_feed(xml_text):
         if leechers < 0:
             leechers = 0
 
-        items.append(TorrentItem(title, link, seeders, leechers, size, pubdate))
+        indexer_elem = elem.find("jackettindexer")
+        indexer = indexer_elem.text if indexer_elem is not None else "Jackett"
+
+        items.append(TorrentItem(title, link, seeders, leechers, size, pubdate, indexer))
     return items
 
 
@@ -121,7 +125,12 @@ def search_jackett(query, content_type="video"):
         logger.info("Event: Jackett API key not configured. Seamlessly falling back to native Lite Mode plugins.")
         return []
 
-    cat = CATEGORY_MAP.get(content_type)
+    cats = content_type.split(",")
+    cat_ids = []
+    for c in cats:
+        if c in CATEGORY_MAP:
+            cat_ids.append(CATEGORY_MAP[c])
+    cat = ",".join(cat_ids) if cat_ids else CATEGORY_MAP.get("video")
 
     try:
         indexers = _get_configured_indexers(jackett_url, api_key)

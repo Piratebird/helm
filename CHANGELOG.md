@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.5] - 2026-08-31
+### Added
+- **Interactive Multi-Select Checkboxes**: Filter results by multiple categories using a spacebar-toggled checkbox menu before searching.
+- **Advanced Inline Filtering & Sorting**: Sort and filter search results directly in the TUI (e.g., `cat:games sort:-size`).
+- **Stateful Navigation**: Use `ESC` to go back to previous prompts and menus without exiting the application.
+- **Tracker Origins**: Display the indexer/tracker name for each result in the TUI list.
+- **Auto-inject Default Trackers**: `helm init` now automatically activates the most reliable public trackers (1337x, YTS, TorrentGalaxy, Nyaa, EZTV) if Jackett is configured.
+
+### Changed
+- Replaced the manual CLI search prompt with a state machine to support interactive category selection and stateful navigation.
+- Category scoring and matching logic updated to support multi-category profiles simultaneously.
+- Switched `sys.exit` calls to `os._exit` for immediate termination and to avoid traceback stacks on exit.
+
 ## [0.9.4] - 2026-08-30
 ### Fixed
 - Fixed literal `\n` characters rendering incorrectly as `\\n` during the `helm init` interactive prompts.

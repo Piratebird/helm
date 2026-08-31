@@ -112,7 +112,7 @@ For more detailed tasks breakdown check [TODO.md](docs/TODO.md)
 
 All notable changes are tracked in [CHANGELOG.md](CHANGELOG.md).
 
-**Latest release: [0.9.4](CHANGELOG.md#094---2026-08-30)** — Hotfix for `helm init` prompt spacing and graceful `Ctrl+C` exits. See the full file for everything that came before.
+**Latest release: [0.9.5](CHANGELOG.md#095---2026-08-31)** — Major UI improvements including multi-select category checkboxes, inline filtering and sorting, stateful navigation, tracker origins in results, and auto-injection of default Jackett indexers on initialization. See the full file for everything that came before.
 
 ## Configuration
 

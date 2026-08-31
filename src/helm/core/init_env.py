@@ -249,6 +249,35 @@ WebUI\\LocalHostAuth=false
             f.write(env_docker_content)
         print("[+] Successfully grabbed Jackett API Key.")
 
+        print("\n[INFO] Auto-configuring default Jackett indexers...")
+        # Override env vars temporarily so JackettManager targets the fresh container
+        os.environ["JACKETT_URL"] = "http://localhost:19117"
+        os.environ["JACKETT_API_KEY"] = jackett_api
+        os.environ["JACKETT_PASSWORD"] = ""
+
+        try:
+            from helm.core.indexer_manager import JackettManager
+
+            manager = JackettManager()
+
+            # The most reliable and widely used public trackers
+            DEFAULT_INDEXERS = ["1337x", "yts", "torrentgalaxy", "nyaasi", "eztv"]
+            all_indexers = manager.get_all_indexers()
+
+            configured_count = 0
+            for idx in all_indexers:
+                if idx["id"] in DEFAULT_INDEXERS and not idx["configured"]:
+                    try:
+                        manager.add_indexer(idx["id"])
+                        print(f"  [+] Activated tracker: {idx['title']}")
+                        configured_count += 1
+                    except Exception as e:
+                        print(f"  [-] Failed to activate {idx['title']}: {e}")
+            if configured_count == 0:
+                print("  [+] Default trackers are already active.")
+        except Exception as e:
+            print(f"[-] Could not auto-configure indexers: {e}")
+
     if run_mode != "1":
         print("\nTearing down containers for Ephemeral (One-Shot) mode...")
         subprocess.run(compose_cmd + ["-f", compose_path, "stop"], check=False)
