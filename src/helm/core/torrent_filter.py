@@ -8,37 +8,53 @@ import hashlib
 import re
 
 
-def is_negative_match(title, negatives):
-    title = title.lower()
-    for n in negatives:
-        if re.search(r"\b" + re.escape(n.lower()) + r"\b", title):
-            return True
-    return False
+def _compile_words(words):
+    if not words:
+        return None
+    # Sort by length descending to match longest phrases first
+    sorted_words = sorted(words, key=len, reverse=True)
+    return re.compile(r"\b(?:" + "|".join(re.escape(w.lower()) for w in sorted_words) + r")\b")
 
 
-def score_item(title, positives):
-    title = title.lower()
-    score = 0
-    for p in positives:
-        if re.search(r"\b" + re.escape(p.lower()) + r"\b", title):
-            score += 1
-    return score
+def filter_items(items, category_profiles, negatives, min_score=0, min_seeds=0):
+    results = []
 
+    neg_pattern = _compile_words(negatives)
+    cat_patterns = {cat: _compile_words(pos) for cat, pos in category_profiles.items()}
 
-def match_keywords(title, keywords):
-    title = title.lower()
-    for k in keywords:
-        if re.search(r"\b" + re.escape(k.lower()) + r"\b", title):
-            return True
-    return False
+    for item in items:
+        title = getattr(item, "title", "").lower()
+        seeders = getattr(item, "seeders", 0)
+        try:
+            seeders = int(seeders)
+        except (ValueError, TypeError):
+            seeders = 0
 
+        if seeders != -1 and seeders < min_seeds:
+            continue
 
-def match_quality(title, qualities):
-    title = title.lower()
-    for q in qualities:
-        if re.search(r"\b" + re.escape(q.lower()) + r"\b", title):
-            return True
-    return False
+        if neg_pattern and neg_pattern.search(title):
+            continue
+
+        best_cat = None
+        best_score = 0
+
+        # Score against each category profile
+        for cat, pattern in cat_patterns.items():
+            if pattern:
+                # Count unique keyword matches
+                matches = set(pattern.findall(title))
+                score = len(matches)
+                if score > best_score:
+                    best_score = score
+                    best_cat = cat
+
+        if best_score >= min_score or not any(cat_patterns.values()):
+            item.score = best_score
+            item.media_type = best_cat if best_score > 0 else None
+            results.append((item, best_score))
+
+    return [i[0] for i in sorted(results, key=lambda x: x[1], reverse=True)]
 
 
 def dedupe(items):
@@ -50,7 +66,6 @@ def dedupe(items):
             hash_start = link.lower().find("btih:") + 5
             hash_value = link[hash_start : hash_start + 40].lower()
         else:
-            # Fallback to hashing the whole link or title if not a standard magnet
             hash_value = (
                 hashlib.md5(link.encode("utf-8")).hexdigest()
                 if link
@@ -61,33 +76,3 @@ def dedupe(items):
             seen.add(hash_value)
             unique.append(i)
     return unique
-
-
-def filter_items(items, positives, negatives, min_score=0, min_seeds=0):
-    results = []
-
-    for item in items:
-        title = getattr(item, "title", "")
-        seeders = getattr(item, "seeders", 0)
-        try:
-            seeders = int(seeders)
-        except (ValueError, TypeError):
-            seeders = 0
-
-        # -1 means "unknown" (the parser could not extract a value). Keep those,
-        # only discard items with a known seed count below the threshold.
-        if seeders != -1 and seeders < min_seeds:
-            continue
-
-        # if it containts a negative word(unrelated to the searched topic) kill the fucker
-        if is_negative_match(title, negatives):
-            continue
-
-        score = score_item(title, positives)
-
-        if score >= min_score or positives == []:
-            item.score = score
-            results.append((item, score))
-
-        # sort by score descending order
-    return [i[0] for i in sorted(results, key=lambda x: x[1], reverse=True)]

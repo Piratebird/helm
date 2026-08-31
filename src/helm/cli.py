@@ -146,7 +146,7 @@ def main():
             bootstrap_env()
         except (KeyboardInterrupt, EOFError):
             print(f"\n{C_SUB}later bozo!{C_RST}")
-        sys.exit(0)
+        os._exit(0)
 
     if args.command == "paths":
         from helm.core.config_manager import get_config_dir, get_dl_dir, get_log_dir
@@ -155,7 +155,7 @@ def main():
         print(f"  Configuration: {get_config_dir()}")
         print(f"  State/Logs:    {get_log_dir()}")
         print(f"  Downloads:     {get_dl_dir()}")
-        sys.exit(0)
+        os._exit(0)
 
     if args.command == "logs":
         from helm.core.config_manager import get_log_dir
@@ -173,7 +173,7 @@ def main():
                 print(f"Could not read log file: {e}")
         else:
             print("Log file does not exist yet.")
-        sys.exit(0)
+        os._exit(0)
 
     if args.command == "bug-report":
         import zipfile
@@ -201,7 +201,7 @@ def main():
                 zipf.write(log_file, arcname="helm.log")
         print(f"Bug report successfully created at: {zip_path}")
         print("Please attach this zip file when creating an issue on GitHub.")
-        sys.exit(0)
+        os._exit(0)
 
     if not args.lite:
         config = load_config()
@@ -235,7 +235,7 @@ def main():
                         ensure_config()
                 except (KeyboardInterrupt, EOFError):
                     print(f"\n{C_SUB}later bozo!{C_RST}")
-                    sys.exit(0)
+                    os._exit(0)
         else:
             ensure_config()
 
@@ -247,12 +247,12 @@ def main():
         except KeyboardInterrupt:
             print(f"\n{C_SUB}later bozo!{C_RST}")
             teardown_oneshot()
-            sys.exit(0)
+            os._exit(0)
 
     if args.command == "indexers":
         if args.lite:
             print(f"{C_ERR}Cannot manage Jackett indexers in Lite Mode.{C_RST}", file=sys.stderr)
-            sys.exit(1)
+            os._exit(1)
         ensure_config()
         from helm.core.indexer_manager import JackettManager
 
@@ -260,7 +260,7 @@ def main():
             manager = JackettManager()
         except Exception as e:
             print(f"{C_ERR}Failed to initialize Jackett Manager: {e}{C_RST}", file=sys.stderr)
-            sys.exit(1)
+            os._exit(1)
 
         sys.stdout.write(f"{C_LOGO}Fetching indexers from Jackett...{C_RST}\r\n")
         sys.stdout.flush()
@@ -312,14 +312,14 @@ def main():
                             from helm.core.oneshot import teardown_oneshot
 
                             teardown_oneshot()
-                        sys.exit(0)
+                        os._exit(0)
                 except (KeyboardInterrupt, EOFError):
                     print(f"\n{C_SUB}later bozo!{C_RST}")
                     if args.oneshot:
                         from helm.core.oneshot import teardown_oneshot
 
                         teardown_oneshot()
-                    sys.exit(0)
+                    os._exit(0)
 
     mode_str = " (ONE-SHOT MODE)" if args.oneshot else ""
 
@@ -327,104 +327,170 @@ def main():
         print(f"{C_LOGO}{logo}{C_RST}")
         print(f"{C_SUB}THE HELM - Torrent automation MVP{mode_str}{C_RST}\n")
 
-    if args.query:
-        query = args.query
-        content_type = args.type.lower()
-    else:
-        try:
-            query = input(f"\033[1m{C_TEXT}? What would you like to search for:{C_RST} ").strip()
-            content_type = (
-                input(f"\033[1m{C_TEXT}? Content type [video/games/software/books/music] (video):{C_RST} ")
-                .strip()
-                .lower()
-                or "video"
-            )
-        except KeyboardInterrupt:
-            print(f"\n{C_SUB}later bozo!{C_RST}")
-            if args.oneshot:
-                teardown_oneshot()
-            sys.exit(0)
+    # State Machine Loop
+    state = "PROMPT"
+    search_query = ""
+    categories = []
+    filtered = []
 
-    keywords = CONTENT_PROFILES.get(content_type, CONTENT_PROFILES["video"])
-    negatives = NEGATIVE_KEYWORDS.get(content_type, NEGATIVE_KEYWORDS["video"])
+    while True:
+        if state == "PROMPT":
+            if args.query:
+                search_query = args.query
+                categories = [args.type.lower()]
+                state = "SEARCHING"
+            else:
+                try:
+                    search_query = input(f"\033[1m{C_TEXT}? What would you like to search for:{C_RST} ").strip()
+                except (KeyboardInterrupt, EOFError):
+                    print(f"\n{C_SUB}later bozo!{C_RST}")
+                    if args.oneshot:
+                        teardown_oneshot()
+                    os._exit(0)
 
-    query_words = set(re.findall(r"\b\w+\b", query.lower()))
-    negatives = [n for n in negatives if n.lower() not in query_words]
+                if not search_query:
+                    continue
 
-    search_query = query
-    if content_type == "books":
-        search_query = re.sub(r"[^\w\s]", "", query)
+                from helm.ui.tui import interactive_checkbox_selector
 
-    try:
-        all_items, args.lite = animated_search(
-            search_query, content_type, lite_mode=args.lite, show_spinner=not args.json
-        )
-    except KeyboardInterrupt:
-        print(f"\n{C_SUB}later bozo!{C_RST}")
-        if args.oneshot:
-            teardown_oneshot()
-        sys.exit(0)
+                try:
+                    selected_cats = interactive_checkbox_selector(
+                        ["video", "games", "software", "books", "music"], "Content type"
+                    )
+                except KeyboardInterrupt:
+                    print(f"\n{C_SUB}later bozo!{C_RST}")
+                    if args.oneshot:
+                        teardown_oneshot()
+                    os._exit(0)
 
-    source_name = "Lite mode" if args.lite else "Jackett & Lite"
-    if not args.json:
-        print(f"{C_LOGO}{source_name} returned {len(all_items)} raw results{C_RST}")
+                if selected_cats == "BACK":
+                    # Go back to query prompt by staying in PROMPT
+                    print("\033[2J\033[H", end="")
+                    continue
+                categories = selected_cats
+                print("\033[2J\033[H", end="")
+                state = "SEARCHING"
 
-    config = load_config()
-    min_seeds = config.get("min_seeds", 3)
+        elif state == "SEARCHING":
+            keywords = []
+            negatives = []
+            for cat in categories:
+                keywords.extend(CONTENT_PROFILES.get(cat, []))
+                negatives.extend(NEGATIVE_KEYWORDS.get(cat, []))
 
-    unique_items = dedupe(all_items)
-    filtered = filter_items(unique_items, keywords, negatives, min_score=0, min_seeds=min_seeds)
+            # Collect profiles for scoring
+            cat_profiles = {cat: CONTENT_PROFILES.get(cat, []) for cat in categories}
+            all_positives = [kw for kws in cat_profiles.values() for kw in kws]
 
-    if not filtered:
-        if args.json:
-            print(json.dumps([]))
-        else:
-            print(f"{C_ERR}No torrents were found :({C_RST}", file=sys.stderr)
-        if args.oneshot:
-            teardown_oneshot()
-        sys.exit(1)
+            # Remove selected keywords from negatives to prevent cross-cancellation
+            negatives = [n for n in negatives if n not in all_positives]
 
-    if args.json:
-        from helm.core.secret_manager import sanitize_link
+            query_words = set(re.findall(r"\b\w+\b", search_query.lower()))
+            negatives = [n for n in negatives if n.lower() not in query_words]
 
-        json_output = [
-            {
-                "title": t.title,
-                "link": sanitize_link(t.link),
-                "seeders": getattr(t, "seeders", 0),
-            }
-            for t in filtered
-        ]
-        print(json.dumps(json_output, indent=2))
-        if args.oneshot:
-            teardown_oneshot()
-        sys.exit(0)
+            # Special case for books
+            cleaned_query = search_query
+            if "books" in categories and len(categories) == 1:
+                cleaned_query = re.sub(r"[^\w\s]", "", search_query)
 
-    if args.auto:
-        selected = filtered[0]
-        _send_magnet(selected, args.lite, args.json, success_msg="Top torrent sent successfully :)")
-        if args.oneshot and not args.lite:
-            wait_for_download()
-            teardown_oneshot()
-
-        sys.exit(0)
-
-    do_teardown = False
-    try:
-        selected, do_teardown = interactive_selector(filtered, mode_str, lite_mode=args.lite)
-        _send_magnet(selected, args.lite, args.json)
-        if (args.oneshot or do_teardown) and not args.lite:
-            wait_for_download()
-            teardown_oneshot()
-
-    except KeyboardInterrupt:
-        print(f"\n{C_SUB}later bozo!{C_RST}")
-        if args.oneshot or do_teardown:
+            # Pass comma-separated categories so Jackett can hit multiple endpoints
             try:
-                teardown_oneshot()
-            except Exception:
-                pass
-        sys.exit()
+                all_items, args.lite = animated_search(
+                    cleaned_query, ",".join(categories), lite_mode=args.lite, show_spinner=not args.json
+                )
+            except KeyboardInterrupt:
+                print(f"\n{C_SUB}later bozo!{C_RST}")
+                if args.oneshot:
+                    teardown_oneshot()
+                os._exit(0)
+
+            source_name = "Lite mode" if args.lite else "Jackett & Lite"
+            if not args.json:
+                print(f"{C_LOGO}{source_name} returned {len(all_items)} raw results{C_RST}")
+
+            config = load_config()
+            min_seeds = config.get("min_seeds", 3)
+
+            unique_items = dedupe(all_items)
+            filtered = filter_items(unique_items, cat_profiles, negatives, min_score=0, min_seeds=min_seeds)
+
+            if not filtered:
+                if args.json:
+                    print(json.dumps([]))
+                else:
+                    print(f"\n{C_ERR}No torrents were found :({C_RST}", file=sys.stderr)
+                    # If we have arguments, we exit. Else we go back to prompt.
+                    if args.query:
+                        if args.oneshot:
+                            teardown_oneshot()
+                        os._exit(1)
+                    else:
+                        input("Press Enter to try again...")
+                        print("\033[2J\033[H", end="")
+                        state = "PROMPT"
+                        continue
+                if args.oneshot:
+                    teardown_oneshot()
+                os._exit(1)
+
+            if args.json:
+                from helm.core.secret_manager import sanitize_link
+
+                json_output = [
+                    {
+                        "title": t.title,
+                        "link": sanitize_link(t.link),
+                        "seeders": getattr(t, "seeders", 0),
+                        "indexer": getattr(t, "indexer", "Unknown"),
+                    }
+                    for t in filtered
+                ]
+                print(json.dumps(json_output, indent=2))
+                if args.oneshot:
+                    teardown_oneshot()
+                os._exit(0)
+
+            if args.auto:
+                selected = filtered[0]
+                _send_magnet(selected, args.lite, args.json, success_msg="Top torrent sent successfully :)")
+                if args.oneshot and not args.lite:
+                    wait_for_download()
+                    teardown_oneshot()
+                os._exit(0)
+
+            state = "RESULTS"
+
+        elif state == "RESULTS":
+            do_teardown = False
+            try:
+                media_type_str = "+".join(categories) if categories else ""
+                selected, do_teardown = interactive_selector(
+                    filtered, mode_str, lite_mode=args.lite, media_type=media_type_str
+                )
+
+                if do_teardown == "BACK":
+                    print("\033[2J\033[H", end="")
+                    if args.query:
+                        # Cannot go back if started from CLI args
+                        os._exit(0)
+                    state = "PROMPT"
+                    continue
+
+                print()
+                _send_magnet(selected, args.lite, args.json)
+                if (args.oneshot or do_teardown) and not args.lite:
+                    wait_for_download()
+                    teardown_oneshot()
+                break
+
+            except KeyboardInterrupt:
+                print(f"\n{C_SUB}later bozo!{C_RST}")
+                if args.oneshot or do_teardown:
+                    try:
+                        teardown_oneshot()
+                    except Exception:
+                        pass
+                os._exit(0)
 
 
 if __name__ == "__main__":

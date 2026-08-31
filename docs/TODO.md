@@ -20,7 +20,14 @@
 - [x] **Advanced Configuration Management:** Expanded `ConfigManager` to support schema validations, OS-native paths (XDG standards), and seamless migrations when updating to newer Helm versions.
 
 ### 1. User Interface & Experience
-- [ ] **Scrumptious TUI Interface:** Rewrite the CLI interface using a modern framework (like `Textual` or `Rich`) to replace raw `termios` handling.
+- [ ] **Scrumptious TUI Interface:** Rewrite the CLI interface using a modern framework (like `Textual` or `Rich`) to replace raw `termios` handling.  - [ ] Rewrite the interface using the `Textual` Python framework for a rich, responsive split-screen UI.
+  - [ ] **Background Download Manager:** Upgrade the blocking `lite_downloader.py` (libtorrent) to run as an async background worker.
+  - [ ] **Downloads Sidebar:** Users can search Jackett while simultaneously watching live progress bars, ETA, and speeds of active libtorrent downloads on the side.
+  - [ ] **Seeding Controls:** Ability to pause/resume/delete active downloads directly from the UI.
+  - [x] Tracker Origins (e.g. `[1337x]`) in the data tables.
+  - [x] Interactive Multi-Select checkboxes for category selection.
+  - [x] Stateful Navigation (`ESC` to Go Back to previous prompts).
+  - [x] Advanced inline sorting/filtering (`cat:games sort:-size`).
 - [x] **"Zero Setup" Lite Mode:** 
   - [x] Implement a fallback scraper inside Python for 2-3 hardcoded public indexers.
   - [x] Allow users to search and get Magnet links instantly *without* Docker or Jackett installed.
@@ -31,7 +38,7 @@
   - [ ] Implement API handlers for Prowlarr so users who prefer modern tracker syncing can use it seamlessly.
 - [x] **Improve Jackett Interaction:** 
   - [x] Allow adding/removing indexers directly from the CLI.
-  - [ ] Bundle preconfigured tracker JSONs to skip Jackett's manual web setup.
+  - [x] Auto-inject default indexers (1337x, YTS, etc.) during `helm init` via internal API.
 
 ### 3. Distribution & Installation
 - [x] **Publish to PyPI (`pip install helm-torrent`):**

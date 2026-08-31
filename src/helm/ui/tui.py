@@ -290,7 +290,7 @@ def interactive_indexer_selector(indexer_list):
         _exit_raw_input(fd, old_settings)
 
 
-def interactive_selector(filtered_list, mode_str="", lite_mode=False):
+def interactive_selector(filtered_list, mode_str="", lite_mode=False, media_type=""):
     fd = sys.stdin.fileno() if not IS_WINDOWS else None
     old_settings = termios.tcgetattr(fd) if not IS_WINDOWS else None
     current_input = ""
@@ -305,11 +305,53 @@ def interactive_selector(filtered_list, mode_str="", lite_mode=False):
         buf.append(f"{C_LOGO}{logo_crlf}{C_RST}\033[K\r\n")
         buf.append(f"{C_SUB}THE HELM - Torrent automation MVP{mode_str}{C_RST}\033[K\r\n\033[K\r\n")
 
-        search_term = current_input.lower()
+        raw_terms = current_input.lower().split()
+        title_terms = []
+        cat_filter = None
+        sort_key = None
+        sort_desc = True
+
+        for term in raw_terms:
+            if term.startswith("cat:"):
+                cat_filter = term.split(":", 1)[1]
+            elif term.startswith("sort:"):
+                sort_val = term.split(":", 1)[1]
+                if sort_val.startswith("-"):
+                    sort_desc = False
+                    sort_key = sort_val[1:]
+                elif sort_val.endswith("-asc"):
+                    sort_desc = False
+                    sort_key = sort_val[:-4]
+                else:
+                    sort_desc = True
+                    sort_key = sort_val
+            else:
+                title_terms.append(term)
+
+        search_term = " ".join(title_terms)
         if search_term.startswith("/"):
             search_term = search_term[1:]
 
-        disp_items = [t for t in filtered_list if search_term in t.title.lower()]
+        disp_items = []
+        for t in filtered_list:
+            if search_term and search_term not in t.title.lower():
+                continue
+
+            if cat_filter:
+                item_cat = getattr(t, "media_type", None)
+                if cat_filter == "generic":
+                    if getattr(t, "score", 1) != 0 and item_cat is not None:
+                        continue
+                else:
+                    if not item_cat or item_cat.lower() != cat_filter:
+                        continue
+
+            disp_items.append(t)
+
+        if sort_key == "size":
+            disp_items.sort(key=lambda x: float(getattr(x, "size", 0) or 0), reverse=sort_desc)
+        elif sort_key == "seeds":
+            disp_items.sort(key=lambda x: int(getattr(x, "seeders", 0) or 0), reverse=sort_desc)
 
         if selected_index >= len(disp_items):
             selected_index = max(0, len(disp_items) - 1)
@@ -328,9 +370,14 @@ def interactive_selector(filtered_list, mode_str="", lite_mode=False):
             actual_i = start_idx + i
             title = t.title
             score = getattr(t, "score", 1)
+            item_type = getattr(t, "media_type", None)
             is_generic = score == 0
 
-            prefix_len = 10 if is_generic else 0
+            # Only show tags for generic items, or items that have a media type (non-generic)
+            tag = f"[{item_type.upper()}]" if item_type else "[GENERIC]"
+            has_tag = is_generic or item_type
+
+            prefix_len = len(tag) + 1 if has_tag else 0
             max_title_len = 38 - prefix_len
 
             title = _truncate_to_width(title, max_title_len)
@@ -342,11 +389,12 @@ def interactive_selector(filtered_list, mode_str="", lite_mode=False):
             leechs = getattr(t, "leechers", 0)
             size_str = format_size(getattr(t, "size", 0))
             date_str = getattr(t, "pubdate", "") or "????-??-??"
+            indexer = getattr(t, "indexer", "Unknown")
 
-            info_str = f"[{size_str:>7}] [{date_str:>10}] [{seeds:>4}↑ {leechs:>3}↓]"
+            info_str = f"[{size_str:>9}] [{date_str:>10}] [{seeds:>4}↑ {leechs:>3}↓] [{indexer}]"
 
-            if is_generic:
-                title = f"\033[33m[GENERIC]{C_LOGO} {title}"
+            if has_tag:
+                title = f"\033[33m{tag}{C_LOGO} {title}"
 
             if actual_i == selected_index:
                 buf.append(
@@ -354,7 +402,7 @@ def interactive_selector(filtered_list, mode_str="", lite_mode=False):
                 )
             else:
                 buf.append(
-                    f"\033[1m{C_SUB}   {C_RST} {C_LOGO}{title}{C_RST}{' ' * title_pad}\033[1m{C_TEXT}{info_str}{C_RST}\033[K\r\n"
+                    f"\033[1m{C_SUB}   {C_RST}{C_LOGO}{title}{C_RST}{' ' * title_pad}\033[1m{C_TEXT}{info_str}{C_RST}\033[K\r\n"
                 )
 
         _append_scroll_footer(buf, len(disp_items), start_idx, stop_idx, limit)
@@ -362,9 +410,9 @@ def interactive_selector(filtered_list, mode_str="", lite_mode=False):
         buf.append(f"{C_LINE}" + "━" * 80 + f"{C_RST}\033[K\r\n")
 
         if lite_mode:
-            prompt = f"\033[1m{C_TEXT}❯ Filter (Arrows=Move, Enter=Download, Esc/Ctrl-C=Exit):{C_RST} {current_input}"
+            prompt = f"\033[1m{C_TEXT}❯ Filter (cat:video, sort:size | Esc=Back, Ctrl-C=Exit):{C_RST} {current_input}"
         else:
-            prompt = f"\033[1m{C_TEXT}❯ Filter (Arrows=Move, Enter=Download, Esc/Ctrl-C=Exit, Ctrl-E=Download+Teardown):{C_RST} {current_input}"
+            prompt = f"\033[1m{C_TEXT}❯ Filter (cat:video, sort:size | Esc=Back, Ctrl-C=Exit, Ctrl-E=Teardown):{C_RST} {current_input}"
 
         buf.append(prompt + "\033[J")
         sys.stdout.write("".join(buf))
@@ -377,8 +425,10 @@ def interactive_selector(filtered_list, mode_str="", lite_mode=False):
 
         while True:
             ch = _read_key(fd)
-            if ch == "\x03" or ch == "ESC":
+            if ch == "\x03":
                 raise KeyboardInterrupt
+            elif ch == "ESC":
+                return None, "BACK"
             elif ch == "UP":
                 selected_index = max(0, selected_index - 1)
                 items_to_show = redraw()
@@ -410,5 +460,69 @@ def interactive_selector(filtered_list, mode_str="", lite_mode=False):
                     current_input += ch
                     selected_index = 0
                     items_to_show = redraw()
+    finally:
+        _exit_raw_input(fd, old_settings)
+
+
+def interactive_checkbox_selector(options, title_msg="Select categories", default_checked=None):
+    if default_checked is None:
+        default_checked = [0]
+
+    fd = sys.stdin.fileno() if not IS_WINDOWS else None
+    old_settings = termios.tcgetattr(fd) if not IS_WINDOWS else None
+    selected_index = 0
+    checked = set(default_checked)
+
+    def redraw():
+        buf = []
+        buf.append("\033[H")
+
+        logo_crlf = logo.replace("\n", "\033[K\r\n")
+        buf.append(f"{C_LOGO}{logo_crlf}{C_RST}\033[K\r\n")
+        buf.append(f"{C_SUB}THE HELM - Torrent automation MVP{C_RST}\033[K\r\n\033[K\r\n")
+
+        buf.append(f"\033[1m{C_TEXT}? {title_msg}:{C_RST}\033[K\r\n")
+        buf.append(f"{C_LINE}" + "━" * 80 + f"{C_RST}\033[K\r\n")
+
+        for i, opt in enumerate(options):
+            check_char = "x" if i in checked else " "
+            prefix = f"\033[7m\033[1m{C_LOGO} ❯ " if i == selected_index else f"\033[1m{C_SUB}   "
+            # if selected index we want to invert the colors for the whole line, including the text
+            suffix = f"{C_RST}"
+            buf.append(f"{prefix}[{check_char}] {opt}{suffix}\033[K\r\n")
+
+        buf.append(f"{C_LINE}" + "━" * 80 + f"{C_RST}\033[K\r\n")
+        buf.append(
+            f"\033[1m{C_TEXT}❯ (Arrows=Move, Space=Toggle, Enter=Confirm, Esc=Go Back, Ctrl-C=Exit){C_RST}\033[J"
+        )
+
+        sys.stdout.write("".join(buf))
+        sys.stdout.flush()
+
+    try:
+        _enter_raw_input(fd)
+        redraw()
+        while True:
+            ch = _read_key(fd)
+            if ch == "\x03":
+                raise KeyboardInterrupt
+            elif ch == "ESC":
+                return "BACK"
+            elif ch == "UP":
+                selected_index = max(0, selected_index - 1)
+                redraw()
+            elif ch == "DOWN":
+                selected_index = min(len(options) - 1, selected_index + 1)
+                redraw()
+            elif ch == " ":
+                if selected_index in checked:
+                    checked.remove(selected_index)
+                else:
+                    checked.add(selected_index)
+                redraw()
+            elif ch in ("\r", "\n"):
+                if not checked:
+                    checked.add(selected_index)
+                return [options[i] for i in sorted(checked)]
     finally:
         _exit_raw_input(fd, old_settings)

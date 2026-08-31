@@ -70,7 +70,7 @@ def search_lite(query):
             except (ValueError, OSError, OverflowError):
                 pubdate = None
 
-            items.append(TorrentItem(title, magnet, seeders, leechers, size, pubdate))
+            items.append(TorrentItem(title, magnet, seeders, leechers, size, pubdate, "Apibay"))
 
     except Exception as e:
         logger.debug(f"Event: Apibay connection failed: {e}")
@@ -107,7 +107,7 @@ def search_lite(query):
                 else:
                     pubdate = None
 
-                items.append(TorrentItem(title, magnet, seeders, leechers, size, pubdate))
+                items.append(TorrentItem(title, magnet, seeders, leechers, size, pubdate, "Torrents-csv"))
     except Exception as e:
         logger.debug(f"Event: Torrents-csv connection failed: {e}")
 
@@ -152,7 +152,7 @@ def search_lite(query):
                         pass
 
                 if magnet:
-                    items.append(TorrentItem(title, magnet, seeders, leechers, size, pubdate))
+                    items.append(TorrentItem(title, magnet, seeders, leechers, size, pubdate, "Nyaa"))
     except Exception as e:
         logger.debug(f"Event: Nyaa connection failed: {e}")
 
