@@ -22,11 +22,14 @@
   - [Table of Contents](#table-of-contents)
   - [Features](#features)
   - [Installation](#installation)
+    - [Python Package (New!)](#python-package-new)
+    - [Container Setup (Full Mode)](#container-setup-full-mode)
   - [Why this exists](#why-this-exists)
   - [Roadmap](#roadmap)
   - [Changelog](#changelog)
   - [Configuration](#configuration)
   - [Usage](#usage)
+  - [Performance \& Resource Optimization](#performance--resource-optimization)
   - [Disclaimer](#disclaimer)
   - [Contributing](#contributing)
   - [How it works (high-level)](#how-it-works-high-level)
@@ -176,7 +179,7 @@ However you use this tool is your responsibility gangster.
 
 ## Contributing
 
-Contributions are welcome especially but not limited to bug fixes, refactors or documentation improvements. Please see our [CONTRIBUTING.md](CONTRIBUTING.md) guide for details on setting up the environment, our branching strategy, and code quality expectations.
+Contributions are welcome especially but not limited to bug fixes, refactors or documentation improvements. Please see our [CONTRIBUTING](CONTRIBUTING.md) guide for details on setting up the environment, our branching strategy, and code quality expectations.
 
 If you plan to add a major feature or change behavior, it's prolly a good idea to open an issue first.
 
