@@ -176,9 +176,9 @@ However you use this tool is your responsibility gangster.
 
 ## Contributing
 
-Contributions are welcome especially but not limited to bug fixes, refactors or documentation improvements.
+Contributions are welcome especially but not limited to bug fixes, refactors or documentation improvements. Please see our [CONTRIBUTING.md](CONTRIBUTING.md) guide for details on setting up the environment, our branching strategy, and code quality expectations.
 
-If you plan to add a major feature or change behavior, it's prolly a good idea to open an issue.
+If you plan to add a major feature or change behavior, it's prolly a good idea to open an issue first.
 
 with that out the way this project is real close to me since it's my official first project so let's make this bozo go (perchance).
 
