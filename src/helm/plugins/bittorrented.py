@@ -11,6 +11,7 @@ import re
 import requests
 from novaprinter import prettyPrinter
 
+from helm.core.http import get_shared_session
 from helm.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -53,7 +54,7 @@ class bittorrented(object):
         if len(query) < MIN_QUERY:
             return
         try:
-            r = requests.get(
+            r = get_shared_session().get(
                 API_URL,
                 params={
                     "q": query,

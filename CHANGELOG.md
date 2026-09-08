@@ -1,5 +1,31 @@
 # Changelog
 All notable changes to this project will be documented in this file.
+## [0.10.0] - 2026-09-08
+
+
+### Added
+- **Prowlarr Integration**: Full support for Prowlarr indexing alongside Jackett. Helm now natively discovers over 600+ indexers via Prowlarr's `/api/v1/indexer/schema` API.
+- **Privacy Display**: Prowlarr indexers in the TUI now clearly display their status as `public`, `private`, or `semi-private` .
+- **Tracker Origin Tagging**: JSON output now prefixes trackers with their source (`Jackett (1337x)` vs `Prowlarr (1337x)`) to determine indexer accountability.
+- **Interactive Installer Options**: `setup.sh` now prompts users to choose between Jackett, Prowlarr, or both for their core indexer manager.
+- **Native Prowlarr Installation**: `setup.sh` now supports downloading and installing Prowlarr directly to `/opt/Prowlarr` and configuring a `systemd` daemon for bare-metal deployments (includes BETA safety warnings).
+- **Container Status Command**: Added a new `helm status` (and global `--status` flag) command that natively queries Docker or Podman to list the uptime of all running Helm containers and prints their active Web UI URLs for easy access.
+- **Robust Exception Handling**: Implemented a global `KeyboardInterrupt` trap in `cli.py` to prevent ugly stack traces. The ephemeral stack now safely spins down via `teardown_oneshot()` if the user cancels operations prematurely.
+- **Network Resiliency**: Added explicit timeouts to all Jackett and Prowlarr API calls in `indexer_manager.py` and `rss_fetcher.py`. ReadTimeouts will no longer hang the app.
+
+### Changed
+- **Port Conflict Avoidance**: Migrated Prowlarr's ephemeral docker port from `9696` to `19696` to strictly match Jackett (`19117`) and qBittorrent (`18080`). This guarantees no "Address already in use" errors when running Helm on servers that already have these native apps running.
+- **JSON Stdout Sanitization**: The `-j/--json` flag is now guaranteed to return pure, `jq`-parseable JSON. Ephemeral boot logs have been properly redirected to `stderr`.
+- **Linting & Code Cleanup**: Cleaned up the repository of temporary patching scripts.
+- **Unified Concurrent Lite Pipeline**: The three inline Lite sources (apibay, torrents-csv, Nyaa RSS) now run inside the same bounded worker pool as the search plugins instead of serially before them. Worst-case search latency dropped from a ~75s serial chain of timeouts to a single ~25s bound.
+- **Shared HTTP Session**: Lite fetchers and the JSON-API plugins (BitTorrented, EZTV, SubsPlease, YTS) now reuse one connection-pooled `requests.Session` (keep-alive + pool of 32 sockets) via `helm.core.http`, eliminating a fresh TLS handshake per request on multi-page HTML plugins.
+- **Single apibay Fetch**: The bundled `piratebay.py` plugin (a duplicate of the inline apibay source) is no longer loaded by the plugin loader, so The Pirate Bay is queried exactly once per search.
+
+### Fixed
+- **Lite-Mode fallback crash on empty manager results**: `search_indexers()` referenced a never-implemented `search_all_plugins` import, so any search where Jackett/Prowlarr returned zero results raised `ImportError` (surfacing as a confusing "Indexer Manager not available" message). The async aggregator is now implemented and the fallback silently returns Lite results.
+- **Empty piped stdout on exit**: CLI termination paths used `os._exit`, which bypasses Python's stdout flush and produced empty output when `--json` was piped. All exits now use `raise SystemExit(...) from None`, flushing buffered stdout reliably.
+- **Prowlarr default indexer seeding actually implemented**: `ProwlarrManager.seed_default_indexers()` now provisions working defaults (1337x, YTS, TorrentGalaxy, NyaaPantsu, EZTV) on first use against Prowlarr's live schema rather than remaining a no-op.
+
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).

@@ -116,6 +116,35 @@ GLUETUN_BASE = """
     restart: unless-stopped
 """
 
+PROWLARR_BASE = """
+  prowlarr:
+    container_name: "{project_name}-prowlarr"
+    image: lscr.io/linuxserver/prowlarr:latest
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+    labels:
+      - "com.docker.compose.project={project_name}"
+      - "com.docker.compose.service=prowlarr"
+      - "com.docker.compose.oneoff=False"
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+    security_opt:
+      - label=disable
+    volumes:
+      - "{state_dir}/prowlarr:/config"
+    ports:
+      - 19696:9696
+    restart: unless-stopped
+"""
+
 
 def bootstrap_env():
     print("===========================================")
@@ -167,6 +196,7 @@ def bootstrap_env():
             vpn_extra = f"OPENVPN_USER={ovpn_user}\nOPENVPN_PASSWORD={ovpn_pass}"
 
     compose_yaml = DOCKER_COMPOSE_BASE.format(project_name=project_name, state_dir=state_dir, dl_dir=dl_dir)
+    compose_yaml += PROWLARR_BASE.format(project_name=project_name, state_dir=state_dir)
 
     if use_vpn == "y":
         compose_yaml += GLUETUN_BASE.format(project_name=project_name, state_dir=state_dir)
@@ -194,6 +224,8 @@ def bootstrap_env():
     env_docker_content = f"""# --- Helm Container Isolated Configuration ---
 JACKETT_URL=http://jackett:9117
 JACKETT_API_KEY=placeholder
+PROWLARR_URL=http://prowlarr:9696
+PROWLARR_API_KEY=placeholder
 QB_WEBUI=http://qbittorrent:18080
 QB_USERNAME=admin
 QB_PASSWORD=adminadmin
@@ -224,7 +256,8 @@ WebUI\\LocalHostAuth=false
     print("\nStarting containers to initialize Jackett...")
 
     subprocess.run(
-        compose_cmd + ["-f", compose_path, "up", "-d", "--remove-orphans", "jackett", "qbittorrent", "flaresolverr"],
+        compose_cmd
+        + ["-f", compose_path, "up", "-d", "--remove-orphans", "jackett", "prowlarr", "qbittorrent", "flaresolverr"],
         check=False,
     )
 
@@ -249,34 +282,67 @@ WebUI\\LocalHostAuth=false
             f.write(env_docker_content)
         print("[+] Successfully grabbed Jackett API Key.")
 
-        print("\n[INFO] Auto-configuring default Jackett indexers...")
-        # Override env vars temporarily so JackettManager targets the fresh container
-        os.environ["JACKETT_URL"] = "http://localhost:19117"
-        os.environ["JACKETT_API_KEY"] = jackett_api
-        os.environ["JACKETT_PASSWORD"] = ""
+    prowlarr_api = ""
+    try:
+        p_config = os.path.join(state_dir, "prowlarr", "config.xml")
+        if os.path.exists(p_config):
+            with open(p_config, "r") as f:
+                for line in f:
+                    if "<ApiKey>" in line:
+                        prowlarr_api = line.split("<ApiKey>")[1].split("</ApiKey>")[0].strip()
+                        break
+    except Exception:
+        pass
 
+    if prowlarr_api:
+        env_docker_content = env_docker_content.replace(
+            "PROWLARR_API_KEY=placeholder", f"PROWLARR_API_KEY={prowlarr_api}"
+        )
+        with open(os.path.join(state_dir, ".env.docker"), "w") as f:
+            f.write(env_docker_content)
+        print("[+] Successfully grabbed Prowlarr API Key.")
+
+    print("\n[INFO] Auto-configuring default Prowlarr indexers...")
+    os.environ["PROWLARR_URL"] = "http://localhost:19696"
+    os.environ["PROWLARR_API_KEY"] = prowlarr_api
+    if prowlarr_api:
         try:
-            from helm.core.indexer_manager import JackettManager
+            from helm.core.indexer_manager import ProwlarrManager
 
-            manager = JackettManager()
-
-            # The most reliable and widely used public trackers
-            DEFAULT_INDEXERS = ["1337x", "yts", "torrentgalaxy", "nyaasi", "eztv"]
-            all_indexers = manager.get_all_indexers()
-
-            configured_count = 0
-            for idx in all_indexers:
-                if idx["id"] in DEFAULT_INDEXERS and not idx["configured"]:
-                    try:
-                        manager.add_indexer(idx["id"])
-                        print(f"  [+] Activated tracker: {idx['title']}")
-                        configured_count += 1
-                    except Exception as e:
-                        print(f"  [-] Failed to activate {idx['title']}: {e}")
-            if configured_count == 0:
-                print("  [+] Default trackers are already active.")
+            manager = ProwlarrManager()
+            enabled = manager.seed_default_indexers()
+            print(f"  [+] Activated {enabled} default Prowlarr indexer(s).")
         except Exception as e:
-            print(f"[-] Could not auto-configure indexers: {e}")
+            print(f"[-] Could not auto-configure Prowlarr indexers: {e}")
+
+    print("\n[INFO] Auto-configuring default Jackett indexers...")
+    # Override env vars temporarily so JackettManager targets the fresh container
+    os.environ["JACKETT_URL"] = "http://localhost:19117"
+    os.environ["JACKETT_API_KEY"] = jackett_api
+    os.environ["JACKETT_PASSWORD"] = ""
+
+    try:
+        from helm.core.indexer_manager import JackettManager
+
+        manager = JackettManager()
+
+        # The most reliable and widely used public trackers
+        DEFAULT_INDEXERS = ["1337x", "yts", "torrentgalaxy", "nyaasi", "eztv"]
+        all_indexers = manager.get_all_indexers()
+
+        configured_count = 0
+        for idx in all_indexers:
+            if idx["id"] in DEFAULT_INDEXERS and not idx["configured"]:
+                try:
+                    manager.add_indexer(idx["id"])
+                    print(f"  [+] Activated tracker: {idx['title']}")
+                    configured_count += 1
+                except Exception as e:
+                    print(f"  [-] Failed to activate {idx['title']}: {e}")
+        if configured_count == 0:
+            print("  [+] Default trackers are already active.")
+    except Exception as e:
+        print(f"[-] Could not auto-configure indexers: {e}")
 
     if run_mode != "1":
         print("\nTearing down containers for Ephemeral (One-Shot) mode...")

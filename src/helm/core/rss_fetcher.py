@@ -103,7 +103,7 @@ def _search_indexer(jackett_url, api_key, indexer_id, query, cat):
     params = {"apikey": api_key, "q": query}
     if cat:
         params["cat"] = cat
-    r = requests.get(url, params=params, timeout=20)
+    r = requests.get(url, params=params, timeout=60)
     r.raise_for_status()
     return _parse_feed(r.text)
 
@@ -118,6 +118,137 @@ def _fetch_aggregate(jackett_url, api_key, query, cat):
     return _parse_feed(r.text)
 
 
+def search_prowlarr(query, content_type="video"):
+    from helm.core.config_manager import load_config
+    from helm.core.secret_manager import get_secret
+
+    config = load_config()
+    prowlarr_url = config.get("PROWLARR_URL", "http://localhost:19696")
+    api_key = get_secret("PROWLARR_API_KEY")
+
+    if not api_key or "your_prowlarr_api_key_here" in api_key.lower():
+        logger.warning("Event: Prowlarr API key not configured or is placeholder.")
+        return []
+
+    # Seed default indexers on first use when none are configured.
+    try:
+        idx_r = requests.get(f"{prowlarr_url}/api/v1/indexer", headers={"X-Api-Key": api_key}, timeout=5)
+        if idx_r.status_code == 200 and len(idx_r.json()) == 0:
+            logger.info("Event: Prowlarr indexers empty. Seeding defaults...")
+            from helm.core.indexer_manager import ProwlarrManager
+
+            os.environ["PROWLARR_URL"] = prowlarr_url
+            seed_count = ProwlarrManager().seed_default_indexers()
+            logger.info("Event: Seeded %s default Prowlarr indexers.", seed_count)
+    except Exception:
+        pass
+
+    endpoint = f"{prowlarr_url}/api/v1/search"
+    params = {"query": query, "apikey": api_key}
+
+    try:
+        r = requests.get(endpoint, params=params, timeout=60)
+        r.raise_for_status()
+
+        results = []
+        data = r.json()
+
+        for item in data:
+            title = item.get("title", "unknown")
+            size = item.get("size", 0)
+            seeders = item.get("seeders") or 0
+            leechers = item.get("leechers") or 0
+            indexer = item.get("indexer", "unknown")
+            download_url = item.get("magnetUrl") or item.get("downloadUrl")
+
+            if not download_url:
+                continue
+
+            results.append(
+                TorrentItem(
+                    title,
+                    download_url,
+                    seeders,
+                    leechers,
+                    size,
+                    pubdate=None,
+                    indexer=f"Prowlarr ({indexer})",
+                )
+            )
+
+        logger.info(f"Event: Prowlarr aggregated JSON search returned {len(results)} results")
+        return sorted(results, key=lambda x: x.seeders, reverse=True)
+
+    except Exception as e:
+        logger.error(f"Event: Prowlarr JSON search failed: {e}. Falling back to Torznab XML parsing.")
+
+        cats = content_type.split(",")
+        cat_ids = []
+        for c in cats:
+            if c in CATEGORY_MAP:
+                cat_ids.append(CATEGORY_MAP[c])
+        cat = ",".join(cat_ids) if cat_ids else CATEGORY_MAP.get("video")
+
+        # Prowlarr Torznab: /{appId}/api?apikey=...&t=search&q=...
+        torznab_url = f"{prowlarr_url}/1/api"
+        params_xml = {"t": "search", "q": query, "apikey": api_key}
+        if cat:
+            params_xml["cat"] = cat
+
+        try:
+            r = requests.get(torznab_url, params=params_xml, timeout=120)
+            r.raise_for_status()
+            items = _parse_feed(r.text)
+            logger.info(f"Event: Prowlarr Torznab fallback returned {len(items)} results")
+            return items
+        except Exception as ex:
+            logger.error(f"Event: Prowlarr Torznab fallback also failed: {ex}", exc_info=True)
+            return []
+
+
+def search_indexers(query, content_type="video"):
+    """
+    Search using the configured Indexer Manager.
+
+    Runs the configured manager (Prowlarr, Jackett, or both), falls back to the
+    other manager when configured, and finally to native Lite Mode plugins so a
+    search never comes up empty.
+    """
+    from helm.core.config_manager import load_config
+
+    config = load_config()
+    manager = config.get("INDEXER_MANAGER", "jackett")
+
+    def dedupe(items):
+        seen = set()
+        unique = []
+        for item in items:
+            key = (item.title.lower().strip(), item.size)
+            if key not in seen:
+                seen.add(key)
+                unique.append(item)
+        return unique
+
+    items = []
+    if manager in ("prowlarr", "both"):
+        items.extend(search_prowlarr(query, content_type))
+    if manager in ("jackett", "both"):
+        items.extend(search_jackett(query, content_type))
+    elif manager == "prowlarr" and not items:
+        logger.info("Event: Prowlarr returned no results, falling back to Jackett.")
+        items.extend(search_jackett(query, content_type))
+
+    if items:
+        return dedupe(items)
+
+    logger.info("Event: Media Server search failed or returned 0 results, falling back to Lite mode...")
+    import asyncio
+
+    from helm.core.lite_fetcher import search_all_plugins
+
+    return dedupe(asyncio.run(search_all_plugins(query, content_type)))
+
+
 def search_jackett(query, content_type="video"):
     jackett_url = os.getenv("JACKETT_URL", "http://localhost:9117")
     api_key = get_secret("JACKETT_API_KEY")
@@ -125,6 +256,40 @@ def search_jackett(query, content_type="video"):
         logger.info("Event: Jackett API key not configured. Seamlessly falling back to native Lite Mode plugins.")
         return []
 
+    # 1) Try JSON API first
+    endpoint = f"{jackett_url}/api/v2.0/indexers/all/results"
+    params = {"Query": query, "apikey": api_key}
+    try:
+        r = requests.get(endpoint, params=params, timeout=60)
+        r.raise_for_status()
+
+        results = []
+        data = r.json()
+        items = data.get("Results", [])
+
+        for item in items:
+            title = item.get("Title", "unknown")
+            size = item.get("Size", 0)
+            seeders = item.get("Seeders") or 0
+            leechers = item.get("Peers") or 0
+            indexer = item.get("Tracker", "unknown")
+            download_url = item.get("MagnetUri") or item.get("Link")
+
+            if not download_url:
+                continue
+
+            results.append(
+                TorrentItem(title, download_url, seeders, leechers, size, pubdate=None, indexer=f"Jackett ({indexer})")
+            )
+
+        if results:
+            logger.info(f"Event: Jackett aggregated JSON search returned {len(results)} results")
+            return sorted(results, key=lambda x: x.seeders, reverse=True)
+
+    except Exception as e:
+        logger.error(f"Event: Jackett JSON search failed: {e}. Falling back to ThreadPool Torznab XML parsing.")
+
+    # 2) Hard fallback to XML Torznab Parsing
     cats = content_type.split(",")
     cat_ids = []
     for c in cats:
@@ -155,42 +320,28 @@ def search_jackett(query, content_type="video"):
             futures = [executor.submit(run, idx) for idx in indexers]
             for future in concurrent.futures.as_completed(futures, timeout=120):
                 indexer_id, indexer_items = future.result()
-                logger.info(f"Event: Jackett indexer '{indexer_id}' returned {len(indexer_items)} results")
-                items.extend(indexer_items)
+                if indexer_items:
+                    logger.info(f"Event: Jackett indexer '{indexer_id}' returned {len(indexer_items)} results")
+                    items.extend(indexer_items)
 
         # If every per-indexer query failed (e.g. all returned errors), retry
         # with Jackett's aggregate endpoint before giving up.
         if not items:
             try:
                 items = _fetch_aggregate(jackett_url, api_key, query, cat)
-                logger.info(f"Event: Jackett aggregate fallback returned {len(items)} results")
-            except requests.exceptions.RequestException as e:
-                logger.debug("Event: Network error while connecting to Jackett", exc_info=True)
-                raise RuntimeError(f"Jackett connection failed: {e}")  # noqa: B904
             except Exception as e:
-                logger.debug("Event: Unexpected error during aggregate fallback", exc_info=True)
-                raise RuntimeError(f"Unexpected error querying Jackett: {e}")  # noqa: B904
+                logger.debug(f"Event: Jackett aggregate torznab also failed: {e}", exc_info=True)
+
     else:
+        # No specific indexers found, try aggregate
         try:
             items = _fetch_aggregate(jackett_url, api_key, query, cat)
-            logger.info(f"Event: Jackett aggregate returned {len(items)} results")
-        except requests.exceptions.RequestException as e:
-            logger.debug("Event: Network error while connecting to Jackett", exc_info=True)
-            raise RuntimeError(f"Jackett connection failed: {e}")  # noqa: B904
-        except ET.ParseError:
-            logger.debug("Event: XML parsing error", exc_info=True)
-            raise RuntimeError("Invalid response from Jackett (XML Parse Error)")  # noqa: B904
-        except ValueError as e:
-            logger.debug("Event: Value error while parsing results", exc_info=True)
-            raise RuntimeError(f"Value error while parsing Jackett results: {e}")  # noqa: B904
         except Exception as e:
-            logger.debug("Event: Unexpected error parsing results", exc_info=True)
-            raise RuntimeError(f"Unexpected error parsing Jackett results: {e}")  # noqa: B904
+            logger.debug(f"Event: Jackett aggregate torznab failed: {e}", exc_info=True)
 
     # Jackett's per-indexer endpoints can hand back the same release twice.
-    # Collapse exact title+size duplicates before returning so the CLI dedupe
-    # and display stay clean.
-    if len(indexers) > 1:
+    # Collapse exact title+size duplicates so the dedupe and display stay clean.
+    if len(items) > 1:
         seen = set()
         unique = []
         for item in items:
@@ -198,8 +349,5 @@ def search_jackett(query, content_type="video"):
             if key not in seen:
                 seen.add(key)
                 unique.append(item)
-        items = unique
-
-    if len(items) == 0:
-        logger.debug(f"Event: Jackett returned 0 items for query: '{query}'")
+        return unique
     return items

@@ -1,4 +1,4 @@
-import requests
+from helm.core.http import get_shared_session
 
 
 def retrieve_url(url, request_data=None):
@@ -8,10 +8,11 @@ def retrieve_url(url, request_data=None):
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     }
+    session = get_shared_session()
     if request_data:
-        r = requests.post(url, data=request_data, headers=headers, timeout=15)
+        r = session.post(url, data=request_data, headers=headers, timeout=15)
     else:
-        r = requests.get(url, headers=headers, timeout=15)
+        r = session.get(url, headers=headers, timeout=15)
     return r.text
 
 
@@ -19,7 +20,7 @@ def download_file(url, filename=None):
     """
     Downloads a file to a specific location. Used by qBittorrent search plugins.
     """
-    r = requests.get(url, timeout=15)
+    r = get_shared_session().get(url, timeout=15)
     if filename:
         with open(filename, "wb") as f:
             f.write(r.content)

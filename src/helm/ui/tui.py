@@ -93,9 +93,9 @@ def animated_search(query, content_type, lite_mode=False, show_spinner=True):
         import concurrent.futures
 
         def fetch_jackett():
-            from helm.core.rss_fetcher import search_jackett
+            from helm.core.rss_fetcher import search_indexers
 
-            return search_jackett(query, content_type)
+            return search_indexers(query, content_type)
 
         def fetch_lite():
             from helm.core.lite_fetcher import search_lite
@@ -115,7 +115,7 @@ def animated_search(query, content_type, lite_mode=False, show_spinner=True):
                 except Exception as e:
                     sys.stdout.write("\r" + " " * 30 + "\r")
                     sys.stdout.write(
-                        f"\n\033[33m[!] Jackett not available ({e}). Auto-falling back to LITE MODE...\033[0m\n"
+                        f"\n\033[33m[!] Indexer Manager not available ({e}). Auto-falling back to LITE MODE...\033[0m\n"
                     )
                     sys.stdout.flush()
                     used_lite = True

@@ -1,3 +1,4 @@
+import builtins
 import os
 import subprocess
 import sys
@@ -5,13 +6,21 @@ import time
 
 import requests
 
+
+def print(*args, **kwargs):
+    # Route this module's boot/teardown logs to stderr so `--json` output on
+    # stdout stays pure and jq-parseable.
+    kwargs.setdefault("file", sys.stderr)
+    builtins.print(*args, **kwargs)
+
+
 # The CLI runs inside the mini-helm container, whose docker socket is mounted at
 # /var/run/docker.sock. Both Docker and Podman provide that socket, so the docker
 # CLI works for either engine; override via HELM_DOCKER_CMD if you ever run the
 # CLI without the socket (e.g. native mode with a remote daemon).
 DOCKER_CMD = os.environ.get("HELM_DOCKER_CMD", "docker")
 
-CONTAINER_SERVICES = frozenset(["jackett", "qbittorrent", "flaresolverr", "gluetun"])
+CONTAINER_SERVICES = frozenset(["jackett", "prowlarr", "qbittorrent", "flaresolverr", "gluetun"])
 
 
 def _docker_run(args, **kwargs):
@@ -25,7 +34,7 @@ def _container_name(service):
 
 def spin_up_oneshot():
     print("\n\033[1m\033[36mInitializing One-Shot Ephemeral Stack...\033[0m")
-    print("\033[3mBringing up Jackett, Flaresolverr, and qBittorrent via docker compose...\033[0m")
+    print("\033[3mBringing up Jackett, Prowlarr, Flaresolverr, and qBittorrent via docker compose...\033[0m")
 
     from helm.core.config_manager import get_log_dir
 
@@ -36,7 +45,9 @@ def spin_up_oneshot():
     # Explicitly ensure all background containers are up just in case host depends_on fails
     try:
         _docker_run(
-            ["compose"] + compose_flags + ["up", "-d", "--remove-orphans", "jackett", "qbittorrent", "flaresolverr"],
+            ["compose"]
+            + compose_flags
+            + ["up", "-d", "--remove-orphans", "jackett", "prowlarr", "qbittorrent", "flaresolverr"],
             check=False,
         )
     except Exception:
@@ -73,6 +84,7 @@ def spin_up_oneshot():
         return False
 
     check_container_status("jackett")
+    check_container_status("prowlarr")
     check_container_status("qbittorrent")
     check_container_status("flaresolverr")
     print("\033[36mWaiting for internal HTTP servers to fully boot (this ensures 1337x doesn't fail)...\033[0m")
@@ -86,7 +98,7 @@ def spin_up_oneshot():
             if r.status_code in [200, 401]:
                 jackett_ready = True
                 break
-        except requests.exceptions.ConnectionError:
+        except Exception:
             pass
         time.sleep(2)
 
@@ -102,7 +114,7 @@ def spin_up_oneshot():
             if "ready" in r.text.lower() or r.status_code == 200:
                 flaresolverr_ready = True
                 break
-        except requests.exceptions.ConnectionError:
+        except Exception:
             pass
         time.sleep(2)
 

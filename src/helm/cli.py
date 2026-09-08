@@ -2,6 +2,8 @@ import argparse
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import time
 
@@ -40,6 +42,44 @@ def _send_magnet(selected, lite_mode, json_mode=False, success_msg="Torrent sent
         download_magnet(selected.link)
 
 
+def _cmd_status():
+    """Print running helm containers and the configured Web UI URLs (never prompts)."""
+    print("Checking container status and Web UIs...")
+    cmd_runner = "docker" if shutil.which("docker") else "podman" if shutil.which("podman") else None
+    res = None
+    if cmd_runner:
+        cmd = [cmd_runner, "ps", "--format", "{{.Names}}: {{.Status}}"]
+        try:
+            res = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        except Exception:
+            print(f"Failed to run {cmd_runner} ps.")
+    else:
+        print("Native Mode - No containers running.")
+
+    if res is not None:
+        print("-" * 40)
+        helm_containers = [line for line in res.stdout.splitlines() if "helm" in line.lower()]
+        print("\n".join(helm_containers) if helm_containers else "No helm containers found.")
+        print("-" * 40)
+
+    cfg = load_config()
+    container_text = (res.stdout or "").lower() if res else ""
+    print("\n--- Web UIs ---")
+    if container_text and "jackett" not in container_text:
+        print("Jackett:     not running")
+    else:
+        print(f"Jackett:     {cfg.get('JACKETT_URL') or 'http://localhost:19117'}")
+    if container_text and "prowlarr" not in container_text:
+        print("Prowlarr:    not running")
+    else:
+        print(f"Prowlarr:    {cfg.get('PROWLARR_URL') or 'http://localhost:19696'}")
+    if container_text and "qbittorrent" not in container_text:
+        print("qBittorrent: not running")
+    else:
+        print(f"qBittorrent: {cfg.get('QB_WEBUI') or 'http://localhost:18080'}")
+    print("---------------")
+
+
 def main():
     base_parser = argparse.ArgumentParser(add_help=False)
     global_opts = base_parser.add_argument_group("Global Options")
@@ -47,6 +87,7 @@ def main():
         "--config-dir", type=str, default=argparse.SUPPRESS, help="Override the configuration directory"
     )
     global_opts.add_argument("--state-dir", type=str, default=argparse.SUPPRESS, help="Override the state directory")
+    global_opts.add_argument("--status", action="store_true", help="List running containers and their Web UI URLs")
     global_opts.add_argument("--dl-dir", type=str, default=argparse.SUPPRESS, help="Override the downloads directory")
     global_opts.add_argument(
         "-o",
@@ -96,9 +137,12 @@ def main():
     )
 
     # Indexers
-    subparsers.add_parser("indexers", help="Manage Jackett indexers interactively", parents=[base_parser])
+    idx_parser = subparsers.add_parser("indexers", help="Manage Indexers interactively", parents=[base_parser])
+    idx_parser.add_argument("--prowlarr", action="store_true", help="Manage Prowlarr indexers explicitly")
+    idx_parser.add_argument("--jackett", action="store_true", help="Manage Jackett indexers explicitly")
 
     # Utility Commands
+    subparsers.add_parser("status", help="List running containers and their Web UI URLs", parents=[base_parser])
     subparsers.add_parser("logs", help="Tail the last 20 lines of the application log", parents=[base_parser])
     subparsers.add_parser(
         "paths", help="Print all system data locations (Config, State, Downloads)", parents=[base_parser]
@@ -108,7 +152,9 @@ def main():
     )
 
     # Parse arguments
-    args = parser.parse_args()
+    args, unknown = parser.parse_known_args()
+    if getattr(args, "status", False):
+        args.command = "status"
 
     if not args.command:
         args.command = "ui"
@@ -139,6 +185,13 @@ def main():
 
     get_logger("")  # Initialize root logger after directory overrides
 
+    if args.command == "status":
+        # Container status is a read-only query: it must never spin up the
+        # ephemeral stack, prompt for config, or require an API key. Reap it
+        # as early as possible so agents can call it non-interactively.
+        _cmd_status()
+        return
+
     if args.command == "init":
         from helm.core.init_env import bootstrap_env
 
@@ -146,7 +199,7 @@ def main():
             bootstrap_env()
         except (KeyboardInterrupt, EOFError):
             print(f"\n{C_SUB}later bozo!{C_RST}")
-        os._exit(0)
+        raise SystemExit(0) from None
 
     if args.command == "paths":
         from helm.core.config_manager import get_config_dir, get_dl_dir, get_log_dir
@@ -155,7 +208,7 @@ def main():
         print(f"  Configuration: {get_config_dir()}")
         print(f"  State/Logs:    {get_log_dir()}")
         print(f"  Downloads:     {get_dl_dir()}")
-        os._exit(0)
+        raise SystemExit(0) from None
 
     if args.command == "logs":
         from helm.core.config_manager import get_log_dir
@@ -173,7 +226,7 @@ def main():
                 print(f"Could not read log file: {e}")
         else:
             print("Log file does not exist yet.")
-        os._exit(0)
+        raise SystemExit(0) from None
 
     if args.command == "bug-report":
         import zipfile
@@ -201,13 +254,18 @@ def main():
                 zipf.write(log_file, arcname="helm.log")
         print(f"Bug report successfully created at: {zip_path}")
         print("Please attach this zip file when creating an issue on GitHub.")
-        os._exit(0)
+        raise SystemExit(0) from None
 
     if not args.lite:
         config = load_config()
         if config.get("LITE_MODE_ONLY"):
             args.lite = True
-        elif not os.getenv("JACKETT_API_KEY") and not get_secret("JACKETT_API_KEY"):
+        elif (
+            not os.getenv("JACKETT_API_KEY")
+            and not get_secret("JACKETT_API_KEY")
+            and not os.getenv("PROWLARR_API_KEY")
+            and not get_secret("PROWLARR_API_KEY")
+        ):
             if args.json:
                 # Machine-readable output must never interleave prompts; fall
                 # back to Lite Mode silently instead of asking the user.
@@ -235,7 +293,7 @@ def main():
                         ensure_config()
                 except (KeyboardInterrupt, EOFError):
                     print(f"\n{C_SUB}later bozo!{C_RST}")
-                    os._exit(0)
+                    raise SystemExit(0) from None
         else:
             ensure_config()
 
@@ -247,22 +305,42 @@ def main():
         except KeyboardInterrupt:
             print(f"\n{C_SUB}later bozo!{C_RST}")
             teardown_oneshot()
-            os._exit(0)
+            raise SystemExit(0) from None
 
     if args.command == "indexers":
         if args.lite:
-            print(f"{C_ERR}Cannot manage Jackett indexers in Lite Mode.{C_RST}", file=sys.stderr)
-            os._exit(1)
+            print(f"{C_ERR}Cannot manage Indexers in Lite Mode.{C_RST}", file=sys.stderr)
+            raise SystemExit(1) from None
         ensure_config()
-        from helm.core.indexer_manager import JackettManager
+
+        config = load_config()
+
+        use_prowlarr = getattr(args, "prowlarr", False)
+        use_jackett = getattr(args, "jackett", False)
+
+        if not use_prowlarr and not use_jackett:
+            manager_type = config.get("INDEXER_MANAGER", "jackett")
+        elif use_prowlarr:
+            manager_type = "prowlarr"
+        else:
+            manager_type = "jackett"
 
         try:
-            manager = JackettManager()
-        except Exception as e:
-            print(f"{C_ERR}Failed to initialize Jackett Manager: {e}{C_RST}", file=sys.stderr)
-            os._exit(1)
+            if manager_type == "prowlarr":
+                from helm.core.indexer_manager import ProwlarrManager
 
-        sys.stdout.write(f"{C_LOGO}Fetching indexers from Jackett...{C_RST}\r\n")
+                manager = ProwlarrManager()
+                mgr_name = "Prowlarr"
+            else:
+                from helm.core.indexer_manager import JackettManager
+
+                manager = JackettManager()
+                mgr_name = "Jackett"
+        except Exception as e:
+            print(f"{C_ERR}Failed to initialize Manager: {e}{C_RST}", file=sys.stderr)
+            raise SystemExit(1) from None
+
+        sys.stdout.write(f"{C_LOGO}Fetching indexers from {mgr_name}...{C_RST}\r\n")
         sys.stdout.flush()
         all_indexers = manager.get_all_indexers()
 
@@ -312,14 +390,14 @@ def main():
                             from helm.core.oneshot import teardown_oneshot
 
                             teardown_oneshot()
-                        os._exit(0)
+                        raise SystemExit(0) from None
                 except (KeyboardInterrupt, EOFError):
                     print(f"\n{C_SUB}later bozo!{C_RST}")
                     if args.oneshot:
                         from helm.core.oneshot import teardown_oneshot
 
                         teardown_oneshot()
-                    os._exit(0)
+                    raise SystemExit(0) from None
 
     mode_str = " (ONE-SHOT MODE)" if args.oneshot else ""
 
@@ -346,7 +424,7 @@ def main():
                     print(f"\n{C_SUB}later bozo!{C_RST}")
                     if args.oneshot:
                         teardown_oneshot()
-                    os._exit(0)
+                    raise SystemExit(0) from None
 
                 if not search_query:
                     continue
@@ -361,7 +439,7 @@ def main():
                     print(f"\n{C_SUB}later bozo!{C_RST}")
                     if args.oneshot:
                         teardown_oneshot()
-                    os._exit(0)
+                    raise SystemExit(0) from None
 
                 if selected_cats == "BACK":
                     # Go back to query prompt by staying in PROMPT
@@ -402,7 +480,7 @@ def main():
                 print(f"\n{C_SUB}later bozo!{C_RST}")
                 if args.oneshot:
                     teardown_oneshot()
-                os._exit(0)
+                raise SystemExit(0) from None
 
             source_name = "Lite mode" if args.lite else "Jackett & Lite"
             if not args.json:
@@ -417,21 +495,21 @@ def main():
             if not filtered:
                 if args.json:
                     print(json.dumps([]))
+                    if args.oneshot:
+                        teardown_oneshot()
+                    raise SystemExit(1) from None
                 else:
                     print(f"\n{C_ERR}No torrents were found :({C_RST}", file=sys.stderr)
                     # If we have arguments, we exit. Else we go back to prompt.
                     if args.query:
                         if args.oneshot:
                             teardown_oneshot()
-                        os._exit(1)
+                        raise SystemExit(1) from None
                     else:
                         input("Press Enter to try again...")
                         print("\033[2J\033[H", end="")
                         state = "PROMPT"
                         continue
-                if args.oneshot:
-                    teardown_oneshot()
-                os._exit(1)
 
             if args.json:
                 from helm.core.secret_manager import sanitize_link
@@ -446,9 +524,10 @@ def main():
                     for t in filtered
                 ]
                 print(json.dumps(json_output, indent=2))
+                sys.stdout.flush()
                 if args.oneshot:
                     teardown_oneshot()
-                os._exit(0)
+                raise SystemExit(0) from None
 
             if args.auto:
                 selected = filtered[0]
@@ -456,7 +535,7 @@ def main():
                 if args.oneshot and not args.lite:
                     wait_for_download()
                     teardown_oneshot()
-                os._exit(0)
+                raise SystemExit(0) from None
 
             state = "RESULTS"
 
@@ -472,7 +551,7 @@ def main():
                     print("\033[2J\033[H", end="")
                     if args.query:
                         # Cannot go back if started from CLI args
-                        os._exit(0)
+                        raise SystemExit(0) from None
                     state = "PROMPT"
                     continue
 
@@ -490,8 +569,33 @@ def main():
                         teardown_oneshot()
                     except Exception:
                         pass
-                os._exit(0)
+                raise SystemExit(0) from None
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        import sys
+
+        print("\n\033[33m[!] Process interrupted by user.\033[0m", file=sys.stderr)
+        if "-o" in sys.argv or "--oneshot" in sys.argv:
+            try:
+                from helm.core.oneshot import teardown_oneshot
+
+                teardown_oneshot()
+            except Exception:
+                pass
+        sys.exit(130)
+    except Exception as e:
+        import sys
+
+        print(f"\n\033[31m[!] An unexpected error occurred: {e}\033[0m", file=sys.stderr)
+        if "-o" in sys.argv or "--oneshot" in sys.argv:
+            try:
+                from helm.core.oneshot import teardown_oneshot
+
+                teardown_oneshot()
+            except Exception:
+                pass
+        sys.exit(1)

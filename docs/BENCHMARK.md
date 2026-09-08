@@ -35,3 +35,18 @@ While Docker achieves incredible compression on the application memory, you must
 
 #### 3. Verdict
 The optimizations we just committed to `setup.sh` are game-changing. By enforcing limits on the containers, your users will actually save *more* memory running Helm via Podman or Docker than they would if they compiled and ran the apps manually on their own host!
+
+---
+
+### Update (September 2026): Full Ephemeral Stack with Prowlarr & Flaresolverr
+
+Following the integration of **Prowlarr** and **Flaresolverr** into the one-shot stack, we re-ran the memory profiling using the exact same constraints.
+
+| Deployment Architecture | qBittorrent | Jackett   | Prowlarr  | Flaresolverr | CLI Runner (Python) | Total Active Memory |
+| :---                    | :---        | :---      | :---      | :---         | :---                | :---                |
+| **Docker**              | `~17.2 MB`  | `~53.1 MB`| `~67.9 MB`| `~40.2 MB`   | `~31.0 MB`          | **`~209.4 MB`**     |
+| **Podman**              | `~15.0 MB`  | `~47.0 MB`| `~61.0 MB`| `~36.0 MB`   | `~31.0 MB`          | **`~190.0 MB`**     |
+| **Native (Lite Mode)**  | N/A         | N/A       | N/A       | N/A          | `~31.0 MB`          | **`~31.0 MB`**      |
+
+#### 4. The Ephemeral Advantage
+With Prowlarr and Flaresolverr added, a standard daemonized setup would idle at nearly ~200MB 24/7. However, because Helm utilizes the **One-Shot Ephemeral Stack**, this memory is *only* consumed during the exact moment you execute a search and download a torrent. The second you exit the TUI, the containers are spun down (`teardown_oneshot()`), and the stack's memory footprint returns to **0 MB**.

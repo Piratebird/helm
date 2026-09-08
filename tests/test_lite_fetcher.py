@@ -1,6 +1,8 @@
+import asyncio
+
 import responses
 
-from helm.core.lite_fetcher import search_lite
+from helm.core.lite_fetcher import search_all_plugins, search_lite
 
 NYAA_RSS = """<?xml version="1.0" encoding="UTF-8"?>
 <rss xmlns:torrent="http://nyaa.si/xmlns/nyaa" version="2.0">
@@ -76,3 +78,14 @@ def test_search_lite_aggregates_all_sources(monkeypatch):
     assert nyaa.leechers == 3
     assert nyaa.size == int(1.5 * 1024**3)
     assert nyaa.pubdate == "2024-12-08"
+
+
+def test_search_all_plugins_delegates_to_search_lite(monkeypatch):
+    from helm.core.rss_fetcher import TorrentItem
+
+    item = TorrentItem("Ubuntu 24.04 ISO", "magnet:?xt=urn:btih:cafe", 42, 7, 999)
+    monkeypatch.setattr("helm.core.lite_fetcher.search_lite", lambda query: [item])
+
+    result = asyncio.run(search_all_plugins("ubuntu", "video"))
+
+    assert result == [item]

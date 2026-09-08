@@ -63,8 +63,8 @@ services:
       - 18191:8191
     restart: unless-stopped
 
-  mini-helm:
-    container_name: "${COMPOSE_PROJECT_NAME:-helm}-mini-helm"
+  cli:
+    container_name: "${COMPOSE_PROJECT_NAME:-helm}-cli"
     image: ghcr.io/piratebird/helm:latest
     dns:
       - 8.8.8.8
