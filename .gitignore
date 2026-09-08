@@ -50,3 +50,4 @@ helm.sh
 .coverage
 coverage.xml
 htmlcov/
+personal_notes/

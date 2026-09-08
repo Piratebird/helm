@@ -23,8 +23,18 @@ def load_plugins(plugin_dir):
         sys.path.insert(0, plugin_dir)
 
     for file in os.listdir(plugin_dir):
-        # Ignore our SDK files and standard dunder files
-        if file.endswith(".py") and not file.startswith("__") and file not in ("helpers.py", "novaprinter.py"):
+        # Ignore our SDK files, standard dunder files, and plugins whose sources
+        # are already fetched inline by the lite pipeline (piratebay == apibay).
+        if (
+            file.endswith(".py")
+            and not file.startswith("__")
+            and file
+            not in (
+                "helpers.py",
+                "novaprinter.py",
+                "piratebay.py",
+            )
+        ):
             filepath = os.path.join(plugin_dir, file)
             module_name = file[:-3]
             try:

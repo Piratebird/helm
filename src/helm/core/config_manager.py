@@ -20,6 +20,7 @@ SECRET_KEYS = frozenset(
     [
         "JACKETT_API_KEY",
         "JACKETT_PASSWORD",
+        "PROWLARR_API_KEY",
         "QB_PASSWORD",
     ]
 )

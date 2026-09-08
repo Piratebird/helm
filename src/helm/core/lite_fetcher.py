@@ -1,28 +1,26 @@
+import asyncio
+import concurrent.futures
 import datetime
 import os
 import xml.etree.ElementTree as ET
 from email.utils import parsedate_to_datetime
-
-import requests
+from typing import List
+from urllib.parse import quote
 
 from helm.core.config_manager import get_config_dir
+from helm.core.http import get_shared_session
 from helm.core.logger import get_logger
 from helm.core.rss_fetcher import TorrentItem
 
 logger = get_logger(__name__)
 
 
-def search_lite(query):
-    """
-    Lite mode fetcher using public APIs (e.g., apibay) without needing Jackett.
-    """
+def _fetch_apibay(query: str) -> List[TorrentItem]:
+    """The Pirate Bay public API (apibay)."""
     items = []
-
-    # Apibay (The Pirate Bay API)
-    before = len(items)
     apibay_url = "https://apibay.org/q.php"
     try:
-        r = requests.get(apibay_url, params={"q": query}, timeout=15)
+        r = get_shared_session().get(apibay_url, params={"q": query}, timeout=15)
         r.raise_for_status()
         data = r.json()
 
@@ -36,7 +34,7 @@ def search_lite(query):
                 continue
 
             # Construct magnet link with popular public trackers
-            encoded_name = requests.utils.quote(title)
+            encoded_name = quote(title)
             magnet = (
                 f"magnet:?xt=urn:btih:{info_hash}"
                 f"&dn={encoded_name}"
@@ -75,13 +73,16 @@ def search_lite(query):
     except Exception as e:
         logger.debug(f"Event: Apibay connection failed: {e}")
 
-    logger.info(f"Event: Apibay returned {len(items) - before} results")
+    logger.info(f"Event: Apibay returned {len(items)} results")
+    return items
 
-    # Torrents-csv API (Aggregator)
-    before = len(items)
+
+def _fetch_torrents_csv(query: str) -> List[TorrentItem]:
+    """Torrents-csv API (Aggregator)."""
+    items = []
     torrents_csv_url = "https://torrents-csv.com/service/search"
     try:
-        r = requests.get(torrents_csv_url, params={"q": query, "size": 100}, timeout=15)
+        r = get_shared_session().get(torrents_csv_url, params={"q": query, "size": "100"}, timeout=15)
         if r.status_code == 200:
             data = r.json()
             for item in data.get("torrents", []):
@@ -90,7 +91,7 @@ def search_lite(query):
                 if not info_hash:
                     continue
 
-                encoded_name = requests.utils.quote(title)
+                encoded_name = quote(title)
                 magnet = (
                     f"magnet:?xt=urn:btih:{info_hash}"
                     f"&dn={encoded_name}"
@@ -111,13 +112,16 @@ def search_lite(query):
     except Exception as e:
         logger.debug(f"Event: Torrents-csv connection failed: {e}")
 
-    logger.info(f"Event: Torrents-csv returned {len(items) - before} results")
+    logger.info(f"Event: Torrents-csv returned {len(items)} results")
+    return items
 
-    # Nyaa RSS API (Anime/Asian content)
-    before = len(items)
-    nyaa_url = f"https://nyaa.si/?page=rss&q={requests.utils.quote(query)}&c=0_0&f=0"
+
+def _fetch_nyaa(query: str) -> List[TorrentItem]:
+    """Nyaa RSS API (Anime/Asian content)."""
+    items = []
+    nyaa_url = f"https://nyaa.si/?page=rss&q={quote(query)}&c=0_0&f=0"
     try:
-        r = requests.get(nyaa_url, timeout=15)
+        r = get_shared_session().get(nyaa_url, timeout=15)
         if r.status_code == 200:
             root = ET.fromstring(r.content)
             for item in root.findall("./channel/item"):
@@ -141,7 +145,7 @@ def search_lite(query):
                             size = int(float(size_str.replace(" MiB", "")) * 1024**2)
                     elif child.tag.endswith("infoHash"):
                         info_hash = child.text
-                        magnet = f"magnet:?xt=urn:btih:{info_hash}&dn={requests.utils.quote(title)}&tr=http%3A%2F%2Fnyaa.tracker.wf%3A7777%2Fannounce"
+                        magnet = f"magnet:?xt=urn:btih:{info_hash}&dn={quote(title)}&tr=http%3A%2F%2Fnyaa.tracker.wf%3A7777%2Fannounce"
 
                 pubdate = item.findtext("pubDate") or None
                 if pubdate:
@@ -156,25 +160,62 @@ def search_lite(query):
     except Exception as e:
         logger.debug(f"Event: Nyaa connection failed: {e}")
 
-    logger.info(f"Event: Nyaa returned {len(items) - before} results")
-
-    # --- qBittorrent Plugins Integration --- #
-    before = len(items)
-
-    try:
-        from helm.core.lite_plugin_loader import run_plugins
-
-        # Define where to look for plugins
-        plugin_dirs = [
-            os.path.join(get_config_dir(), "plugins"),  # User plugins (XDG config dir)
-            os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "plugins"),  # Bundled plugins
-        ]
-
-        plugin_results = run_plugins(query, plugin_dirs)
-        if plugin_results:
-            items.extend(plugin_results)
-        logger.info(f"Event: Native plugins returned {len(plugin_results)} results")
-    except Exception as e:
-        logger.debug(f"Event: Plugin loader failed: {e}")
-
+    logger.info(f"Event: Nyaa returned {len(items)} results")
     return items
+
+
+def _collect_plugins(query: str) -> List[TorrentItem]:
+    """Run the bundled/user search plugins (parallel) via the plugin loader."""
+    from helm.core.lite_plugin_loader import run_plugins
+
+    plugin_dirs = [
+        os.path.join(get_config_dir(), "plugins"),  # User plugins (XDG config dir)
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "plugins"),  # Bundled plugins
+    ]
+
+    plugin_results = run_plugins(query, plugin_dirs) or []
+    logger.info(f"Event: Native plugins returned {len(plugin_results)} results")
+    return list(plugin_results)
+
+
+def _collect_all(query: str) -> List[TorrentItem]:
+    """Fetch every lite source concurrently and merge the results.
+
+    Sources run in a single bounded pool so one hung socket slows a search to a
+    single request timeout instead of a serial chain of failures.
+    """
+    sources = [
+        _fetch_apibay,
+        _fetch_torrents_csv,
+        _fetch_nyaa,
+        _collect_plugins,
+    ]
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=len(sources))
+    futures = [pool.submit(source, query) for source in sources]
+    # Give each source the full budget; sockets themselves time out at ~15s,
+    # so this bound only protects against an abandoned straggler. Done futures
+    # are drained eagerly; stragglers keep their private thread-local state and
+    # can never contaminate this or any later search.
+    done, _ = concurrent.futures.wait(futures, timeout=25)
+    pool.shutdown(wait=False)
+
+    pooled = []
+    for future in done:
+        try:
+            pooled.extend(future.result())
+        except Exception:
+            logger.debug("Event: Failed to collect lite source results", exc_info=True)
+    return pooled
+
+
+def search_lite(query):
+    """Lite mode fetcher using public APIs (e.g., apibay) without needing Jackett."""
+    return _collect_all(query)
+
+
+async def search_all_plugins(query, content_type="video"):
+    """Async aggregate search over every lite source, for the indexer-manager fallback.
+
+    All I/O is delegated to the worker pool inside :func:`search_lite`.
+    """
+    return await asyncio.get_running_loop().run_in_executor(None, search_lite, query)

@@ -7,6 +7,7 @@
 import requests
 from novaprinter import prettyPrinter
 
+from helm.core.http import get_shared_session
 from helm.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -29,7 +30,7 @@ class yts(object):
 
     def search(self, what, cat="all"):
         try:
-            r = requests.get(
+            r = get_shared_session().get(
                 API_URL,
                 params={"query_term": what, "limit": 50},
                 headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) Helm/0.9"},

@@ -18,10 +18,12 @@ def run_wizard():
 
         print("You can run Helm in two modes:")
         print("  1. Lite Mode (Native plugins only, no media server required)")
-        print("  2. Full Automation (Requires Jackett & qBittorrent running)")
+        print("  2. Full Automation (Requires Jackett/Prowlarr & qBittorrent running)")
 
         choice = (
-            input("\nDo you want to configure Jackett and qBittorrent for full automation? (y/N): ").strip().lower()
+            input("\nDo you want to configure an Indexer Manager and qBittorrent for full automation? (y/N): ")
+            .strip()
+            .lower()
         )
         if choice not in ("y", "yes"):
             print("\n\033[32mOpting for Lite Mode. You can change this later.\033[0m\n")
@@ -31,71 +33,114 @@ def run_wizard():
 
         config["LITE_MODE_ONLY"] = False
 
-        # Jackett
-        jackett_url = config.get("JACKETT_URL", os.getenv("JACKETT_URL", "http://localhost:9117"))
-        jackett_api = get_secret("JACKETT_API_KEY") or ""
-        jackett_pwd = get_secret("JACKETT_PASSWORD") or ""
+        indexer_choice = input("Which Indexer Manager are you using? [1] Jackett [2] Prowlarr (default 1): ").strip()
 
-        while True:
-            jackett_url_input = input(f"Jackett URL [{jackett_url}]: ").strip()
-            if jackett_url_input.lower() in ("exit", "quit", "q") or "\x03" in jackett_url_input:
-                print("\n\033[33mConfiguration aborted. later bozo!\033[0m")
-                sys.exit(0)
-            if jackett_url_input:
-                jackett_url = jackett_url_input
+        if indexer_choice == "2":
+            # Prowlarr
+            prowlarr_url = config.get("PROWLARR_URL", os.getenv("PROWLARR_URL", "http://localhost:19696"))
+            prowlarr_api = get_secret("PROWLARR_API_KEY") or ""
 
-            # Obscure the API key if it exists
-            masked_api = (
-                f"{jackett_api[:4]}...{jackett_api[-4:]}" if len(jackett_api) > 8 else "***" if jackett_api else ""
-            )
-            jackett_api_input = input(f"Jackett API Key [{masked_api}]: ").strip()
-            if jackett_api_input.lower() in ("exit", "quit", "q") or "\x03" in jackett_api_input:
-                print("\n\033[33mConfiguration aborted. later bozo!\033[0m")
-                sys.exit(0)
-            if jackett_api_input:
-                jackett_api = jackett_api_input
+            while True:
+                prowlarr_url_input = input(f"Prowlarr URL [{prowlarr_url}]: ").strip()
+                if prowlarr_url_input.lower() in ("exit", "quit", "q") or "\x03" in prowlarr_url_input:
+                    sys.exit(0)
+                if prowlarr_url_input:
+                    prowlarr_url = prowlarr_url_input
 
-            jackett_pwd_input = input(
-                f"Jackett Admin Password (leave blank if none) [{'***' if jackett_pwd else ''}]: "
-            ).strip()
-            if jackett_pwd_input.lower() in ("exit", "quit", "q") or "\x03" in jackett_pwd_input:
-                print("\n\033[33mConfiguration aborted. later bozo!\033[0m")
-                sys.exit(0)
-            if jackett_pwd_input:
-                jackett_pwd = jackett_pwd_input
-            # To allow clearing the password if one was set, we could allow a special string, but for now we just take the input if truthy or keep it if they just pressed enter.
+                masked_api = (
+                    f"{prowlarr_api[:4]}...{prowlarr_api[-4:]}"
+                    if len(prowlarr_api) > 8
+                    else "***"
+                    if prowlarr_api
+                    else ""
+                )
+                prowlarr_api_input = input(f"Prowlarr API Key [{masked_api}]: ").strip()
+                if prowlarr_api_input.lower() in ("exit", "quit", "q") or "\x03" in prowlarr_api_input:
+                    sys.exit(0)
+                if prowlarr_api_input:
+                    prowlarr_api = prowlarr_api_input
 
-            if jackett_api:
-                # Validate Jackett
-                print("Validating Jackett connection...")
-                try:
-                    r = requests.get(
-                        f"{jackett_url}/api/v2.0/indexers/all/results/torznab/api?apikey={jackett_api}&t=indexers",
-                        timeout=5,
-                    )
-                    if r.status_code == 200:
-                        # Also test if password works for UI APIs
-                        session = requests.Session()
-                        r_auth = session.post(f"{jackett_url}/UI/Dashboard", data={"password": jackett_pwd})
-                        if r_auth.status_code in (200, 302):
-                            # Try to fetch a config schema to ensure auth worked (or it returns HTML)
-                            r_conf = session.get(f"{jackett_url}/api/v2.0/indexers/3dtorrents/config")
-                            if r_conf.status_code == 200 and r_conf.text.startswith("["):
-                                print("Jackett connection and authentication successful!\n")
-                                break
-                            else:
-                                print("Jackett API key works, but Admin Password appears to be incorrect.\n")
+                if prowlarr_api:
+                    print("Validating Prowlarr connection...")
+                    try:
+                        r = requests.get(
+                            f"{prowlarr_url}/api/v1/indexer", headers={"X-Api-Key": prowlarr_api}, timeout=5
+                        )
+                        if r.status_code == 200:
+                            print("Prowlarr connection successful!\n")
+                            break
                         else:
-                            print(f"Jackett auth failed: HTTP {r_auth.status_code}\n")
-                    else:
-                        print(f"Jackett connection failed: HTTP {r.status_code}\n")
-                except Exception as e:
-                    print(f"Jackett connection failed: {e}\n")
-            else:
-                print("Jackett API key is required.\n")
+                            print(f"Prowlarr connection failed: HTTP {r.status_code}\n")
+                    except Exception as e:
+                        print(f"Prowlarr connection failed: {e}\n")
+                else:
+                    print("Prowlarr API key is required.\n")
 
-        config["JACKETT_URL"] = jackett_url
-        set_secrets({"JACKETT_API_KEY": jackett_api, "JACKETT_PASSWORD": jackett_pwd})
+            config["PROWLARR_URL"] = prowlarr_url
+            set_secrets({"PROWLARR_API_KEY": prowlarr_api})
+            config["INDEXER_MANAGER"] = "prowlarr"
+        else:
+            # Jackett
+            jackett_url = config.get("JACKETT_URL", os.getenv("JACKETT_URL", "http://localhost:9117"))
+            jackett_api = get_secret("JACKETT_API_KEY") or ""
+            jackett_pwd = get_secret("JACKETT_PASSWORD") or ""
+
+            while True:
+                jackett_url_input = input(f"Jackett URL [{jackett_url}]: ").strip()
+                if jackett_url_input.lower() in ("exit", "quit", "q") or "\x03" in jackett_url_input:
+                    print("\n\033[33mConfiguration aborted. later bozo!\033[0m")
+                    sys.exit(0)
+                if jackett_url_input:
+                    jackett_url = jackett_url_input
+
+                masked_api = (
+                    f"{jackett_api[:4]}...{jackett_api[-4:]}" if len(jackett_api) > 8 else "***" if jackett_api else ""
+                )
+                jackett_api_input = input(f"Jackett API Key [{masked_api}]: ").strip()
+                if jackett_api_input.lower() in ("exit", "quit", "q") or "\x03" in jackett_api_input:
+                    print("\n\033[33mConfiguration aborted. later bozo!\033[0m")
+                    sys.exit(0)
+                if jackett_api_input:
+                    jackett_api = jackett_api_input
+
+                jackett_pwd_input = input(
+                    f"Jackett Admin Password (leave blank if none) [{'***' if jackett_pwd else ''}]: "
+                ).strip()
+                if jackett_pwd_input.lower() in ("exit", "quit", "q") or "\x03" in jackett_pwd_input:
+                    print("\n\033[33mConfiguration aborted. later bozo!\033[0m")
+                    sys.exit(0)
+                if jackett_pwd_input:
+                    jackett_pwd = jackett_pwd_input
+
+                if jackett_api:
+                    print("Validating Jackett connection...")
+                    try:
+                        r = requests.get(
+                            f"{jackett_url}/api/v2.0/indexers/all/results/torznab/api?apikey={jackett_api}&t=indexers",
+                            timeout=5,
+                        )
+                        if r.status_code == 200:
+                            session = requests.Session()
+                            r_auth = session.post(f"{jackett_url}/UI/Dashboard", data={"password": jackett_pwd})
+                            if r_auth.status_code in (200, 302):
+                                r_conf = session.get(f"{jackett_url}/api/v2.0/indexers/3dtorrents/config")
+                                if r_conf.status_code == 200 and r_conf.text.startswith("["):
+                                    print("Jackett connection and authentication successful!\n")
+                                    break
+                                else:
+                                    print("Jackett API key works, but Admin Password appears to be incorrect.\n")
+                            else:
+                                print(f"Jackett auth failed: HTTP {r_auth.status_code}\n")
+                        else:
+                            print(f"Jackett connection failed: HTTP {r.status_code}\n")
+                    except Exception as e:
+                        print(f"Jackett connection failed: {e}\n")
+                else:
+                    print("Jackett API key is required.\n")
+
+            config["JACKETT_URL"] = jackett_url
+            set_secrets({"JACKETT_API_KEY": jackett_api, "JACKETT_PASSWORD": jackett_pwd})
+            config["INDEXER_MANAGER"] = "jackett"
 
         # qBittorrent
         qb_webui = config.get("QB_WEBUI", os.getenv("QB_WEBUI", "http://localhost:18080"))

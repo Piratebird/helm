@@ -38,19 +38,19 @@
 
 Helm is a blazing-fast CLI-based torrent automation tool designed to fetch, filter, and send magnet links to qBittorrent. 
 
-It completely automates its own setup, orchestrating Jackett, Flaresolverr, and qBittorrent using Docker or Podman under the hood.
+It completely automates its own setup, orchestrating Jackett, Prowlarr, Flaresolverr, and qBittorrent using Docker or Podman under the hood.
 
 ---
 
 ## Features
 
-- **Automated Container Setup:** No more manually configuring Jackett, qBittorrent, or Flaresolverr. `setup.sh` orchestrates everything via Docker/Podman compose.
+- **Automated Container Setup:** No more manually configuring Jackett, Prowlarr, qBittorrent, or Flaresolverr. `setup.sh` orchestrates everything via Docker/Podman compose.
 - **Ephemeral (One-Shot) Mode:** Containers spin up when you search/download, and tear down immediately after to save RAM and CPU.
 - **Permanent Mode:** Keep the stack running 24/7 if you prefer.
 - **VPN Support:** Automatically route qBittorrent traffic through Gluetun (Wireguard/OpenVPN).
 - **Live Search & Filter:** A fast, interactive CLI interface to search indexers and select torrents.
-- **Lite Mode (Zero Setup):** Search and get Magnet links instantly using built-in Python scrapers without needing Docker or Jackett installed!
-- **CLI Indexer Management:** Add and remove Jackett indexers directly from the command line.
+- **Lite Mode (Zero Setup):** Search and get Magnet links instantly using built-in Python scrapers — no Docker or Jackett needed. All sources (apibay, torrents-csv, Nyaa, and the bundled search plugins) run concurrently over a connection-pooled session, so even a hung index tops out at one socket timeout.
+- **CLI Indexer Management:** Manage both Jackett and Prowlarr indexers directly from the command line.
 
 ---
 
@@ -105,7 +105,7 @@ Honestly for the most part it's for myself and my own usage i wanted to get magn
 
 Helm is actively roaming the 7seas and trying to get more treasures:
 
-- Prowlarr integration (Replacing Jackett).
+- ~~Prowlarr integration (Replacing Jackett).~~ Done in 0.10.0 — Jackett, Prowlarr, or both.
 - Scrumptious TUI interface.
 - Better indexer management.
 
@@ -115,7 +115,7 @@ For more detailed tasks breakdown check [TODO.md](docs/TODO.md)
 
 All notable changes are tracked in [CHANGELOG](CHANGELOG.md).
 
-**Latest release: [0.9.5](CHANGELOG.md#095---2026-08-31)** — Major UI improvements including multi-select category checkboxes, inline filtering and sorting, stateful navigation, tracker origins in results, and auto-injection of default Jackett indexers on initialization. See the full file for everything that came before.
+**Latest release: [0.10.0](CHANGELOG.md#0100---2026-09-08)** — Full Prowlarr integration with native default-indexer seeding, a new container `status` command, guaranteed-pure `--json` output, and a rewritten Lite pipeline that runs every source concurrently over a shared connection-pooled session. See the full file for everything that came before.
 
 ## Configuration
 
@@ -191,10 +191,22 @@ Helm pulls torrent RSS feeds from configured indexers, applies filtering and ded
 
 ## Credits
 
-Shoutout to the goats! This project is built utilizing these fantastic open-source tools: qBittorrent, Jackett, and Flaresolverr.
+Shoutout to the goats! This project is built utilizing these fantastic open-source tools:
+
+(i lwk feel like a sales person pitching these but wtv lol)
+
+- **[qBittorrent](https://www.qbittorrent.org)** — the torrent client that receives all our magnets.
+- **[Jackett](https://github.com/Jackett/Jackett)** — the battle-tested indexer manager for public trackers.
+- **[Prowlarr](https://github.com/Prowlarr/Prowlarr)** — the modern, community-indexer-powered search indexer manager. Helm natively discovers its 600+ indexer schema alongside Jackett.
+- **[Flaresolverr](https://github.com/FlareSolverr/FlareSolverr)** — busts Cloudflare walls so the indexers actually talk to us.
+- **[Gluetun](https://github.com/qdm12/gluetun)** — keeps qBittorrent safely behind your VPN with zero config headaches.
+- **[LinuxServer.io](https://www.linuxserver.io)** — their massively maintained container images are what the Docker/Podman stack runs on (always coming in clutch istg).
 
 **Lite Mode Plugins:**
-A massive thank you to the [qBittorrent search engine plugins community](https://github.com/qbittorrent/search-plugins) and developers. Helm's lightweight search mode natively supports their `.py` plugins, making it possible to search dozens of torrent indexers instantly without any Docker overhead.
+A massive thank you to the [qBittorrent search engine plugins community](https://github.com/qbittorrent/search-plugins) and developers. Helm's lightweight search mode natively supports their `.py` plugins, making it possible to search dozens of torrent indexers instantly without any Docker overhead. Bundled and adapted from that community (licensed for adaptation): **BitSearch, EZTV, LimeTorrents, SubsPlease, TorLock, TorrentProject, YTS, 1337x, The Pirate Bay/apibay** — alongside Helm's own **BitTorrented** plugin and the inline **apibay, torrents-csv & Nyaa** feeds.
+
+**Built with these Python libraries:**
+**[requests](https://github.com/psf/requests)** (originally Kenneth Reitz), **[beautifulsoup4](https://www.crummy.com/software/BeautifulSoup/)** (Leonard Richardson), **[python-dotenv](https://github.com/theskumar/python-dotenv)** (theskumar), and **[libtorrent](https://github.com/arvidn/libtorrent)** (Arvid Norberg) doing the heavy lifting.
 
 ## License
 

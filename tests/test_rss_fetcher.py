@@ -64,3 +64,36 @@ def test_search_jackett_aggregate_fallback_when_no_indexers_configured(monkeypat
 def test_search_jackett_returns_empty_without_api_key(monkeypatch):
     monkeypatch.delenv("JACKETT_API_KEY", raising=False)
     assert search_jackett("ubuntu", "video") == []
+
+
+def test_search_indexers_falls_back_to_lite_when_manager_returns_nothing(monkeypatch):
+    from helm.core import config_manager, lite_fetcher
+    from helm.core.rss_fetcher import TorrentItem
+
+    monkeypatch.setattr(config_manager, "load_config", lambda: {"INDEXER_MANAGER": "jackett"})
+    monkeypatch.setattr(rf, "search_jackett", lambda *a, **k: [])
+
+    lite = TorrentItem("Ubuntu 24.04 Lite", "magnet:?xt=urn:btih:cafe", 5)
+    monkeypatch.setattr(lite_fetcher, "search_lite", lambda query: [lite])
+
+    # Must NOT raise ImportError despite the async search_all_plugins wrapper.
+    items = rf.search_indexers("ubuntu", "video")
+
+    assert items == [lite]
+
+
+def test_search_indexers_falls_back_to_lite_with_prowlarr_manager(monkeypatch):
+    from helm.core import config_manager, lite_fetcher
+    from helm.core.rss_fetcher import TorrentItem
+
+    monkeypatch.setattr(config_manager, "load_config", lambda: {"INDEXER_MANAGER": "prowlarr"})
+    monkeypatch.setattr(rf, "search_prowlarr", lambda *a, **k: [])
+    monkeypatch.setattr(rf, "search_jackett", lambda *a, **k: [])
+
+    lite = TorrentItem("Ubuntu 24.04 Lite", "magnet:?xt=urn:btih:cafe", 5)
+    monkeypatch.setattr(lite_fetcher, "search_lite", lambda query: [lite])
+
+    ret = rf.search_indexers("ubuntu", "video")
+
+    # Same list, deduped (no duplicates here).
+    assert ret == [lite]

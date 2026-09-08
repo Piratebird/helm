@@ -33,14 +33,16 @@
   - [x] Allow users to search and get Magnet links instantly *without* Docker or Jackett installed.
 
 ### 2. Tracker Management
-- [ ] **Prowlarr Integration (Optional Mode):** 
-  - [ ] Give users a choice during setup between Jackett and Prowlarr.
-  - [ ] Implement API handlers for Prowlarr so users who prefer modern tracker syncing can use it seamlessly.
+- [x] **Prowlarr Integration (Optional Mode):** 
+  - [x] Give users a choice during setup between Jackett and Prowlarr.
+  - [x] Implement API handlers for Prowlarr so users who prefer modern tracker syncing can use it seamlessly.
 - [x] **Improve Jackett Interaction:** 
   - [x] Allow adding/removing indexers directly from the CLI.
   - [x] Auto-inject default indexers (1337x, YTS, etc.) during `helm init` via internal API.
 
 ### 3. Distribution & Installation
+- [ ] **Uninstall Script (`uninstall.sh`):**
+  - [ ] Provide an automated script to cleanly remove Helm containers, networks, volumes, and Python packages based on user choice.
 - [x] **Publish to PyPI (`pip install helm-torrent`):**
   - [x] Restructure directory to standard Python package layout.
   - [x] Implement `helm init` to automatically bootstrap the Docker environment on first run.

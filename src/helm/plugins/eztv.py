@@ -9,6 +9,7 @@
 import requests
 from novaprinter import prettyPrinter
 
+from helm.core.http import get_shared_session
 from helm.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -22,7 +23,7 @@ class eztv(object):
     def search(self, what, cat="all"):
         query = what.strip().lower()
         try:
-            r = requests.get(
+            r = get_shared_session().get(
                 f"{self.url}/api/get-torrents",
                 params={"limit": 100, "page": 1},
                 headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) helm/0.9.1"},

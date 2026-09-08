@@ -73,7 +73,7 @@ echo ""
 if [ -n "$SKIP_PROMPTS" ]; then
     install_mode=1
 else
-    echo "How would you like to install the required services (Jackett & qBittorrent)?"
+    echo "How would you like to install the required services (Jackett/Prowlarr & qBittorrent)?"
     echo "  [1] Docker (Recommended) - Uses standard docker-compose, isolates dependencies."
     echo "  [2] Podman               - Daemonless, rootless containers for lower memory overhead."
     echo "  [3] Native               - Installs directly to your OS (/opt/Jackett & /usr/bin/qbittorrent). Highest performance but clutters OS."
@@ -81,6 +81,19 @@ else
     install_mode=${install_mode:-1}
     echo ""
 fi
+
+if [ -n "$SKIP_PROMPTS" ]; then
+    indexer_mode=3
+else
+    echo "Which indexer manager would you like to use?"
+    echo "  [1] Jackett (Default) - Stable, battle-tested."
+    echo "  [2] Prowlarr (BETA)   - Modern UI, becoming the standard."
+    echo "  [3] Both              - Run both Jackett and Prowlarr simultaneously."
+    read -r -p "Choose your indexer manager (1/2/3, default 1): " indexer_mode
+    indexer_mode=${indexer_mode:-1}
+    echo ""
+fi
+
 
 check_docker() {
     if ! command -v docker &> /dev/null; then
@@ -205,6 +218,20 @@ check_podman() {
 
 install_native() {
     echo "--- Native Installation ---"
+
+    if [ "$indexer_mode" == "2" ] || [ "$indexer_mode" == "3" ]; then
+        echo -e "
+[33m[WARNING] Prowlarr integration is currently in BETA.[0m"
+        echo -e "Installing Prowlarr natively involves complex .NET dependencies that might clutter your system."
+        echo -e "It is [1mHIGHLY RECOMMENDED[0m to use Docker (Option 1) or Podman (Option 2) for Prowlarr instead.
+"
+        read -r -p "Are you sure you want to continue with Native Installation? [y/N]: " confirm_native
+        confirm_native=${confirm_native:-N}
+        if [[ ! "$confirm_native" =~ ^[Yy]$ ]]; then
+            echo "Aborting native installation. Please run the script again and select Docker."
+            exit 1
+        fi
+    fi
     if [ "$(uname)" == "Darwin" ]; then
         echo -e "\n\033[31m[ERROR] Native mode on macOS is blocked.\033[0m"
         echo "i aint messing with yall system"
@@ -253,6 +280,7 @@ install_native() {
         echo "[OK] qBittorrent-nox is installed."
     fi
     
+    if [ "$indexer_mode" == "1" ] || [ "$indexer_mode" == "3" ]; then
     if [ ! -d "/opt/Jackett" ]; then
         echo "Installing Jackett to /opt/Jackett..."
         cd /opt
@@ -264,8 +292,42 @@ install_native() {
     else
         echo "Jackett already installed at /opt/Jackett"
     fi
+    fi
     
-    echo "Native installation completed! Ensure services are running using systemctl."
+    
+    if [ "$indexer_mode" == "2" ] || [ "$indexer_mode" == "3" ]; then
+        if [ ! -d "/opt/Prowlarr" ]; then
+            echo "Installing Prowlarr to /opt/Prowlarr..."
+            cd /opt
+            wget -O - -o /dev/null https://github.com/Prowlarr/Prowlarr/releases/latest/download/Prowlarr.master.linux-core-x64.tar.gz | sudo tar -xz
+            sudo chown "$(whoami)":"$(id -g)" -R "/opt/Prowlarr"
+            
+            # Create a simple systemd service for Prowlarr
+            cat << SVC | sudo tee /etc/systemd/system/prowlarr.service > /dev/null
+[Unit]
+Description=Prowlarr Daemon
+After=network.target
+
+[Service]
+User=$(whoami)
+Group=$(id -g)
+Type=simple
+ExecStart=/opt/Prowlarr/Prowlarr -nobrowser
+TimeoutStopSec=20
+KillMode=process
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+SVC
+            sudo systemctl daemon-reload
+            sudo systemctl enable --now prowlarr
+            cd -
+        else
+            echo "Prowlarr already installed at /opt/Prowlarr"
+        fi
+    fi
+echo "Native installation completed! Ensure services are running using systemctl."
     exit 0
 }
 
@@ -280,9 +342,32 @@ fi
 
 echo "[OK] Container engine and compose are functional."
 
-mkdir -p "$HELM_STATE/jackett" "$HELM_STATE/qbittorrent" "$HELM_STATE/gluetun" "$HELM_DL"
+mkdir -p "$HELM_STATE/jackett" "$HELM_STATE/prowlarr" "$HELM_STATE/qbittorrent" "$HELM_STATE/gluetun" "$HELM_DL"
 mkdir -p "$HELM_CONFIG"
 touch "$HELM_CONFIG/config.json"
+
+# Record the chosen indexer manager so the CLI knows which backend to query.
+if [ "$indexer_mode" == "2" ]; then
+    INDEXER_MANAGER="prowlarr"
+elif [ "$indexer_mode" == "3" ]; then
+    INDEXER_MANAGER="both"
+else
+    INDEXER_MANAGER="jackett"
+fi
+python3 - "$HELM_CONFIG/config.json" "$INDEXER_MANAGER" <<'PY' || true
+import json
+import sys
+
+path, manager = sys.argv[1], sys.argv[2]
+try:
+    with open(path) as f:
+        data = json.load(f)
+except (OSError, json.JSONDecodeError):
+    data = {}
+data["INDEXER_MANAGER"] = manager
+with open(path, "w") as f:
+    json.dump(data, f, indent=4)
+PY
 
 echo ""
 if [ -n "$SKIP_PROMPTS" ]; then
@@ -298,10 +383,16 @@ fi
 
 if [ -n "$SKIP_PROMPTS" ]; then
     JACKETT_API=""
+    PROWLARR_API=""
     qb_user="admin"
     use_vpn="n"
 else
-    read -r -p "Enter Jackett API Key (press Enter to auto-extract later): " JACKETT_API
+    if [ "$indexer_mode" == "1" ] || [ "$indexer_mode" == "3" ]; then
+        read -r -p "Enter Jackett API Key (press Enter to auto-extract later): " JACKETT_API
+    fi
+    if [ "$indexer_mode" == "2" ] || [ "$indexer_mode" == "3" ]; then
+        read -r -p "Enter Prowlarr API Key (press Enter to auto-extract later): " PROWLARR_API
+    fi
     read -r -p "Enter qBittorrent Username (default: admin): " qb_user
     qb_user=${qb_user:-admin}
 
@@ -312,6 +403,10 @@ fi
 # Write docker-compose.yml
 cat << 'EOF' > docker-compose.yml
 services:
+EOF
+
+if [[ ( "$indexer_mode" == "1" || "$indexer_mode" == "3" ) && -z "$EXTERNAL_JACKETT_API" ]]; then
+cat << 'EOF' >> docker-compose.yml
   jackett:
     container_name: "${COMPOSE_PROJECT_NAME:-helm}-jackett"
     image: lscr.io/linuxserver/jackett:latest
@@ -339,7 +434,41 @@ services:
     ports:
       - 19117:9117
     restart: unless-stopped
+EOF
+fi
 
+if [[ ( "$indexer_mode" == "2" || "$indexer_mode" == "3" ) && -z "$EXTERNAL_PROWLARR_API" ]]; then
+cat << 'EOF' >> docker-compose.yml
+  prowlarr:
+    container_name: "${COMPOSE_PROJECT_NAME:-helm}-prowlarr"
+    image: lscr.io/linuxserver/prowlarr:latest
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+    labels:
+      - "com.docker.compose.project=${COMPOSE_PROJECT_NAME:-helm}"
+      - "com.docker.compose.service=prowlarr"
+      - "com.docker.compose.oneoff=False"
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+    security_opt:
+      - label=disable
+    volumes:
+      - "$HELM_STATE"/prowlarr:/config
+    ports:
+      - 19696:9696
+    restart: unless-stopped
+EOF
+fi
+
+cat << 'EOF' >> docker-compose.yml
   flaresolverr:
     container_name: "${COMPOSE_PROJECT_NAME:-helm}-flaresolverr"
     image: ghcr.io/flaresolverr/flaresolverr:latest
@@ -364,8 +493,10 @@ services:
       - 18191:8191
     restart: unless-stopped
 
-  mini-helm:
-    container_name: "${COMPOSE_PROJECT_NAME:-helm}-mini-helm"
+  cli:
+    container_name: "${COMPOSE_PROJECT_NAME:-helm}-cli"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     image: ghcr.io/piratebird/helm:latest
     dns:
       - 8.8.8.8
@@ -546,8 +677,10 @@ sed -i "s|\"\$HELM_DL\"|$HELM_DL|g" docker-compose.yml
 
 cat << EOF > "$HELM_STATE"/.env.docker
 # --- Helm Container Isolated Configuration ---
-JACKETT_URL=http://jackett:9117
+JACKETT_URL=http://${EXTERNAL_JACKETT_PORT:+host.docker.internal:$EXTERNAL_JACKETT_PORT}${EXTERNAL_JACKETT_PORT:-jackett:9117}
 JACKETT_API_KEY=\${JACKETT_API:-placeholder}
+PROWLARR_URL=http://${EXTERNAL_PROWLARR_PORT:+host.docker.internal:$EXTERNAL_PROWLARR_PORT}${EXTERNAL_PROWLARR_PORT:-prowlarr:9696}
+PROWLARR_API_KEY=\${PROWLARR_API:-placeholder}
 QB_WEBUI=http://qbittorrent:18080
 QB_USERNAME=$qb_user
 QB_PASSWORD=adminadmin
@@ -565,8 +698,59 @@ $vpn_extra
 EOF
 fi
 
+
+# Orchestrate existing containers
+detect_existing_indexer() {
+    local indexer_name=$1
+    local existing_container
+    local bound_port
+    local ext_api
+    existing_container=$($DOCKER_CMD ps --format '{{.Names}}' | grep -i "$indexer_name" | grep -v "helm-$indexer_name" | head -n 1 || true)
+    if [ -n "$existing_container" ]; then
+        echo "[+] Found existing external $indexer_name container: $existing_container"
+        # Try to extract the port it's bound to
+        bound_port=$($DOCKER_CMD port "$existing_container" | head -n 1 | awk -F':' '{print $NF}')
+        if [ -z "$bound_port" ]; then
+            if [ "$indexer_name" == "prowlarr" ]; then bound_port="9696"; else bound_port="9117"; fi
+        fi
+        
+        # Try to extract API key
+        ext_api=""
+        if [ "$indexer_name" == "prowlarr" ]; then
+            ext_api=$($DOCKER_CMD exec "$existing_container" grep -oP '(?<=<ApiKey>)[^<]+' /config/config.xml 2>/dev/null || true)
+        elif [ "$indexer_name" == "jackett" ]; then
+            ext_api=$($DOCKER_CMD exec "$existing_container" grep -o '"APIKey": "[^"]*"' /config/Jackett/ServerConfig.json 2>/dev/null | cut -d'"' -f4 || true)
+        fi
+        
+        if [ -n "$ext_api" ]; then
+            echo "[+] Successfully extracted API key from external $indexer_name!"
+            if [ "$indexer_name" == "prowlarr" ]; then
+                EXTERNAL_PROWLARR_PORT="$bound_port"
+                EXTERNAL_PROWLARR_API="$ext_api"
+            else
+                EXTERNAL_JACKETT_PORT="$bound_port"
+                EXTERNAL_JACKETT_API="$ext_api"
+            fi
+            return 0
+        fi
+    fi
+    return 1
+}
+
+EXTERNAL_PROWLARR_PORT=""
+EXTERNAL_PROWLARR_API=""
+EXTERNAL_JACKETT_PORT=""
+EXTERNAL_JACKETT_API=""
+
+if [ "$indexer_mode" == "1" ] || [ "$indexer_mode" == "3" ]; then
+    detect_existing_indexer "jackett" || true
+fi
+if [ "$indexer_mode" == "2" ] || [ "$indexer_mode" == "3" ]; then
+    detect_existing_indexer "prowlarr" || true
+fi
+
 echo "Pulling the latest helm image..."
-$COMPOSE_CMD --profile cli pull mini-helm
+$COMPOSE_CMD --profile cli pull cli
 
 run_compose() {
     if [ "$DOCKER_CMD" == "podman" ]; then
@@ -605,7 +789,16 @@ EOF
 
 echo ""
 echo "Starting containers in the background to initialize configurations..."
-run_compose up -d --remove-orphans jackett qbittorrent flaresolverr
+
+SERVICES_TO_START=(qbittorrent flaresolverr)
+if [[ ( "$indexer_mode" == "1" || "$indexer_mode" == "3" ) && -z "$EXTERNAL_JACKETT_API" ]]; then
+    SERVICES_TO_START+=("jackett")
+fi
+if [[ ( "$indexer_mode" == "2" || "$indexer_mode" == "3" ) && -z "$EXTERNAL_PROWLARR_API" ]]; then
+    SERVICES_TO_START+=("prowlarr")
+fi
+
+run_compose up -d --remove-orphans "${SERVICES_TO_START[@]}"
 
 echo "[INFO] Waiting for services to initialize..."
 
@@ -613,7 +806,13 @@ TIMEOUT=45
 ELAPSED=0
 
 while [ "$ELAPSED" -lt "$TIMEOUT" ]; do
-    CRITICAL_CONTAINER=$($DOCKER_CMD ps -q -f "name=${COMPOSE_PROJECT_NAME:-helm}-jackett" | head -n 1 || true)
+    if [ "$indexer_mode" == "2" ]; then
+        CRITICAL_CONTAINER=$($DOCKER_CMD ps -q -f "name=${COMPOSE_PROJECT_NAME:-helm}-prowlarr" | head -n 1 || true)
+        CRITICAL_NAME="prowlarr"
+    else
+        CRITICAL_CONTAINER=$($DOCKER_CMD ps -q -f "name=${COMPOSE_PROJECT_NAME:-helm}-jackett" | head -n 1 || true)
+        CRITICAL_NAME="jackett"
+    fi
     
     if [ -n "$CRITICAL_CONTAINER" ]; then
         IS_RUNNING=$($DOCKER_CMD inspect -f '{{.State.Running}}' "$CRITICAL_CONTAINER" 2>/dev/null || true)
@@ -625,8 +824,8 @@ while [ "$ELAPSED" -lt "$TIMEOUT" ]; do
         
         IS_EXITED=$($DOCKER_CMD inspect -f '{{.State.Status}}' "$CRITICAL_CONTAINER" 2>/dev/null || true)
         if [ "$IS_EXITED" == "exited" ]; then
-            echo "[ERROR] Container jackett started but crashed immediately."
-            echo "Resolution: Run 'run_compose logs jackett' to inspect the failure."
+            echo "[ERROR] Container $CRITICAL_NAME started but crashed immediately."
+            echo "Resolution: Run 'run_compose logs $CRITICAL_NAME' to inspect the failure."
             exit 1
         fi
     fi
@@ -643,36 +842,64 @@ fi
 
 JACKETT_CONTAINER=""
 
-if [ -z "$JACKETT_API" ]; then
-    for _ in {1..15}; do
-        JACKETT_CONTAINER=$($DOCKER_CMD ps -q -f "name=${COMPOSE_PROJECT_NAME:-helm}-jackett" | head -n 1 || true)
-        if [ -n "$JACKETT_CONTAINER" ]; then
-            extracted_api=$($DOCKER_CMD exec "$JACKETT_CONTAINER" cat /config/Jackett/ServerConfig.json 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('APIKey',''))" 2>/dev/null || true)
-            if [ ! -z "$extracted_api" ]; then
-                JACKETT_API="$extracted_api"
-                echo "[+] Successfully grabbed Jackett API Key."
-                
-                $DOCKER_CMD exec "$JACKETT_CONTAINER" sed -i 's|"FlareSolverrUrl":.*|"FlareSolverrUrl": "http://flaresolverr:8191",|' /config/Jackett/ServerConfig.json 2>/dev/null || true
-                run_compose restart jackett
-                echo "[+] Jackett configured with FlareSolverr."
-                break
-            fi
-        fi
-        sleep 3
-    done
-    
+if [ "$indexer_mode" == "1" ] || [ "$indexer_mode" == "3" ]; then
+    if [ -n "$EXTERNAL_JACKETT_API" ]; then JACKETT_API="$EXTERNAL_JACKETT_API"; fi
     if [ -z "$JACKETT_API" ]; then
-        echo "[-] Could not find APIKey in Jackett configuration. Using placeholder."
-        JACKETT_API="your_jackett_api_key_here"
+        for _ in {1..15}; do
+            JACKETT_CONTAINER=$($DOCKER_CMD ps -q -f "name=${COMPOSE_PROJECT_NAME:-helm}-jackett" | head -n 1 || true)
+            if [ -n "$JACKETT_CONTAINER" ]; then
+                extracted_api=$($DOCKER_CMD exec "$JACKETT_CONTAINER" cat /config/Jackett/ServerConfig.json 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('APIKey',''))" 2>/dev/null || true)
+                if [ ! -z "$extracted_api" ]; then
+                    JACKETT_API="$extracted_api"
+                    echo "[+] Successfully grabbed Jackett API Key."
+                    
+                    $DOCKER_CMD exec "$JACKETT_CONTAINER" sed -i 's|"FlareSolverrUrl":.*|"FlareSolverrUrl": "http://flaresolverr:8191",|' /config/Jackett/ServerConfig.json 2>/dev/null || true
+                    run_compose restart jackett
+                    echo "[+] Jackett configured with FlareSolverr."
+                    break
+                fi
+            fi
+            sleep 3
+        done
+        
+        if [ -z "$JACKETT_API" ]; then
+            echo "[-] Could not find APIKey in Jackett configuration. Using placeholder."
+            JACKETT_API="your_jackett_api_key_here"
+        fi
     fi
+    # Re-write .env.docker with the true JACKETT_API_KEY
+    sed -i "s|JACKETT_API_KEY=.*|JACKETT_API_KEY=$JACKETT_API|" "$HELM_STATE"/.env.docker
 fi
 
-# Re-write .env.docker with the true JACKETT_API_KEY
-sed -i "s|JACKETT_API_KEY=.*|JACKETT_API_KEY=$JACKETT_API|" "$HELM_STATE"/.env.docker
+if [ "$indexer_mode" == "2" ] || [ "$indexer_mode" == "3" ]; then
+    if [ -n "$EXTERNAL_PROWLARR_API" ]; then PROWLARR_API="$EXTERNAL_PROWLARR_API"; fi
+    if [ -z "$PROWLARR_API" ]; then
+        for _ in {1..15}; do
+            PROWLARR_CONTAINER=$($DOCKER_CMD ps -q -f "name=${COMPOSE_PROJECT_NAME:-helm}-prowlarr" | head -n 1 || true)
+            if [ -n "$PROWLARR_CONTAINER" ]; then
+                extracted_api=$($DOCKER_CMD exec "$PROWLARR_CONTAINER" grep -oP '(?<=<ApiKey>)[^<]+' /config/config.xml 2>/dev/null || true)
+                if [ ! -z "$extracted_api" ]; then
+                    PROWLARR_API="$extracted_api"
+                    echo "[+] Successfully grabbed Prowlarr API Key."
+                    break
+                fi
+            fi
+            sleep 3
+        done
+        
+        if [ -z "$PROWLARR_API" ]; then
+            echo "[-] Could not find APIKey in Prowlarr configuration. Using placeholder."
+            PROWLARR_API="your_prowlarr_api_key_here"
+        fi
+    fi
+    # Re-write .env.docker with the true PROWLARR_API_KEY
+    sed -i "s|PROWLARR_API_KEY=.*|PROWLARR_API_KEY=$PROWLARR_API|" "$HELM_STATE"/.env.docker
+fi
 
 echo ""
 echo "Setup is 100% complete! Everything is configured."
-echo "Your native .env and config.json were left completely untouched."
+echo "Your native .env and config.json secrets were left completely untouched."
+echo "helm's own config.json gained an INDEXER_MANAGER setting only."
 echo "---"
 echo "Security Summary & Data Locations:"
 echo " - Settings:   ~/.config/helm/"
@@ -687,25 +914,30 @@ if [ "$run_mode" == "2" ]; then
     if [ "$DOCKER_CMD" == "podman" ]; then
         # Use podman stop directly - avoids docker compose's network namespace destruction
         # which triggers the "rootless netns: kill network process: permission denied" bug
-        podman stop "${COMPOSE_PROJECT_NAME:-helm}"-jackett "${COMPOSE_PROJECT_NAME:-helm}"-qbittorrent "${COMPOSE_PROJECT_NAME:-helm}"-flaresolverr "${COMPOSE_PROJECT_NAME:-helm}"-gluetun 2>/dev/null || true
+        podman stop "${COMPOSE_PROJECT_NAME:-helm}"-prowlarr "${COMPOSE_PROJECT_NAME:-helm}"-jackett "${COMPOSE_PROJECT_NAME:-helm}"-qbittorrent "${COMPOSE_PROJECT_NAME:-helm}"-flaresolverr "${COMPOSE_PROJECT_NAME:-helm}"-gluetun 2>/dev/null || true
     else
         run_compose stop || true
     fi
     echo "Generating helm launcher script..."
     cat << EOF > helm.sh
 #!/usr/bin/env bash
+ARGS="\$@"
+if [[ "\$*" != *"--oneshot"* ]] && [[ "\$*" != *"-o"* ]]; then
+    ARGS="--oneshot \$@"
+fi
+
 if [ "$DOCKER_CMD" == "podman" ]; then
     NETWORK="${COMPOSE_PROJECT_NAME:-helm}_default"
-    podman run -it --rm --entrypoint="" --security-opt label=disable --network "\$NETWORK" -v "\$PWD:/app" -v "$PODMAN_SOCK:/var/run/docker.sock" --env-file "$HELM_STATE"/.env.docker mini-helm python -m helm.cli "\$@" 2> >(grep -v "rootless netns" >&2)
+    podman run -it --rm --entrypoint="" --security-opt label=disable --network "\$NETWORK" -v "\$PWD:/app" -v "$PODMAN_SOCK:/var/run/docker.sock" --env-file "$HELM_STATE"/.env.docker mini-helm python -m helm.cli \$ARGS 2> >(grep -v "rootless netns" >&2)
 else
-    $COMPOSE_CMD --profile cli run --rm mini-helm "\$@"
+    $COMPOSE_CMD --profile cli run --rm cli \$ARGS
 fi
 EOF
     chmod +x helm.sh
     
     echo "Containers stopped. Helm will spin them up automatically when you trigger a download."
     echo ""
-    echo "To start using the app in its isolated mini container, run:"
+    echo "To start using the app in its isolated CLI container, run:"
     echo "    ./helm.sh --oneshot"
     echo "==========================================="
 else
@@ -739,7 +971,7 @@ EOF
         echo "Systemd service 'helm-app.service' created and enabled."
     fi
     echo ""
-    echo "To start using the app in its isolated mini container, run:"
-    echo "    $COMPOSE_CMD --profile cli run --rm mini-helm"
+    echo "To start using the app in its isolated CLI container, run:"
+    echo "    $COMPOSE_CMD --profile cli run --rm cli"
     echo "==========================================="
 fi
