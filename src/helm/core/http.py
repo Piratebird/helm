@@ -1,16 +1,19 @@
+"""Connection reuse within each worker thread without sharing mutable cookies."""
+
+import threading
+
 import requests
 
-_MAX_SOCKETS = 32
-
-_session = requests.Session()
-_adapter = requests.adapters.HTTPAdapter(pool_connections=_MAX_SOCKETS, pool_maxsize=_MAX_SOCKETS)
-_session.mount("https://", _adapter)
-_session.mount("http://", _adapter)
+_MAX_SOCKETS = 8
+_local = threading.local()
 
 
 def get_shared_session() -> requests.Session:
-    """Return the process-wide session so keep-alive connections are reused across fetchers.
-
-    The session is not used for cookies/auth, so sharing it across worker threads is safe.
-    """
-    return _session
+    session = getattr(_local, "session", None)
+    if session is None:
+        session = requests.Session()
+        adapter = requests.adapters.HTTPAdapter(pool_connections=_MAX_SOCKETS, pool_maxsize=_MAX_SOCKETS)
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+        _local.session = session
+    return session

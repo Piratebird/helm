@@ -17,11 +17,14 @@ Values set through the interactive wizard are written straight to secrets.env.
 """
 
 import os
+import re
 import tempfile
+from urllib.parse import quote, quote_plus
 
 from helm.core.config_manager import SECRET_KEYS, get_config_dir
 
 _SECRETS_CACHE = None
+_SECRETS_CACHE_PATH = None
 
 
 def get_secrets_file():
@@ -34,11 +37,12 @@ def _ensure_parent_dir():
 
 def load_secrets():
     """Return a dict of all stored secrets, reading the file fresh if not cached."""
-    global _SECRETS_CACHE
-    if _SECRETS_CACHE is not None:
+    global _SECRETS_CACHE, _SECRETS_CACHE_PATH
+    secrets_path = get_secrets_file()
+    if _SECRETS_CACHE is not None and _SECRETS_CACHE_PATH == secrets_path:
         return dict(_SECRETS_CACHE)
 
-    secrets_path = get_secrets_file()
+    _SECRETS_CACHE_PATH = secrets_path
     if not os.path.exists(secrets_path):
         _SECRETS_CACHE = {}
         return {}
@@ -137,13 +141,42 @@ def migrate_config_secrets(config):
     return config
 
 
+def redact_text(value):
+    """Redact known secret values, URL credentials, query keys and auth headers."""
+    text = str(value)
+    secrets = list(load_secrets().values()) + [os.environ.get(key, "") for key in SECRET_KEYS]
+    encoded = {
+        variant for secret in secrets if secret for variant in (secret, quote(secret, safe=""), quote_plus(secret))
+    }
+    for secret in sorted(encoded, key=len, reverse=True):
+        text = text.replace(secret, "***REDACTED***")
+    text = re.sub(r"(https?://)[^/@\s]+:[^/@\s]+@", r"\1***REDACTED***@", text, flags=re.I)
+    text = re.sub(r"(authorization\s*[:=]\s*)(?:bearer|basic)\s+[^\s,;]+", r"\1***REDACTED***", text, flags=re.I)
+    text = re.sub(
+        r"((?:[\w-]*(?:api[_-]?key|password|passwd|secret|token))[\"']?\s*[:=]\s*[\"']?)([^\s&\"',;)}]+)",
+        r"\1***REDACTED***",
+        text,
+        flags=re.I,
+    )
+    return text
+
+
 def redact_config(config):
-    """Return a copy of *config* with every secret value replaced."""
-    redacted = dict(config)
-    for key in SECRET_KEYS:
-        if key in redacted:
-            redacted[key] = "***REDACTED***"
-    return redacted
+    """Redact nested settings and credential-bearing URLs without changing input."""
+
+    def clean(value):
+        if isinstance(value, dict):
+            return {
+                key: "***REDACTED***"
+                if re.search(r"api.?key|password|passwd|secret|token", str(key), re.I)
+                else clean(item)
+                for key, item in value.items()
+            }
+        if isinstance(value, (list, tuple)):
+            return [clean(item) for item in value]
+        return redact_text(value) if isinstance(value, str) else value
+
+    return clean(config)
 
 
 def sanitize_link(link):

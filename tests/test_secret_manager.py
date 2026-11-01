@@ -94,3 +94,35 @@ def test_sanitize_link_strips_apikey():
 def test_sanitize_link_leaves_magnets_alone():
     magnet = "magnet:?xt=urn:btih:abcd"
     assert sanitize_link(magnet) == magnet
+
+
+def test_secrets_cache_follows_config_override(monkeypatch, tmp_path):
+    from helm.core import secret_manager
+
+    first, second = tmp_path / "first", tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    (first / "secrets.env").write_text("JACKETT_PASSWORD=first-private\n")
+    (second / "secrets.env").write_text("JACKETT_PASSWORD=second-private\n")
+    monkeypatch.delenv("JACKETT_PASSWORD", raising=False)
+    monkeypatch.setenv("HELM_CONFIG_DIR", str(first))
+    assert secret_manager.get_secret("JACKETT_PASSWORD") == "first-private"
+    monkeypatch.setenv("HELM_CONFIG_DIR", str(second))
+    assert secret_manager.get_secret("JACKETT_PASSWORD") == "second-private"
+
+
+def test_redaction_handles_nested_config_and_encoded_secrets(monkeypatch):
+    from helm.core.secret_manager import redact_config, redact_text
+
+    monkeypatch.setenv("QB_PASSWORD", "p@ss word")
+    original = {
+        "nested": {"password": "unknown", "url": "https://alice:other@example.test/?apikey=abc123"},
+        "values": ["p%40ss%20word", "p%40ss+word"],
+    }
+    result = redact_config(original)
+    assert result["nested"]["password"] == "***REDACTED***"
+    assert "abc123" not in str(result)
+    assert "alice:other" not in str(result)
+    assert all(value == "***REDACTED***" for value in result["values"])
+    assert original["nested"]["password"] == "unknown"
+    assert "header-secret" not in redact_text("Authorization: Bearer header-secret")

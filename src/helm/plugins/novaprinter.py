@@ -1,7 +1,7 @@
 import threading
 from typing import List
 
-from helm.core.rss_fetcher import TorrentItem
+from helm.core.rss_fetcher import TorrentItem, source_status
 
 
 class _ThreadLocalResults(threading.local):
@@ -10,6 +10,7 @@ class _ThreadLocalResults(threading.local):
     def __init__(self) -> None:
         super().__init__()
         self.items: List[TorrentItem] = []
+        self.errors: List[str] = []
 
 
 _local_results = _ThreadLocalResults()
@@ -18,6 +19,15 @@ _local_results = _ThreadLocalResults()
 def get_results() -> List[TorrentItem]:
     """Return the calling thread's private result list (used by the loader)."""
     return _local_results.items
+
+
+def get_errors():
+    return _local_results.errors
+
+
+def report_error(error):
+    """Record a swallowed plugin failure for the loader's source outcome."""
+    _local_results.errors.append(source_status(error))
 
 
 def prettyPrinter(result_dict):
@@ -57,5 +67,5 @@ def prettyPrinter(result_dict):
             leechers=leechers,
         )
         _local_results.items.append(item)
-    except Exception:
-        pass
+    except Exception as error:
+        report_error(error)

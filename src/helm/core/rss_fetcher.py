@@ -7,7 +7,10 @@ responsible for fetching and parsing RSS(really simple syndication) feeds from m
 
 import email.utils
 import os
+import urllib.error
 import xml.etree.ElementTree as ET
+from dataclasses import dataclass
+from typing import List
 
 import requests
 
@@ -15,6 +18,38 @@ from helm.core.logger import get_logger
 from helm.core.secret_manager import get_secret
 
 logger = get_logger(__name__)
+
+
+@dataclass
+class SourceOutcome:
+    source: str
+    status: str
+    count: int = 0
+
+
+class SearchResults(list):
+    """List-compatible results with diagnostics owned by this search only."""
+
+    def __init__(self, items=(), outcomes=()) -> None:
+        super().__init__(items)
+        self.outcomes: List[SourceOutcome] = list(outcomes)
+
+    def extend(self, items) -> None:
+        super().extend(items)
+        self.outcomes.extend(getattr(items, "outcomes", ()))
+
+
+def source_status(error):
+    """Report a safe category rather than exposing URLs or credentials."""
+    if isinstance(error, (requests.exceptions.Timeout, TimeoutError)):
+        return "timeout"
+    if isinstance(error, (requests.exceptions.HTTPError, urllib.error.HTTPError)):
+        return "http_error"
+    if isinstance(error, (ValueError, TypeError, KeyError, AttributeError, ET.ParseError)):
+        return "parse_error"
+    if isinstance(error, (requests.exceptions.RequestException, urllib.error.URLError)):
+        return "connection_error"
+    return "error"
 
 
 class TorrentItem:
@@ -206,7 +241,7 @@ def search_prowlarr(query, content_type="video"):
             return []
 
 
-def search_indexers(query, content_type="video"):
+def search_indexers(query, content_type="video", fallback_lite=True):
     """
     Search using the configured Indexer Manager.
 
@@ -240,6 +275,9 @@ def search_indexers(query, content_type="video"):
 
     if items:
         return dedupe(items)
+
+    if not fallback_lite:
+        return []
 
     logger.info("Event: Media Server search failed or returned 0 results, falling back to Lite mode...")
     import asyncio

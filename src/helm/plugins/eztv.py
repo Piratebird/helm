@@ -7,7 +7,7 @@
 # are filtered client-side from the most recent 100 episodes.
 
 import requests
-from novaprinter import prettyPrinter
+from novaprinter import prettyPrinter, report_error
 
 from helm.core.http import get_shared_session
 from helm.core.logger import get_logger
@@ -33,6 +33,7 @@ class eztv(object):
             payload = r.json()
         except Exception as e:
             logger.debug(f"Event: EZTV API connection failed: {e}")
+            report_error(e)
             return
 
         for torrent in payload.get("torrents") or []:
@@ -52,7 +53,8 @@ class eztv(object):
 
             try:
                 size = int(torrent.get("size_bytes") or 0)
-            except (TypeError, ValueError):
+            except (TypeError, ValueError) as error:
+                report_error(error)
                 size = 0
 
             prettyPrinter(

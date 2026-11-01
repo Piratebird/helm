@@ -7,18 +7,7 @@ from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 
 from helm.core.config_manager import get_log_dir
-
-LOG_DIR = get_log_dir()
-os.makedirs(LOG_DIR, exist_ok=True)
-LOG_FILE = os.path.join(LOG_DIR, "helm.log")
-
-# Migrate old log file if it exists
-old_log = os.path.join(os.path.expanduser("~"), ".helm_data", "logs", "helm.log")
-if os.path.exists(old_log) and not os.path.exists(LOG_FILE):
-    try:
-        shutil.move(old_log, LOG_FILE)
-    except Exception:
-        pass
+from helm.core.secret_manager import redact_config, redact_text
 
 
 class JSONFormatter(logging.Formatter):
@@ -64,7 +53,7 @@ class JSONFormatter(logging.Formatter):
             ]:
                 log_obj[key] = value
 
-        return json.dumps(log_obj)
+        return json.dumps(redact_config(log_obj))
 
 
 class FileOnlyFilter(logging.Filter):
@@ -83,7 +72,7 @@ class PlainTextFormatter(logging.Formatter):
         formatted = f"[{timestamp}] [{level}] [{module}] - {message}"
         if record.exc_info:
             formatted += f"\n{self.formatException(record.exc_info)}"
-        return formatted
+        return redact_text(formatted)
 
 
 class ConsoleFormatter(logging.Formatter):
@@ -92,36 +81,67 @@ class ConsoleFormatter(logging.Formatter):
         level = record.levelname.ljust(5)
         module = record.name
         message = record.getMessage()
-        return f"[{timestamp}] [{level}] [{module}] - {message}"
+        return redact_text(f"[{timestamp}] [{level}] [{module}] - {message}")
 
 
 def get_logger(name: str):
+    # Importing modules must not create files before CLI path overrides are known.
     logger = logging.getLogger(name)
-    if logger.hasHandlers():
-        return logger
-
     logger.setLevel(logging.DEBUG)
-    logger.propagate = False
-
-    use_json = os.environ.get("HELM_LOG_JSON", "false").lower() == "true"
-    file_formatter = JSONFormatter() if use_json else PlainTextFormatter()
-    console_formatter = ConsoleFormatter()
-
-    # Console Handler (stderr, so stdout stays clean for --json / TUI output)
-    console_handler = logging.StreamHandler(sys.stderr)
-    is_verbose = "--verbose" in sys.argv or os.environ.get("HELM_VERBOSE", "false").lower() == "true"
-    console_handler.setLevel(logging.DEBUG if is_verbose else logging.WARNING)
-    # Use console formatter which strips tracebacks to keep TUI clean, unless verbose
-    console_handler.setFormatter(file_formatter if is_verbose else console_formatter)
-    # Keep file_only messages out of the console/TUI; they still reach the log file.
-    console_handler.addFilter(FileOnlyFilter())
-
-    # File Handler
-    file_handler = RotatingFileHandler(LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=3)
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(file_formatter)
-
-    logger.addHandler(console_handler)
-    logger.addHandler(file_handler)
-
+    if not logger.handlers:
+        logger.addHandler(logging.NullHandler())
     return logger
+
+
+def configure_logging(file_logging=True, verbose=None):
+    root = logging.getLogger()
+    root.setLevel(logging.DEBUG)
+    for handler in list(root.handlers):
+        if getattr(handler, "_helm_handler", False):
+            root.removeHandler(handler)
+            handler.close()
+    formatter = JSONFormatter() if os.environ.get("HELM_LOG_JSON", "false").lower() == "true" else PlainTextFormatter()
+    if verbose is None:
+        verbose = os.environ.get("HELM_VERBOSE", "false").lower() == "true"
+    console = logging.StreamHandler(sys.stderr)
+    console.setLevel(logging.DEBUG if verbose else logging.WARNING)
+    console.setFormatter(formatter if verbose else ConsoleFormatter())
+    console.addFilter(FileOnlyFilter())
+    handlers = [console]
+    if file_logging:
+        directory = get_log_dir()
+        os.makedirs(directory, exist_ok=True)
+        path = os.path.join(directory, "helm.log")
+        old = os.path.expanduser("~/.helm_data/logs/helm.log")
+        if os.path.isfile(old) and not os.path.exists(path):
+            try:
+                shutil.move(old, path)
+            except OSError:
+                pass
+        handler = RotatingFileHandler(path, maxBytes=5 * 1024 * 1024, backupCount=3)
+        handler.setLevel(logging.DEBUG)
+        handler.setFormatter(formatter)
+        handlers.append(handler)
+    for handler in handlers:
+        handler._helm_handler = True
+        root.addHandler(handler)
+
+
+def tail_log(path, lines=20, max_bytes=1024 * 1024):
+    """Read a bounded suffix; never scan an entire large log to display its tail."""
+    if lines < 1 or max_bytes < 1:
+        return ""
+    with open(path, "rb") as stream:
+        stream.seek(0, os.SEEK_END)
+        end = stream.tell()
+        data = b""
+        position = end
+        while position and data.count(b"\n") <= lines and len(data) < max_bytes:
+            amount = min(8192, position, max_bytes - len(data))
+            position -= amount
+            stream.seek(position)
+            data = stream.read(amount) + data
+    if position and b"\n" in data:
+        data = data.split(b"\n", 1)[1]
+    result = b"\n".join(data.splitlines()[-lines:]).decode("utf-8", errors="replace")
+    return redact_text(result) + ("\n" if result else "")

@@ -3,18 +3,22 @@ import sys
 import time
 
 
-def download_magnet(magnet_link, save_path="./downloads"):
+def download_magnet(magnet_link, save_path=None, on_complete=None):
     try:
         import libtorrent as lt
     except ImportError:
         print("\n\033[33m[!] libtorrent is not installed.\033[0m")
-        print("To use the built-in lite downloader, please install it (e.g., 'pip install libtorrent').")
+        print("To use the built-in lite downloader, install 'helm-torrent[download]' where supported.")
         print(f"\n\033[1mMagnet Link:\033[0m {magnet_link}\n")
         print("Copy the above link and paste it into your torrent client.")
         return False
 
-    if not os.path.exists(save_path):
-        os.makedirs(save_path)
+    if save_path is None:
+        from helm.core.config_manager import get_dl_dir
+
+        save_path = get_dl_dir()
+    save_path = os.path.abspath(os.path.expanduser(os.fspath(save_path)))
+    os.makedirs(save_path, exist_ok=True)
 
     settings = {
         "listen_interfaces": "0.0.0.0:0",
@@ -24,25 +28,31 @@ def download_magnet(magnet_link, save_path="./downloads"):
         "enable_natpmp": True,
         "announce_to_all_trackers": True,
         "announce_to_all_tiers": True,
+        # Configure bootstrap nodes before starting DHT. Some libtorrent builds
+        # (including Termux's) omit the deprecated add_dht_router binding.
+        "dht_bootstrap_nodes": (
+            "router.bittorrent.com:6881,router.utorrent.com:6881,dht.transmissionbt.com:6881,dht.aelitis.com:6881"
+        ),
     }
-    ses = lt.session(settings)
+    from helm.core.torrent_links import resolve_torrent
 
-    # Add common DHT routers to bootstrap finding peers quickly
-    ses.add_dht_router("router.bittorrent.com", 6881)
-    ses.add_dht_router("router.utorrent.com", 6881)
-    ses.add_dht_router("dht.transmissionbt.com", 6881)
-    ses.add_dht_router("dht.aelitis.com", 6881)
+    source = resolve_torrent(magnet_link)
+    ses = lt.session(settings)
 
     print("\n\033[1m\033[34mAdding magnet link to libtorrent session...\033[0m")
 
-    # Parse the magnet URI properly for libtorrent 2.x
-    params = lt.parse_magnet_uri(magnet_link)
-    params.save_path = save_path
-    handle = ses.add_torrent(params)
-
-    sys.stdout.write("Downloading Metadata")
-
     try:
+        # Parse the magnet URI properly for libtorrent 2.x
+        if source.data:
+            params = lt.add_torrent_params()
+            params.ti = lt.torrent_info(lt.bdecode(source.data))
+        else:
+            params = lt.parse_magnet_uri(source.magnet)
+        params.save_path = save_path
+        handle = ses.add_torrent(params)
+
+        sys.stdout.write("Downloading Metadata")
+
         timeout = 60
         elapsed = 0
         while not handle.status().has_metadata:
@@ -53,7 +63,6 @@ def download_magnet(magnet_link, save_path="./downloads"):
             if elapsed >= timeout:
                 print("\n\n\033[31m[!] Timeout reaching metadata. The torrent might be dead or blocked.\033[0m")
                 print(f"Fallback Magnet Link: {magnet_link}")
-                ses.pause()
                 return False
 
         print("\nMetadata downloaded. Starting torrent download...")
@@ -88,15 +97,19 @@ def download_magnet(magnet_link, save_path="./downloads"):
                     sys.stdout.write(
                         f"\033[33mEnsure you have write permissions to {os.path.abspath(save_path)}\033[0m\n"
                     )
-                    ses.pause()
                     return False
 
             time.sleep(1)
 
+        if on_complete:
+            info = handle.torrent_file()
+            files = info.files()
+            on_complete([os.path.join(save_path, files.file_path(index)) for index in range(files.num_files())])
         print("\n\n\033[32m\033[1mDownload complete!\033[0m")
     except KeyboardInterrupt:
         print("\n\n\033[33mDownload interrupted by user. Cleaning up session...\033[0m")
-        ses.pause()
         return False
+    finally:
+        ses.pause()
 
     return True

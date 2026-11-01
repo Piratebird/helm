@@ -3,11 +3,11 @@
 
 # SubsPlease exposes a small JSON API that returns recent/new anime with magnet
 # links embedded. It carries no swarm data, so seeders/leechers are reported as
-# 0 (the CLI keeps unknown-seed items per the min-seeds filter fix in 0.9.0).
+# -1 (unknown counts must survive the min-seeds filter).
 
 import re
 
-from novaprinter import prettyPrinter
+from novaprinter import prettyPrinter, report_error
 
 from helm.core.http import get_shared_session
 from helm.core.logger import get_logger
@@ -49,9 +49,11 @@ class subsplease(object):
             payload = r.json()
         except Exception as e:
             logger.debug(f"Event: SubsPlease API connection failed: {e}")
+            report_error(e)
             return
 
         if not isinstance(payload, dict):
+            report_error(ValueError("Expected API object"))
             return
 
         for entry in payload.values():
@@ -81,6 +83,7 @@ class subsplease(object):
 
             parsed = parse_magnet(magnet)
             if not parsed:
+                report_error(ValueError("Invalid magnet in API result"))
                 continue
             info_hash, size = parsed
 
@@ -93,8 +96,8 @@ class subsplease(object):
                     "name": name,
                     "link": magnet,
                     "size": f"{size} B",
-                    "seeds": "0",
-                    "leech": "0",
+                    "seeds": "-1",
+                    "leech": "-1",
                     "engine_url": self.url,
                     "desc_link": entry.get("page") or self.url,
                     "pub_date": 0,

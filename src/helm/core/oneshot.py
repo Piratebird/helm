@@ -36,9 +36,9 @@ def spin_up_oneshot():
     print("\n\033[1m\033[36mInitializing One-Shot Ephemeral Stack...\033[0m")
     print("\033[3mBringing up Jackett, Prowlarr, Flaresolverr, and qBittorrent via docker compose...\033[0m")
 
-    from helm.core.config_manager import get_log_dir
+    from helm.core.config_manager import get_state_dir
 
-    state_dir = os.path.dirname(get_log_dir())
+    state_dir = get_state_dir()
     compose_file = os.path.join(state_dir, "docker-compose.yml")
     compose_flags = ["-f", compose_file] if os.path.exists(compose_file) else []
 

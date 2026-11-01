@@ -1,5 +1,43 @@
 # Changelog
 All notable changes to this project will be documented in this file.
+## [Unreleased]
+
+### Changed
+- Start faster by deferring heavy imports, and split the CLI entry point into separate handlers.
+- Use SQLite WAL, indexed lookups, one-second cancellation polling and `sendfile` in the queue and file server.
+- Install the `helm-torrent` command instead of `helm` to avoid Kubernetes Helm's executable. Python imports, configuration paths, and container names remain compatible. Source setup generates `helm-torrent.sh`.
+- Make libtorrent an optional `download` extra; Lite searches and magnet retrieval work without native bindings.
+- Respect the configured download directory and reject unknown flags, blank queries, and invalid content types.
+
+### Added
+- Durable job queue with process-isolated workers, crash recovery, cancellation and a completed-file catalog.
+- `helm-torrent download`, `watch`, `serve`, `files`, `attach` and `daemon`, plus `--daemon` and `--session`.
+- Authenticated HTTP job API and range streaming limited to cataloged files inside the download directory.
+- Resolution of HTML detail pages, redirects, direct `.torrent` URLs and local metadata, with size, depth, hop and time limits.
+- Isolated Docker and Podman stack benchmarks with effective cgroup verification and `--image`/`--image-manifest` overrides.
+- A device profiler that reports energy as unavailable unless discharging is verified.
+- A tested Linux PSS benchmark harness, source fingerprints, raw samples and verified generated-payload loopback BitTorrent measurements, including twelve-source concurrency comparisons and configurable `--lite-workers`.
+- Isolated Lite worker processes with bounded deadlines/imports, category propagation, process cleanup and fixtures for every bundled scraper.
+- Per-source Lite outcomes and retained-result counts on stderr, preserving JSON stdout.
+- Standalone `uninstall.sh` for raw GitHub execution, with preview-by-default, selective removal and unit tests.
+
+### Fixed
+- Log in to qBittorrent again after a session expires, and follow URL or credential changes in long-running services.
+- Remove a cancelled job's torrent from qBittorrent, and map container paths to host paths when cataloging its files.
+- Allow failed or cancelled sources to be resubmitted, and keep the queue worker alive after unexpected errors.
+- Stop orphaned download workers after a forced service stop.
+- Reject a whole watch file when any line is invalid, and survive transient watch-directory failures.
+- Close connections after rejected requests so an unread body cannot be parsed as a new request; time out stalled clients.
+- Keep the working directory off child-process import paths.
+- Use DHT bootstrap session settings on bindings without `add_dht_router`, including Termux.
+- Preserve completed plugin results when other plugins stall or reuse worker threads.
+- Clean up owned one-shot containers across failures and interrupts; Lite searches never start the stack.
+- Initialize logging after path overrides, redact credentials in formatted messages and archived logs, and read bounded log tails.
+- Report bundled plugin HTTP/parser errors instead of presenting every failure as an empty search.
+- Preserve unknown SubsPlease swarm counts through seed filtering.
+- Omit configuration from bug reports when redaction fails.
+- Correct README commands and qualify historical benchmark claims; add regression coverage.
+
 ## [0.10.0] - 2026-09-08
 
 

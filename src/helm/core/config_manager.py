@@ -22,6 +22,7 @@ SECRET_KEYS = frozenset(
         "JACKETT_PASSWORD",
         "PROWLARR_API_KEY",
         "QB_PASSWORD",
+        "HELM_SERVER_TOKEN",
     ]
 )
 
@@ -149,6 +150,14 @@ def get_log_dir():
         return os.path.join(base, "helm", "logs")
 
 
+def get_state_dir():
+    if "HELM_STATE_DIR" in os.environ:
+        return os.environ["HELM_STATE_DIR"]
+    if sys.platform == "darwin":
+        return os.path.expanduser("~/Library/Application Support/helm/state")
+    return os.path.dirname(get_log_dir())
+
+
 def get_dl_dir():
     if "HELM_DL_DIR" in os.environ:
         return os.environ["HELM_DL_DIR"]
@@ -156,6 +165,21 @@ def get_dl_dir():
         return os.path.expanduser("~\\Downloads\\helm")
     else:
         return os.path.expanduser("~/Downloads/helm")
+
+
+def worker_count(value=None):
+    value = os.environ.get("HELM_LITE_WORKERS", "6") if value is None else value
+    try:
+        count = int(value)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Lite worker count must be an integer from 1 to 12") from error
+    if not 1 <= count <= 12:
+        raise ValueError("Lite worker count must be an integer from 1 to 12")
+    return count
+
+
+def get_qb_url():
+    return (os.getenv("QB_WEBUI") or load_config().get("QB_WEBUI") or "http://localhost:18080").rstrip("/")
 
 
 def get_config_file():

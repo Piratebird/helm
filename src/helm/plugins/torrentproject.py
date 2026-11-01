@@ -7,7 +7,7 @@ from html.parser import HTMLParser
 from typing import Any, Dict, List, Mapping, Tuple, Union
 from urllib.parse import unquote
 
-from helpers import retrieve_url
+from helpers import retrieve_url, validate_html
 from novaprinter import prettyPrinter
 
 from helm.core.logger import get_logger
@@ -117,6 +117,7 @@ class torrentproject:
         for currPage in range(0, 5):
             url = f"{self.url}/browse?t={what}&p={currPage}"
             html = retrieve_url(url)
+            validate_html(html, ("similarfiles",))
             parser = self.MyHTMLParser(self.url)
             parser.feed(html)
             parser.close()

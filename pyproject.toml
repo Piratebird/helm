@@ -8,7 +8,7 @@ version = "0.10.0"
 authors = [
   { name="Piratebird" },
 ]
-description = "Torrent automation MVP"
+description = "The Helm torrent automation CLI (unrelated to Kubernetes Helm)"
 readme = "README.md"
 requires-python = ">=3.8"
 classifiers = [
@@ -19,11 +19,11 @@ classifiers = [
 dependencies = [
     "requests>=2.31.0",
     "python-dotenv>=1.0.0",
-    "beautifulsoup4>=4.12.0",
-    "libtorrent>=2.0.0,<2.1.0"
+    "beautifulsoup4>=4.12.0"
 ]
 
 [project.optional-dependencies]
+download = ["libtorrent>=2.0.0,<2.1.0"]
 dev = [
     "pytest",
     "pytest-cov",
@@ -35,10 +35,13 @@ dev = [
 "Homepage" = "https://github.com/Piratebird/helm"
 
 [project.scripts]
-helm = "helm.cli:main"
+helm-torrent = "helm.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
 
 [tool.ruff]
 line-length = 120

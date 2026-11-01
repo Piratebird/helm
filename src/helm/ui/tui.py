@@ -87,7 +87,9 @@ def animated_search(query, content_type, lite_mode=False, show_spinner=True):
         t = threading.Thread(target=animate)
         t.start()
 
-    res = []
+    from helm.core.rss_fetcher import SearchResults
+
+    res = SearchResults()
     used_lite = lite_mode
     try:
         import concurrent.futures
@@ -95,12 +97,12 @@ def animated_search(query, content_type, lite_mode=False, show_spinner=True):
         def fetch_jackett():
             from helm.core.rss_fetcher import search_indexers
 
-            return search_indexers(query, content_type)
+            return search_indexers(query, content_type, fallback_lite=False)
 
         def fetch_lite():
             from helm.core.lite_fetcher import search_lite
 
-            return search_lite(query)
+            return search_lite(query, content_type)
 
         if not lite_mode:
             jackett_future = None
@@ -113,17 +115,18 @@ def animated_search(query, content_type, lite_mode=False, show_spinner=True):
                 try:
                     res.extend(jackett_future.result())
                 except Exception as e:
-                    sys.stdout.write("\r" + " " * 30 + "\r")
-                    sys.stdout.write(
-                        f"\n\033[33m[!] Indexer Manager not available ({e}). Auto-falling back to LITE MODE...\033[0m\n"
+                    print(
+                        f"Indexer manager unavailable ({type(e).__name__}); using Lite results.",
+                        file=sys.stderr,
                     )
-                    sys.stdout.flush()
                     used_lite = True
 
                 try:
                     res.extend(lite_future.result())
-                except Exception:
-                    pass
+                except Exception as error:
+                    from helm.core.rss_fetcher import SourceOutcome, source_status
+
+                    res.outcomes.append(SourceOutcome("Lite", source_status(error)))
         else:
             res.extend(fetch_lite())
 
@@ -132,6 +135,9 @@ def animated_search(query, content_type, lite_mode=False, show_spinner=True):
         if t is not None:
             t.join()
 
+    if res.outcomes:
+        summary = "; ".join(f"{o.source}: {o.status} ({o.count})" for o in res.outcomes)
+        print(f"Sources: {summary}", file=sys.stderr)
     return res, used_lite
 
 

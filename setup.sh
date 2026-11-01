@@ -918,8 +918,8 @@ if [ "$run_mode" == "2" ]; then
     else
         run_compose stop || true
     fi
-    echo "Generating helm launcher script..."
-    cat << EOF > helm.sh
+    echo "Generating helm-torrent launcher script..."
+    cat << EOF > helm-torrent.sh
 #!/usr/bin/env bash
 ARGS="\$@"
 if [[ "\$*" != *"--oneshot"* ]] && [[ "\$*" != *"-o"* ]]; then
@@ -933,12 +933,12 @@ else
     $COMPOSE_CMD --profile cli run --rm cli \$ARGS
 fi
 EOF
-    chmod +x helm.sh
+    chmod +x helm-torrent.sh
     
     echo "Containers stopped. Helm will spin them up automatically when you trigger a download."
     echo ""
     echo "To start using the app in its isolated CLI container, run:"
-    echo "    ./helm.sh --oneshot"
+    echo "    ./helm-torrent.sh --oneshot"
     echo "==========================================="
 else
     echo "Containers are left running 24/7 in the background."

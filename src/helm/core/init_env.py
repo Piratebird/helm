@@ -2,7 +2,7 @@ import os
 import subprocess
 import time
 
-from helm.core.config_manager import get_config_dir, get_dl_dir, get_log_dir
+from helm.core.config_manager import get_config_dir, get_dl_dir, get_state_dir
 
 DOCKER_COMPOSE_BASE = """
 services:
@@ -152,7 +152,7 @@ def bootstrap_env():
     print("===========================================")
 
     config_dir = get_config_dir()
-    state_dir = os.path.dirname(get_log_dir())
+    state_dir = get_state_dir()
     dl_dir = get_dl_dir()
     project_name = "helm"
 
@@ -348,4 +348,4 @@ WebUI\\LocalHostAuth=false
         print("\nTearing down containers for Ephemeral (One-Shot) mode...")
         subprocess.run(compose_cmd + ["-f", compose_path, "stop"], check=False)
 
-    print("\nSetup is complete! You can now use helm.")
+    print("\nSetup is complete! You can now use helm-torrent.")

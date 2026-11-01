@@ -109,3 +109,40 @@ def test_run_plugins_does_not_leak_between_runs(plugin_dir):
     second = run_plugins("ubuntu", [plugin_dir])
     assert len(first) == 1
     assert len(second) == 1
+
+
+def test_reused_worker_keeps_previous_plugin_results():
+    from concurrent.futures import ThreadPoolExecutor
+
+    from helm.core.lite_plugin_loader import _execute_plugin
+
+    class Plugin:
+        def search(self, query):
+            novaprinter.prettyPrinter({"name": query, "link": "magnet:?xt=urn:btih:1111"})
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        first = executor.submit(_execute_plugin, Plugin(), "first").result()
+        second = executor.submit(_execute_plugin, Plugin(), "second").result()
+    assert [item.title for item in first] == ["first"]
+    assert [item.title for item in second] == ["second"]
+
+
+def test_plugin_error_retains_partial_results_and_outcome():
+    from concurrent.futures import ThreadPoolExecutor
+
+    import requests
+
+    from helm.core.lite_plugin_loader import _execute_plugin
+
+    class Plugin:
+        name = "Partial"
+
+        def search(self, query):
+            novaprinter.prettyPrinter({"name": query, "link": "magnet:?xt=urn:btih:1111"})
+            raise requests.exceptions.ConnectTimeout("private URL")
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        result = executor.submit(_execute_plugin, Plugin(), "ubuntu").result()
+    assert len(result) == 1
+    assert result[0].indexer == "Partial"
+    assert [(o.source, o.status, o.count) for o in result.outcomes] == [("Partial", "timeout", 1)]

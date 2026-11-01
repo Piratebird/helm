@@ -4,8 +4,8 @@
 import urllib.parse
 
 from bs4 import BeautifulSoup
-from helpers import retrieve_url
-from novaprinter import prettyPrinter
+from helpers import retrieve_url, validate_html
+from novaprinter import prettyPrinter, report_error
 
 
 class bitsearch(object):
@@ -16,17 +16,20 @@ class bitsearch(object):
     def search(self, what, cat="all"):
         query = urllib.parse.quote(what)
         html = retrieve_url(self.url + f"/search?q={query}")
+        validate_html(html, ("bg-white",))
         soup = BeautifulSoup(html, "html.parser")
 
         for item in soup.select("div.bg-white.rounded-lg.shadow-sm"):
             try:
                 title_elem = item.select_one("h3 a")
                 if not title_elem:
+                    report_error(ValueError("Result row has no title"))
                     continue
                 res = {"name": title_elem.text.strip()}
 
                 magnet_a = item.select_one('a[href^="magnet:"]')
                 if not magnet_a:
+                    report_error(ValueError("Result row has no magnet"))
                     continue
                 res["link"] = magnet_a["href"]
                 res["desc_link"] = self.url + title_elem["href"]
@@ -45,5 +48,6 @@ class bitsearch(object):
 
                 res["engine_url"] = self.url
                 prettyPrinter(res)
-            except Exception:
+            except Exception as error:
+                report_error(error)
                 continue
