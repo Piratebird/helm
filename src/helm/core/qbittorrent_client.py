@@ -7,14 +7,13 @@ core/qbittorrent_client.py
 
 """
 
-import os
 import threading
 
 import requests
 
-from helm.core.config_manager import get_qb_url, load_config
 from helm.core.logger import get_logger
 from helm.core.secret_manager import get_secret
+from helm.core.settings import get_qb_url, load_settings
 from helm.core.torrent_links import resolve_torrent
 
 logger = get_logger(__name__)
@@ -33,7 +32,7 @@ def login_qbittorrent(force=False):
     """
     global _session, _session_key
     qb_webui = get_qb_url()
-    qb_username = os.getenv("QB_USERNAME") or load_config().get("QB_USERNAME", "admin")
+    qb_username = load_settings().get("services.qbittorrent_user")
     qb_password = get_secret("QB_PASSWORD")
     key = (qb_webui, qb_username, qb_password)
     with _session_lock:

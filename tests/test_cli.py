@@ -5,6 +5,7 @@ import tempfile
 import pytest
 
 import helm.cli
+from helm.core.settings import Settings
 
 
 class FakeItem:
@@ -122,7 +123,7 @@ def test_search_rejects_blank_query(monkeypatch, capsys, query):
 def test_empty_search_explains_sources_or_filters(monkeypatch, capsys, has_raw_results):
     items = _make_items() if has_raw_results else []
     monkeypatch.setattr(helm.cli, "animated_search", lambda *a, **kw: (items, True))
-    monkeypatch.setattr(helm.cli, "load_config", lambda: {"min_seeds": 1000})
+    monkeypatch.setattr(helm.cli, "load_settings", lambda: Settings.from_legacy({"min_seeds": 1000}))
     monkeypatch.setattr(sys, "argv", ["helm-torrent", "search", "--lite", "ubuntu"])
     with pytest.raises(SystemExit) as exc_info:
         helm.cli.main()
@@ -222,7 +223,7 @@ def test_search_rejects_invalid_options_before_setup(monkeypatch, capsys, argume
     from unittest.mock import Mock
 
     setup = Mock(side_effect=AssertionError("Validation must precede setup"))
-    monkeypatch.setattr(helm.cli, "load_config", setup)
+    monkeypatch.setattr(helm.cli, "load_settings", setup)
     monkeypatch.setattr(sys, "argv", ["helm-torrent", "search", "ubuntu"] + arguments)
     with pytest.raises(SystemExit) as error:
         helm.cli.main()
@@ -253,7 +254,7 @@ def test_lite_oneshot_never_starts_or_stops_containers(monkeypatch, explicit_lit
     stop = Mock()
     monkeypatch.setattr(oneshot, "spin_up_oneshot", start)
     monkeypatch.setattr(oneshot, "teardown_oneshot", stop)
-    monkeypatch.setattr(helm.cli, "load_config", lambda: {"LITE_MODE_ONLY": True})
+    monkeypatch.setattr(helm.cli, "load_settings", lambda: Settings.from_legacy({"LITE_MODE_ONLY": True}))
     monkeypatch.setattr(helm.cli, "animated_search", lambda *a, **kw: (_make_items(), True))
     arguments = ["helm-torrent", "search", "ubuntu", "--oneshot", "--json"]
     monkeypatch.setattr(sys, "argv", arguments + (["--lite"] if explicit_lite else []))
@@ -284,7 +285,7 @@ def test_oneshot_cleans_up_once_on_every_exit(monkeypatch, outcome):
     events = []
     monkeypatch.setenv("JACKETT_API_KEY", "testkey")
     monkeypatch.setattr(helm.cli, "ensure_config", lambda: None)
-    monkeypatch.setattr(helm.cli, "load_config", lambda: {"min_seeds": 3})
+    monkeypatch.setattr(helm.cli, "load_settings", lambda: Settings.from_legacy({"min_seeds": 3}))
 
     def start():
         events.append("start")
@@ -373,7 +374,7 @@ def test_real_search_fallback_keeps_json_stdout_clean(monkeypatch, capsys):
         raise RuntimeError("indexer unavailable with private-token")
 
     monkeypatch.setenv("JACKETT_API_KEY", "testkey")
-    monkeypatch.setattr(helm.cli, "load_config", lambda: {"min_seeds": 3})
+    monkeypatch.setattr(helm.cli, "load_settings", lambda: Settings.from_legacy({"min_seeds": 3}))
     monkeypatch.setattr(helm.cli, "ensure_config", lambda: None)
     monkeypatch.setattr(rss_fetcher, "search_indexers", unavailable)
     monkeypatch.setattr(lite_fetcher, "search_lite", lambda query, content_type: results)
@@ -396,7 +397,7 @@ def test_indexer_exit_cleans_up_once(monkeypatch):
     events = []
     monkeypatch.setenv("JACKETT_API_KEY", "testkey")
     monkeypatch.setattr(helm.cli, "ensure_config", lambda: None)
-    monkeypatch.setattr(helm.cli, "load_config", lambda: {})
+    monkeypatch.setattr(helm.cli, "load_settings", lambda: Settings.from_legacy({}))
     monkeypatch.setattr(oneshot, "spin_up_oneshot", lambda: events.append("start"))
     monkeypatch.setattr(oneshot, "teardown_oneshot", lambda: events.append("stop"))
     monkeypatch.setattr(indexer_manager, "JackettManager", lambda: SimpleNamespace(get_all_indexers=lambda: []))

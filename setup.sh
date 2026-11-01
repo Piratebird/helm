@@ -368,6 +368,9 @@ data["INDEXER_MANAGER"] = manager
 with open(path, "w") as f:
     json.dump(data, f, indent=4)
 PY
+if [ -f "$HELM_CONFIG/config.toml" ] || [ -f "$HELM_CONFIG/config.jsonc" ]; then
+    echo "[WARN] Your config file takes priority. Set search.indexer_manager = \"$INDEXER_MANAGER\" there if needed."
+fi
 
 echo ""
 if [ -n "$SKIP_PROMPTS" ]; then

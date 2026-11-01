@@ -1,17 +1,17 @@
-import os
 import xml.etree.ElementTree as ET
 
 import requests
 
 from helm.core.logger import get_logger
 from helm.core.secret_manager import get_secret
+from helm.core.settings import load_settings
 
 logger = get_logger(__name__)
 
 
 class JackettManager:
     def __init__(self):
-        self.url = os.getenv("JACKETT_URL", "http://localhost:9117")
+        self.url = load_settings().get("services.jackett")
         self.api_key = get_secret("JACKETT_API_KEY")
         if not self.api_key:
             raise RuntimeError("JACKETT_API_KEY environment variable not set")
@@ -80,7 +80,7 @@ class ProwlarrManager:
     DEFAULT_SEED_NAMES = ("1337x", "yts", "torrentgalaxy", "nyaapantsu", "eztv")
 
     def __init__(self):
-        self.url = os.getenv("PROWLARR_URL", "http://localhost:19696")
+        self.url = load_settings().get("services.prowlarr")
         self.api_key = get_secret("PROWLARR_API_KEY")
         if not self.api_key:
             raise RuntimeError("PROWLARR_API_KEY environment variable not set")

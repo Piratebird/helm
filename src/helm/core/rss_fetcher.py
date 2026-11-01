@@ -6,7 +6,6 @@ responsible for fetching and parsing RSS(really simple syndication) feeds from m
 """
 
 import email.utils
-import os
 import urllib.error
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -154,11 +153,10 @@ def _fetch_aggregate(jackett_url, api_key, query, cat):
 
 
 def search_prowlarr(query, content_type="video"):
-    from helm.core.config_manager import load_config
     from helm.core.secret_manager import get_secret
+    from helm.core.settings import load_settings
 
-    config = load_config()
-    prowlarr_url = config.get("PROWLARR_URL", "http://localhost:19696")
+    prowlarr_url = load_settings().get("services.prowlarr")
     api_key = get_secret("PROWLARR_API_KEY")
 
     if not api_key or "your_prowlarr_api_key_here" in api_key.lower():
@@ -172,7 +170,6 @@ def search_prowlarr(query, content_type="video"):
             logger.info("Event: Prowlarr indexers empty. Seeding defaults...")
             from helm.core.indexer_manager import ProwlarrManager
 
-            os.environ["PROWLARR_URL"] = prowlarr_url
             seed_count = ProwlarrManager().seed_default_indexers()
             logger.info("Event: Seeded %s default Prowlarr indexers.", seed_count)
     except Exception:
@@ -249,10 +246,9 @@ def search_indexers(query, content_type="video", fallback_lite=True):
     other manager when configured, and finally to native Lite Mode plugins so a
     search never comes up empty.
     """
-    from helm.core.config_manager import load_config
+    from helm.core.settings import load_settings
 
-    config = load_config()
-    manager = config.get("INDEXER_MANAGER", "jackett")
+    manager = load_settings().get("search.indexer_manager")
 
     def dedupe(items):
         seen = set()
@@ -288,7 +284,9 @@ def search_indexers(query, content_type="video", fallback_lite=True):
 
 
 def search_jackett(query, content_type="video"):
-    jackett_url = os.getenv("JACKETT_URL", "http://localhost:9117")
+    from helm.core.settings import load_settings
+
+    jackett_url = load_settings().get("services.jackett")
     api_key = get_secret("JACKETT_API_KEY")
     if not api_key:
         logger.info("Event: Jackett API key not configured. Seamlessly falling back to native Lite Mode plugins.")

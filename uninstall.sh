@@ -8,7 +8,7 @@ Usage: uninstall.sh [OPTIONS]
 Preview by default. Select components and pass --yes to remove them.
   --containers             Remove this Compose project's containers and networks
   --volumes                Also delete labeled named volumes and ALL their contents
-  --config                 Remove config.json and secrets.env; preserve other files
+  --config                 Remove config files and secrets.env; preserve other files
   --state                  Remove known service data, generated Compose files and logs
   --package                Uninstall helm-torrent using HELM_PYTHON (default: python3)
   --engine docker|podman   Container engine (otherwise detected)
@@ -111,13 +111,13 @@ if $remove_config; then
     [[ ! -L "$config_dir" ]] || die "Configuration directory must not be a symlink"
     config_dir="$(canonical_path "$config_dir")"
     check_path "$config_dir"
-    paths+=("$config_dir/config.json" "$config_dir/secrets.env")
+    paths+=("$config_dir/config.json" "$config_dir/config.toml" "$config_dir/config.jsonc" "$config_dir/secrets.env")
 fi
 if $remove_state; then
     [[ ! -L "$state_dir" ]] || die "State directory must not be a symlink"
     state_dir="$(canonical_path "$state_dir")"
     check_path "$state_dir"
-    for name in docker-compose.yml .env.docker jackett prowlarr qbittorrent flaresolverr gluetun logs; do
+    for name in docker-compose.yml .env.docker settings.json jackett prowlarr qbittorrent flaresolverr gluetun logs; do
         paths+=("$state_dir/$name")
     done
     for path in "$state_dir"/helm.log*; do

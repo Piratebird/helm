@@ -298,9 +298,9 @@ def process_one(store, stop=None, cancel_poll=1.0):
 
 def host_path(save_path, name):
     """Map a path reported by qBittorrent, possibly inside its container, to this host."""
-    from helm.core.config_manager import load_config
+    from helm.core.settings import load_settings
 
-    mount = PurePosixPath(os.getenv("QB_DOWNLOADS_ROOT") or load_config().get("QB_DOWNLOADS_ROOT") or "/downloads")
+    mount = PurePosixPath(load_settings().get("services.qbittorrent_downloads_root"))
     reported = PurePosixPath(save_path or mount) / name
     if mount in reported.parents:
         return Path(get_dl_dir()) / reported.relative_to(mount)

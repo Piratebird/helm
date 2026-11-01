@@ -7,7 +7,6 @@ once the user use "helm" once later on it'll be just detetced and loaded
 """
 
 ## imports##
-import json
 import os
 import shutil
 import sys
@@ -15,7 +14,7 @@ import sys
 ## setting up the  URL and the API key from .env ##
 # These are loaded dynamically in the modules that need them to avoid import crashes.
 
-# Credentials that must never be persisted in config.json; they live in secrets.env.
+# Credentials that must never be persisted in config files; they live in secrets.env.
 SECRET_KEYS = frozenset(
     [
         "JACKETT_API_KEY",
@@ -178,10 +177,6 @@ def worker_count(value=None):
     return count
 
 
-def get_qb_url():
-    return (os.getenv("QB_WEBUI") or load_config().get("QB_WEBUI") or "http://localhost:18080").rstrip("/")
-
-
 def get_config_file():
     config_dir = get_config_dir()
     os.makedirs(config_dir, exist_ok=True)
@@ -199,51 +194,3 @@ def _migrate_old_config():
             print(f"Migrated config from {old_file} to {new_file}")
         except Exception as e:
             print(f"Failed to migrate config: {e}")
-
-
-def load_config():
-    _migrate_old_config()
-    config_file = get_config_file()
-
-    default_config = {
-        "indexers": [],
-        "qualities": CONTENT_PROFILES["video"],
-        "min_seeds": 3,
-        "EXECUTION_MODE": "native",
-        "LITE_MODE_ONLY": False,
-    }
-
-    if not os.path.exists(config_file):
-        return default_config
-
-    with open(config_file) as f:
-        try:
-            content = f.read().strip()
-            if not content:
-                return default_config
-
-            loaded = json.loads(content)
-            # Ensure new keys exist (after secrets are stripped so migrations
-            # never re-introduce credentials into config.json)
-            for k, v in default_config.items():
-                if k not in loaded:
-                    loaded[k] = v
-        except json.JSONDecodeError:
-            print("Config file is corrupted. Backing up to config.json.bak and resetting.")
-            shutil.copy(config_file, config_file + ".bak")
-            return default_config
-
-    # One-way migration: legacy secrets found in config.json move to secrets.env.
-    from helm.core.secret_manager import migrate_config_secrets
-
-    had_secrets = any(k in loaded for k in SECRET_KEYS)
-    loaded = migrate_config_secrets(loaded)
-    if had_secrets:
-        # Persist the scrubbed config so the legacy secret is removed from disk.
-        save_config(loaded)
-    return loaded
-
-
-def save_config(config):
-    with open(get_config_file(), "w") as f:
-        json.dump(config, f, indent=4)

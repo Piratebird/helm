@@ -10,9 +10,10 @@ import time
 
 from dotenv import load_dotenv
 
-from helm.core.config_manager import CONTENT_PROFILES, NEGATIVE_KEYWORDS, load_config, worker_count  # noqa: E402
+from helm.core.config_manager import CONTENT_PROFILES, NEGATIVE_KEYWORDS, worker_count  # noqa: E402
 from helm.core.logger import configure_logging, tail_log  # noqa: E402
 from helm.core.secret_manager import get_secret, get_secrets_file  # noqa: E402
+from helm.core.settings import ConfigError, load_settings, remember  # noqa: E402
 from helm.ui.colors import C_ERR, C_LOGO, C_RST, C_SUB, C_TEXT, logo  # noqa: E402
 
 
@@ -77,21 +78,21 @@ def _cmd_status():
         print("\n".join(helm_containers) if helm_containers else "No helm containers found.")
         print("-" * 40)
 
-    cfg = load_config()
+    settings = load_settings()
     container_text = (res.stdout or "").lower() if res else ""
     print("\n--- Web UIs ---")
     if container_text and "jackett" not in container_text:
         print("Jackett:     not running")
     else:
-        print(f"Jackett:     {cfg.get('JACKETT_URL') or 'http://localhost:19117'}")
+        print(f"Jackett:     {settings.get('services.jackett')}")
     if container_text and "prowlarr" not in container_text:
         print("Prowlarr:    not running")
     else:
-        print(f"Prowlarr:    {cfg.get('PROWLARR_URL') or 'http://localhost:19696'}")
+        print(f"Prowlarr:    {settings.get('services.prowlarr')}")
     if container_text and "qbittorrent" not in container_text:
         print("qBittorrent: not running")
     else:
-        print(f"qBittorrent: {cfg.get('QB_WEBUI') or 'http://localhost:18080'}")
+        print(f"qBittorrent: {settings.get('services.qbittorrent')}")
     print("---------------")
 
 
@@ -253,8 +254,11 @@ def _parse_args(parser):
     if getattr(args, "dl_dir", None):
         os.environ["HELM_DL_DIR"] = os.path.abspath(args.dl_dir)
 
+    requested = getattr(args, "lite_workers", None)
+    if requested is None and "HELM_LITE_WORKERS" not in os.environ:
+        requested = load_settings().get("search.lite_workers")
     try:
-        workers = worker_count(getattr(args, "lite_workers", None))
+        workers = worker_count(requested)
     except ValueError as error:
         parser.error(str(error))
     os.environ["HELM_LITE_WORKERS"] = str(workers)
@@ -317,9 +321,9 @@ def _run_download(source, lite):
 
 
 def _run_headless(args, parser):
-    config = load_config()
-    lite = args.lite or config.get("LITE_MODE_ONLY", False)
-    if not lite and not (get_secret("QB_PASSWORD") or config.get("QB_WEBUI") or os.getenv("QB_WEBUI")):
+    settings = load_settings()
+    lite = args.lite or settings.get("search.lite_only")
+    if not lite and not (get_secret("QB_PASSWORD") or settings.origin("services.qbittorrent") != "default"):
         lite = True
     if args.command == "watch":
         from helm.core.watch import run_watch
@@ -362,13 +366,14 @@ def _run_utility(command):
     if command == "bug-report":
         import zipfile
 
-        from helm.core.config_manager import get_config_file, get_log_dir
+        from helm.core.config_manager import get_log_dir
+        from helm.core.settings import read_file, report_config_file
 
         desktop = os.path.join(os.path.expanduser("~"), "Desktop")
         if not os.path.exists(desktop):
             desktop = os.path.expanduser("~")
         zip_path = os.path.join(desktop, "helm-bug-report.zip")
-        config_file = get_config_file()
+        config_file = report_config_file()
         log_file = os.path.join(get_log_dir(), "helm.log")
 
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
@@ -376,11 +381,9 @@ def _run_utility(command):
                 from helm.core.secret_manager import redact_config
 
                 try:
-                    with open(config_file, "r") as f:
-                        cfg_data = json.load(f)
-                    zipf.writestr("config.json", json.dumps(redact_config(cfg_data), indent=4))
+                    zipf.writestr("config.json", json.dumps(redact_config(read_file(config_file)), indent=4))
                 except Exception:
-                    print("Could not redact config.json; omitting it from the bug report.", file=sys.stderr)
+                    print("Could not redact the config; omitting it from the bug report.", file=sys.stderr)
             if os.path.exists(log_file):
                 from helm.core.secret_manager import redact_text
 
@@ -395,6 +398,15 @@ def _run_utility(command):
 
 
 def main():
+    """Console entry point. It bypasses the __main__ block below."""
+    try:
+        run()
+    except ConfigError as error:
+        print(f"\033[31m[!] {error}\033[0m", file=sys.stderr)
+        raise SystemExit(1) from None
+
+
+def run():
     parser = build_parser()
     args = _parse_args(parser)
     if _dispatch_background(args, parser):
@@ -423,8 +435,7 @@ def main():
         raise SystemExit(0) from None
 
     if not args.lite:
-        config = load_config()
-        if config.get("LITE_MODE_ONLY"):
+        if load_settings().get("search.lite_only"):
             args.lite = True
         elif (
             not os.getenv("JACKETT_API_KEY")
@@ -436,10 +447,7 @@ def main():
                 # Machine-readable output must never interleave prompts; fall
                 # back to Lite Mode silently instead of asking the user.
                 args.lite = True
-                config["LITE_MODE_ONLY"] = True
-                from helm.core.config_manager import save_config
-
-                save_config(config)
+                remember({"search.lite_only": True})
             else:
                 try:
                     choice = (
@@ -451,10 +459,7 @@ def main():
                     )
                     if choice != "n":
                         args.lite = True
-                        config["LITE_MODE_ONLY"] = True
-                        from helm.core.config_manager import save_config
-
-                        save_config(config)
+                        remember({"search.lite_only": True})
                     else:
                         ensure_config()
                 except (KeyboardInterrupt, EOFError):
@@ -495,13 +500,11 @@ def _manage_indexers(args):
         raise SystemExit(1) from None
     ensure_config()
 
-    config = load_config()
-
     use_prowlarr = getattr(args, "prowlarr", False)
     use_jackett = getattr(args, "jackett", False)
 
     if not use_prowlarr and not use_jackett:
-        manager_type = config.get("INDEXER_MANAGER", "jackett")
+        manager_type = load_settings().get("search.indexer_manager")
     elif use_prowlarr:
         manager_type = "prowlarr"
     else:
@@ -657,8 +660,7 @@ def _run_session(args, teardown_oneshot):
             if not args.json:
                 print(f"{C_LOGO}{source_name} returned {len(all_items)} raw results{C_RST}")
 
-            config = load_config()
-            min_seeds = config.get("min_seeds", 3)
+            min_seeds = load_settings().get("search.min_seeds")
 
             unique_items = dedupe(all_items)
             filtered = filter_items(unique_items, cat_profiles, negatives, min_score=0, min_seeds=min_seeds)

@@ -67,10 +67,12 @@ def test_search_jackett_returns_empty_without_api_key(monkeypatch):
 
 
 def test_search_indexers_falls_back_to_lite_when_manager_returns_nothing(monkeypatch):
-    from helm.core import config_manager, lite_fetcher
+    from helm.core import lite_fetcher, settings
     from helm.core.rss_fetcher import TorrentItem
 
-    monkeypatch.setattr(config_manager, "load_config", lambda: {"INDEXER_MANAGER": "jackett"})
+    monkeypatch.setattr(
+        settings, "load_settings", lambda: settings.Settings.from_legacy({"INDEXER_MANAGER": "jackett"})
+    )
     monkeypatch.setattr(rf, "search_jackett", lambda *a, **k: [])
 
     lite = TorrentItem("Ubuntu 24.04 Lite", "magnet:?xt=urn:btih:cafe", 5)
@@ -83,10 +85,12 @@ def test_search_indexers_falls_back_to_lite_when_manager_returns_nothing(monkeyp
 
 
 def test_search_indexers_falls_back_to_lite_with_prowlarr_manager(monkeypatch):
-    from helm.core import config_manager, lite_fetcher
+    from helm.core import lite_fetcher, settings
     from helm.core.rss_fetcher import TorrentItem
 
-    monkeypatch.setattr(config_manager, "load_config", lambda: {"INDEXER_MANAGER": "prowlarr"})
+    monkeypatch.setattr(
+        settings, "load_settings", lambda: settings.Settings.from_legacy({"INDEXER_MANAGER": "prowlarr"})
+    )
     monkeypatch.setattr(rf, "search_prowlarr", lambda *a, **k: [])
     monkeypatch.setattr(rf, "search_jackett", lambda *a, **k: [])
 

@@ -3,6 +3,8 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
+- Use one set of service defaults: Jackett `19117`, Prowlarr `19696`, qBittorrent `18080`. Set `[services]` for a native Jackett on `9117`.
+- Report invalid config files clearly instead of resetting them. Runtime choices are stored in `settings.json` in the state directory, below the user's file.
 - Start faster by deferring heavy imports, and split the CLI entry point into separate handlers.
 - Use SQLite WAL, indexed lookups, one-second cancellation polling and `sendfile` in the queue and file server.
 - Install the `helm-torrent` command instead of `helm` to avoid Kubernetes Helm's executable. Python imports, configuration paths, and container names remain compatible. Source setup generates `helm-torrent.sh`.
@@ -10,6 +12,7 @@ All notable changes to this project will be documented in this file.
 - Respect the configured download directory and reject unknown flags, blank queries, and invalid content types.
 
 ### Added
+- Layered settings from `config.toml` or `config.jsonc`, with validation and a shared JSON Schema. Existing `config.json` values migrate once, and the original file stays in place. If both new files exist, `config.toml` is used.
 - Durable job queue with process-isolated workers, crash recovery, cancellation and a completed-file catalog.
 - `helm-torrent download`, `watch`, `serve`, `files`, `attach` and `daemon`, plus `--daemon` and `--session`.
 - Authenticated HTTP job API and range streaming limited to cataloged files inside the download directory.

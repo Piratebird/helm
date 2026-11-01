@@ -11,8 +11,9 @@ import pytest
 
 import helm.core.config_wizard as wizard
 import helm.core.oneshot as oneshot
-from helm.core.config_manager import get_state_dir, load_config, save_config
+from helm.core.config_manager import get_state_dir
 from helm.core.secret_manager import get_secret
+from helm.core.settings import load_settings, remember
 
 
 def install_engine(tmp_path, monkeypatch, status):
@@ -109,8 +110,8 @@ def answers(monkeypatch, values):
 def test_wizard_lite_choice_is_saved(monkeypatch):
     answers(monkeypatch, ["n"])
     wizard.run_wizard()
-    assert load_config()["LITE_MODE_ONLY"] is True
-    save_config({"LITE_MODE_ONLY": False})
+    assert load_settings().get("search.lite_only") is True
+    remember({"search.lite_only": False})
 
 
 def test_wizard_without_a_terminal_exits_with_guidance(monkeypatch, capsys):
@@ -129,14 +130,14 @@ def test_ensure_config_runs_wizard_only_when_settings_are_missing(monkeypatch):
     monkeypatch.setattr(wizard, "run_wizard", lambda: calls.append(1))
     for key in ("JACKETT_URL", "QB_WEBUI", "QB_USERNAME", "JACKETT_API_KEY", "QB_PASSWORD"):
         monkeypatch.delenv(key, raising=False)
-    save_config({"LITE_MODE_ONLY": False})
+    remember({"search.lite_only": False})
     wizard.ensure_config()  # Not a terminal: warn instead of blocking on a prompt.
     assert calls == []
     monkeypatch.setattr(wizard.sys, "stdin", SimpleNamespace(isatty=lambda: True))
     wizard.ensure_config()
     assert calls == [1]
-    save_config({"LITE_MODE_ONLY": True})
+    remember({"search.lite_only": True})
     wizard.ensure_config()
     assert calls == [1]
-    save_config({"LITE_MODE_ONLY": False})
+    remember({"search.lite_only": False})
     assert get_secret("QB_PASSWORD") is None

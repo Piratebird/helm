@@ -96,7 +96,7 @@ If a source times out (for example, `nyaa.si`), Helm keeps results from other co
 
 - Enter a nonempty, specific query. A request containing `q=` has an empty query; current Helm rejects blank interactive and CLI searches.
 - Use `helm-torrent logs` for recent source errors, or `HELM_VERBOSE=true helm-torrent search "artist album" --type music --lite --json` for verbose diagnostics on stderr.
-- If raw results exist but the final list is empty, check content filters and `min_seeds` in `config.json` (default: 3). Use `helm-torrent paths` to locate it.
+- If raw results exist but the final list is empty, check content filters and `search.min_seeds` in `config.toml` (default: 3). Use `helm-torrent paths` to locate it.
 - Content types are mapped to plugin category keys when supported (video searches movies/TV/anime); general sources fall back to `all`. Inline feeds and unsupported categories still rely on local scoring/filtering.
 - A source summary on stderr distinguishes empty results from timeouts, HTTP failures, connection failures, and parse failures. Bundled plugins report swallowed failures; third-party plugins may need the `novaprinter.report_error` hook. Jobs whose queue budget expires are marked `budget_exhausted`; JSON stdout stays separate.
 
@@ -161,14 +161,34 @@ With the adoption of XDG standards, your configuration and state are stored nati
 
 What these do:
 
-- `config.json`: Settings only (indexers, URLs, flags) — never secrets.
+- `config.toml` or `config.jsonc`: Your settings, never secrets. Helm does not rewrite this file. If both exist, `config.toml` is used and the two are not merged.
+- `state/settings.json`: Choices Helm saves at runtime, such as wizard answers. Your config file overrides these.
 - `secrets.env`: API keys and passwords (e.g. `JACKETT_API_KEY`, `JACKETT_PASSWORD`, `QB_PASSWORD`). Written with mode `0600` and resolved with env vars taking priority.
 - `state/.env.docker`: Environment variables for the containers
 - `state/jackett/`: Jackett configuration and indexers
 - `state/qbittorrent/`: qBittorrent configuration and state
 - `Downloads/helm/`: Your downloaded files
 
-The first run migrates any legacy secrets found in older `config.json` files into `secrets.env` and rewrites the config file scrubbed.
+```toml
+# ~/.config/helm/config.toml
+[search]
+min_seeds = 3
+lite_workers = 6
+default_type = "video"
+indexer_manager = "jackett"   # jackett, prowlarr or both
+lite_only = false
+
+[services]
+jackett = "http://localhost:19117"
+prowlarr = "http://localhost:19696"
+qbittorrent = "http://localhost:18080"
+qbittorrent_user = "admin"
+qbittorrent_downloads_root = "/downloads"
+```
+
+`config.jsonc` uses the same keys and allows comments and trailing commas. Command-line flags and environment variables such as `QB_WEBUI` override the file. Values you leave out use the defaults above.
+
+The first run creates `config.toml` from any non-default values in an older `config.json`, moves legacy secrets into `secrets.env`, and leaves `config.json` in place with a `.pre-toml.bak` copy. After that, `config.json` is ignored.
 
 ## Usage
 

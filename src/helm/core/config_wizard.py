@@ -3,8 +3,13 @@ import sys
 
 import requests
 
-from helm.core.config_manager import load_config, save_config
 from helm.core.secret_manager import get_secret, set_secrets
+from helm.core.settings import load_settings, remember
+
+
+def save_answers(updates):
+    for path in remember(updates):
+        print(f"\033[33m[WARN] {path} stays as set in your config file; edit it there to change it.\033[0m")
 
 
 def run_wizard():
@@ -14,7 +19,8 @@ def run_wizard():
         print("\033[1mWelcome to Helm Interactive Configuration Wizard!\033[0m")
         print("It looks like some essential configurations are missing.\n")
 
-        config = load_config()
+        settings = load_settings()
+        updates = {}
 
         print("You can run Helm in two modes:")
         print("  1. Lite Mode (Native plugins only, no media server required)")
@@ -27,17 +33,16 @@ def run_wizard():
         )
         if choice not in ("y", "yes"):
             print("\n\033[32mOpting for Lite Mode. You can change this later.\033[0m\n")
-            config["LITE_MODE_ONLY"] = True
-            save_config(config)
+            save_answers({"search.lite_only": True})
             return
 
-        config["LITE_MODE_ONLY"] = False
+        updates["search.lite_only"] = False
 
         indexer_choice = input("Which Indexer Manager are you using? [1] Jackett [2] Prowlarr (default 1): ").strip()
 
         if indexer_choice == "2":
             # Prowlarr
-            prowlarr_url = config.get("PROWLARR_URL", os.getenv("PROWLARR_URL", "http://localhost:19696"))
+            prowlarr_url = settings.get("services.prowlarr")
             prowlarr_api = get_secret("PROWLARR_API_KEY") or ""
 
             while True:
@@ -76,12 +81,12 @@ def run_wizard():
                 else:
                     print("Prowlarr API key is required.\n")
 
-            config["PROWLARR_URL"] = prowlarr_url
+            updates["services.prowlarr"] = prowlarr_url
             set_secrets({"PROWLARR_API_KEY": prowlarr_api})
-            config["INDEXER_MANAGER"] = "prowlarr"
+            updates["search.indexer_manager"] = "prowlarr"
         else:
             # Jackett
-            jackett_url = config.get("JACKETT_URL", os.getenv("JACKETT_URL", "http://localhost:9117"))
+            jackett_url = settings.get("services.jackett")
             jackett_api = get_secret("JACKETT_API_KEY") or ""
             jackett_pwd = get_secret("JACKETT_PASSWORD") or ""
 
@@ -138,13 +143,13 @@ def run_wizard():
                 else:
                     print("Jackett API key is required.\n")
 
-            config["JACKETT_URL"] = jackett_url
+            updates["services.jackett"] = jackett_url
             set_secrets({"JACKETT_API_KEY": jackett_api, "JACKETT_PASSWORD": jackett_pwd})
-            config["INDEXER_MANAGER"] = "jackett"
+            updates["search.indexer_manager"] = "jackett"
 
         # qBittorrent
-        qb_webui = config.get("QB_WEBUI", os.getenv("QB_WEBUI", "http://localhost:18080"))
-        qb_username = config.get("QB_USERNAME", os.getenv("QB_USERNAME", "admin"))
+        qb_webui = settings.get("services.qbittorrent")
+        qb_username = settings.get("services.qbittorrent_user")
         qb_password = get_secret("QB_PASSWORD") or ""
 
         while True:
@@ -193,12 +198,12 @@ def run_wizard():
             else:
                 print("qBittorrent password is required.\n")
 
-        config["QB_WEBUI"] = qb_webui
-        config["QB_USERNAME"] = qb_username
+        updates["services.qbittorrent"] = qb_webui
+        updates["services.qbittorrent_user"] = qb_username
         set_secrets({"QB_PASSWORD": qb_password})
 
-        save_config(config)
-        print("Configuration saved! (settings -> config.json, secrets -> secrets.env)\n")
+        save_answers(updates)
+        print("Configuration saved! Secrets are in secrets.env.\n")
     except KeyboardInterrupt:
         print("\n\n\033[33mConfiguration aborted. later bozo!\033[0m")
         sys.exit(0)
@@ -209,19 +214,22 @@ def run_wizard():
         sys.exit(1)
 
 
-def ensure_config():
-    config = load_config()
+# Non-secret settings the full stack needs, and the variables other processes read.
+REQUIRED_SETTINGS = {
+    "services.jackett": "JACKETT_URL",
+    "services.qbittorrent": "QB_WEBUI",
+    "services.qbittorrent_user": "QB_USERNAME",
+}
 
-    if config.get("LITE_MODE_ONLY"):
+
+def ensure_config():
+    settings = load_settings()
+
+    if settings.get("search.lite_only"):
         return
 
-    needs_wizard = False
     # Check required settings (secrets are resolved via the secret store)
-    keys = ["JACKETT_URL", "QB_WEBUI", "QB_USERNAME"]
-    for k in keys:
-        if k not in config and not os.getenv(k):
-            needs_wizard = True
-            break
+    needs_wizard = any(settings.origin(path) == "default" for path in REQUIRED_SETTINGS)
     for k in ["JACKETT_API_KEY", "QB_PASSWORD"]:
         if not needs_wizard and not get_secret(k):
             needs_wizard = True
@@ -229,7 +237,7 @@ def ensure_config():
 
     # Dynamically check if JACKETT_PASSWORD is required
     if not needs_wizard and not get_secret("JACKETT_PASSWORD"):
-        jackett_url = config.get("JACKETT_URL", os.getenv("JACKETT_URL", "http://localhost:9117"))
+        jackett_url = settings.get("services.jackett")
         try:
             session = requests.Session()
             r = session.get(f"{jackett_url}/UI/Dashboard", timeout=2)
@@ -246,11 +254,11 @@ def ensure_config():
             # We don't exit here so the rest of the app can try to run, or fail with a native API error
         else:
             run_wizard()
-            config = load_config()
+            settings = load_settings()
 
-    for k in keys:
-        if k in config:
-            os.environ[k] = config[k]
+    for path, variable in REQUIRED_SETTINGS.items():
+        if settings.origin(path) != "default":
+            os.environ[variable] = settings.get(path)
 
     # Push all resolved secrets into the environment so native modules can use them.
     from helm.core.config_manager import SECRET_KEYS
