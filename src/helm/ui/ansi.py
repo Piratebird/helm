@@ -1,6 +1,7 @@
 """ANSI renderer for banner data and theme colours. The only place that writes escapes."""
 
 import os
+import sys
 import unicodedata
 
 from helm.ui.banner import SGR
@@ -10,9 +11,31 @@ BOLD = "\033[1m"
 GAP = "   "
 
 
-def sgr(hex_color):
-    """Return the 24-bit foreground escape for a #RRGGBB colour."""
-    value = hex_color.lstrip("#")
+# Terminal controls. They are not colours, so they stay on when colour is off.
+EOL = "\033[K"  # Clear to the end of the line
+HOME = "\033[H"
+CLEAR = "\033[2J"
+CLEAR_DOWN = "\033[J"
+HIDE_CURSOR = "\033[?25l"
+SHOW_CURSOR = "\033[?25h"
+ITALIC = "\033[3m"
+REVERSE = "\033[7m"
+CONTROLS = {
+    "EOL": EOL,
+    "HOME": HOME,
+    "CLEAR": CLEAR,
+    "CLEAR_DOWN": CLEAR_DOWN,
+    "HIDE_CURSOR": HIDE_CURSOR,
+    "SHOW_CURSOR": SHOW_CURSOR,
+}
+STYLES = {"RST": RESET, "BOLD": BOLD, "ITALIC": ITALIC, "REVERSE": REVERSE}
+
+
+def sgr(color):
+    """Return the foreground escape for "#RRGGBB" or a basic "ansi:NN" colour."""
+    if color.startswith("ansi:"):
+        return f"\033[{int(color[5:])}m"
+    value = color.lstrip("#")
     red, green, blue = (int(value[index : index + 2], 16) for index in (0, 2, 4))
     return f"\033[38;2;{red};{green};{blue}m"
 
@@ -94,3 +117,47 @@ def render_banner(banner, theme, color=True):
                 left += " " * (width - visible_width(left)) + GAP
             lines.append(left + right)
     return "\n".join(lines) + "\n" if lines else ""
+
+
+class Terminal:
+    """Named escape codes for the current theme, resolved on first use.
+
+    Use it as T.LOGO, T.ACCENT, T.BOLD, T.RST, T.EOL and so on. Colours and
+    styles are empty when stdout is not a terminal or NO_COLOR is set. The theme
+    is read lazily, after the CLI has applied --config-dir and similar flags.
+    """
+
+    def __init__(self):
+        self._codes = None
+
+    def _build(self):
+        from helm.core.settings import COLOR_NAMES, ConfigError, Settings, load_settings
+        from helm.ui.theme import load_theme
+
+        try:
+            theme = load_theme(load_settings())
+        except ConfigError:
+            # A broken config is reported elsewhere; colours must not crash.
+            theme = load_theme(Settings())
+        color = color_enabled(sys.stdout)
+        codes = dict(CONTROLS)
+        codes.update({name: code if color else "" for name, code in STYLES.items()})
+        codes.update({name.upper(): sgr(theme.get(name)) if color else "" for name in COLOR_NAMES})
+        return codes
+
+    def __getattr__(self, name):
+        if name.startswith("_"):
+            raise AttributeError(name)
+        if self._codes is None:
+            self._codes = self._build()
+        try:
+            return self._codes[name]
+        except KeyError:
+            raise AttributeError(name) from None
+
+    def reset(self):
+        """Forget the resolved theme, so the next use reads settings again."""
+        self._codes = None
+
+
+T = Terminal()

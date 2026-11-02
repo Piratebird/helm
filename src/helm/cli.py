@@ -14,7 +14,8 @@ from helm.core.config_manager import CONTENT_PROFILES, NEGATIVE_KEYWORDS, worker
 from helm.core.logger import configure_logging, tail_log  # noqa: E402
 from helm.core.secret_manager import get_secret, get_secrets_file  # noqa: E402
 from helm.core.settings import ConfigError, load_settings, remember  # noqa: E402
-from helm.ui.colors import C_ERR, C_LOGO, C_RST, C_SUB, C_TEXT, logo  # noqa: E402
+from helm.ui.ansi import T  # noqa: E402
+from helm.ui.banner import WORDMARK as logo  # noqa: E402
 
 
 def _lazy(module, name):
@@ -46,10 +47,10 @@ def _send_magnet(selected, lite_mode, json_mode=False, success_msg="Torrent sent
     try:
         add_magnet(selected.link)
         if not json_mode:
-            print(f"{C_TEXT}{success_msg}{C_RST}")
+            print(f"{T.TEXT}{success_msg}{T.RST}")
     except Exception as e:
         print(
-            f"\n\033[33m[!] qBittorrent not available ({e}). Falling back to LITE MODE downloader...\033[0m\n",
+            f"\n{T.WARNING}[!] qBittorrent not available ({e}). Falling back to LITE MODE downloader...{T.RST}\n",
             file=sys.stderr,
         )
         from helm.core.lite_downloader import download_magnet
@@ -351,7 +352,7 @@ def _run_utility(command):
     if command == "paths":
         from helm.core.config_manager import get_config_dir, get_dl_dir, get_log_dir
 
-        print("\033[1m\033[36mHelm Data Locations:\033[0m")
+        print(f"{T.BOLD}{T.INFO}Helm Data Locations:{T.RST}")
         print(f"  Configuration: {get_config_dir()}")
         print(f"  State/Logs:    {get_log_dir()}")
         print(f"  Downloads:     {get_dl_dir()}")
@@ -406,14 +407,21 @@ def _run_utility(command):
         return
 
 
+def _banner_context(args):
+    if args.lite:
+        return {"mode": "lite"}
+    if args.oneshot:
+        return {"mode": "one-shot"}
+    return {}
+
+
 def _cmd_banner(args):
     from helm.ui.ansi import color_enabled, render_banner
     from helm.ui.banner import build_banner
     from helm.ui.theme import load_theme
 
     settings = load_settings()
-    context = {"mode": "lite"} if args.lite else {}
-    banner = build_banner(settings, context)
+    banner = build_banner(settings, _banner_context(args))
     if args.json:
         data = {
             "theme": settings.get("theme.preset"),
@@ -422,8 +430,22 @@ def _cmd_banner(args):
         }
         print(json.dumps(data, ensure_ascii=False))
         return
-    text = render_banner(banner, load_theme(settings), color=color_enabled(sys.stdout))
-    sys.stdout.write(text)
+    sys.stdout.write(render_banner(banner, load_theme(settings), color=color_enabled(sys.stdout)))
+
+
+def _print_header(args, subtitle):
+    """Print the banner at UI start, or the plain wordmark when banner.enabled is false."""
+    settings = load_settings()
+    if settings.get("banner.enabled"):
+        from helm.ui.ansi import color_enabled, render_banner
+        from helm.ui.banner import build_banner
+        from helm.ui.theme import load_theme
+
+        banner = build_banner(settings, _banner_context(args))
+        sys.stdout.write("\n" + render_banner(banner, load_theme(settings), color=color_enabled(sys.stdout)) + "\n")
+    else:
+        print(f"{T.LOGO}{logo}{T.RST}")
+    print(f"{T.ACCENT}{subtitle}{T.RST}\n")
 
 
 def main():
@@ -431,7 +453,7 @@ def main():
     try:
         run()
     except ConfigError as error:
-        print(f"\033[31m[!] {error}\033[0m", file=sys.stderr)
+        print(f"{T.ERROR}[!] {error}{T.RST}", file=sys.stderr)
         raise SystemExit(1) from None
 
 
@@ -463,7 +485,7 @@ def run():
         try:
             bootstrap_env()
         except (KeyboardInterrupt, EOFError):
-            print(f"\n{C_SUB}later bozo!{C_RST}")
+            print(f"\n{T.ACCENT}later bozo!{T.RST}")
         raise SystemExit(0) from None
 
     if args.command in ("paths", "logs", "bug-report"):
@@ -488,7 +510,7 @@ def run():
                 try:
                     choice = (
                         input(
-                            f"\n\033[1m{C_TEXT}? No configuration found. Would you like to run in Lite Mode (zero setup)? [Y/n]:{C_RST} "
+                            f"\n{T.BOLD}{T.TEXT}? No configuration found. Would you like to run in Lite Mode (zero setup)? [Y/n]:{T.RST} "
                         )
                         .strip()
                         .lower()
@@ -499,7 +521,7 @@ def run():
                     else:
                         ensure_config()
                 except (KeyboardInterrupt, EOFError):
-                    print(f"\n{C_SUB}later bozo!{C_RST}")
+                    print(f"\n{T.ACCENT}later bozo!{T.RST}")
                     raise SystemExit(0) from None
         else:
             ensure_config()
@@ -532,7 +554,7 @@ def run():
 
 def _manage_indexers(args):
     if args.lite:
-        print(f"{C_ERR}Cannot manage Indexers in Lite Mode.{C_RST}", file=sys.stderr)
+        print(f"{T.ERROR}Cannot manage Indexers in Lite Mode.{T.RST}", file=sys.stderr)
         raise SystemExit(1) from None
     ensure_config()
 
@@ -558,10 +580,10 @@ def _manage_indexers(args):
             manager = JackettManager()
             mgr_name = "Jackett"
     except Exception as e:
-        print(f"{C_ERR}Failed to initialize Manager: {e}{C_RST}", file=sys.stderr)
+        print(f"{T.ERROR}Failed to initialize Manager: {e}{T.RST}", file=sys.stderr)
         raise SystemExit(1) from None
 
-    sys.stdout.write(f"{C_LOGO}Fetching indexers from {mgr_name}...{C_RST}\r\n")
+    sys.stdout.write(f"{T.LOGO}Fetching indexers from {mgr_name}...{T.RST}\r\n")
     sys.stdout.flush()
     all_indexers = manager.get_all_indexers()
 
@@ -570,24 +592,24 @@ def _manage_indexers(args):
             selected_indexer = interactive_indexer_selector(all_indexers)
             if selected_indexer:
                 if selected_indexer["configured"]:
-                    sys.stdout.write(f"\r\n{C_TEXT}Removing {selected_indexer['title']}...{C_RST}\r\n")
+                    sys.stdout.write(f"\r\n{T.TEXT}Removing {selected_indexer['title']}...{T.RST}\r\n")
                     sys.stdout.flush()
                     try:
                         manager.remove_indexer(selected_indexer["id"])
                         selected_indexer["configured"] = False
                     except Exception as e:
-                        sys.stdout.write(f"\r\n{C_ERR}Failed to remove: {e}{C_RST}\r\n")
+                        sys.stdout.write(f"\r\n{T.ERROR}Failed to remove: {e}{T.RST}\r\n")
                         sys.stdout.flush()
                         time.sleep(2)
                 else:
                     if selected_indexer.get("type", "public") != "public":
                         sys.stdout.write(
-                            f"\r\n{C_ERR}Cannot add {selected_indexer['type']} trackers via CLI as they require credentials. Please use the Jackett Web UI ({manager.url}).{C_RST}\r\n"
+                            f"\r\n{T.ERROR}Cannot add {selected_indexer['type']} trackers via CLI as they require credentials. Please use the Jackett Web UI ({manager.url}).{T.RST}\r\n"
                         )
                         sys.stdout.flush()
                         time.sleep(3)
                     else:
-                        sys.stdout.write(f"\r\n{C_TEXT}Adding {selected_indexer['title']}...{C_RST}\r\n")
+                        sys.stdout.write(f"\r\n{T.TEXT}Adding {selected_indexer['title']}...{T.RST}\r\n")
                         sys.stdout.flush()
                         try:
                             manager.add_indexer(selected_indexer["id"])
@@ -596,18 +618,18 @@ def _manage_indexers(args):
                             error_msg = str(e)
                             if "500" in error_msg:
                                 error_msg = "Jackett rejected the default config. Please configure this indexer manually via the Jackett Web UI."
-                            sys.stdout.write(f"\r\n{C_ERR}Failed to add: {error_msg}{C_RST}\r\n")
+                            sys.stdout.write(f"\r\n{T.ERROR}Failed to add: {error_msg}{T.RST}\r\n")
                             sys.stdout.flush()
                             time.sleep(3)
         except KeyboardInterrupt:
-            sys.stdout.write(f"\n{C_SUB}Exiting indexer management.{C_RST}\n")
+            sys.stdout.write(f"\n{T.ACCENT}Exiting indexer management.{T.RST}\n")
             sys.stdout.flush()
             try:
-                choice = input(f"\033[1m{C_TEXT}? Would you like to proceed to search? [Y/n]:{C_RST} ").strip().lower()
+                choice = input(f"{T.BOLD}{T.TEXT}? Would you like to proceed to search? [Y/n]:{T.RST} ").strip().lower()
                 if choice == "n":
                     raise SystemExit(0) from None
             except (KeyboardInterrupt, EOFError):
-                print(f"\n{C_SUB}later bozo!{C_RST}")
+                print(f"\n{T.ACCENT}later bozo!{T.RST}")
                 raise SystemExit(0) from None
 
 
@@ -618,8 +640,7 @@ def _run_session(args, teardown_oneshot):
     mode_str = " (ONE-SHOT MODE)" if args.oneshot else ""
 
     if not args.json and not args.query:
-        print(f"{C_LOGO}{logo}{C_RST}")
-        print(f"{C_SUB}THE HELM - Torrent automation MVP{mode_str}{C_RST}\n")
+        _print_header(args, f"THE HELM - Torrent automation MVP{mode_str}")
 
     # State Machine Loop
     state = "PROMPT"
@@ -635,9 +656,9 @@ def _run_session(args, teardown_oneshot):
                 state = "SEARCHING"
             else:
                 try:
-                    search_query = input(f"\033[1m{C_TEXT}? What would you like to search for:{C_RST} ").strip()
+                    search_query = input(f"{T.BOLD}{T.TEXT}? What would you like to search for:{T.RST} ").strip()
                 except (KeyboardInterrupt, EOFError):
-                    print(f"\n{C_SUB}later bozo!{C_RST}")
+                    print(f"\n{T.ACCENT}later bozo!{T.RST}")
                     raise SystemExit(0) from None
 
                 if not search_query:
@@ -650,15 +671,15 @@ def _run_session(args, teardown_oneshot):
                         ["video", "games", "software", "books", "music"], "Content type"
                     )
                 except KeyboardInterrupt:
-                    print(f"\n{C_SUB}later bozo!{C_RST}")
+                    print(f"\n{T.ACCENT}later bozo!{T.RST}")
                     raise SystemExit(0) from None
 
                 if selected_cats == "BACK":
                     # Go back to query prompt by staying in PROMPT
-                    print("\033[2J\033[H", end="")
+                    print(f"{T.CLEAR}{T.HOME}", end="")
                     continue
                 categories = selected_cats
-                print("\033[2J\033[H", end="")
+                print(f"{T.CLEAR}{T.HOME}", end="")
                 state = "SEARCHING"
 
         elif state == "SEARCHING":
@@ -689,12 +710,12 @@ def _run_session(args, teardown_oneshot):
                     cleaned_query, ",".join(categories), lite_mode=args.lite, show_spinner=not args.json
                 )
             except KeyboardInterrupt:
-                print(f"\n{C_SUB}later bozo!{C_RST}")
+                print(f"\n{T.ACCENT}later bozo!{T.RST}")
                 raise SystemExit(0) from None
 
             source_name = "Lite mode" if args.lite else "Jackett & Lite"
             if not args.json:
-                print(f"{C_LOGO}{source_name} returned {len(all_items)} raw results{C_RST}")
+                print(f"{T.LOGO}{source_name} returned {len(all_items)} raw results{T.RST}")
 
             min_seeds = load_settings().get("search.min_seeds")
 
@@ -706,7 +727,7 @@ def _run_session(args, teardown_oneshot):
                     print(json.dumps([]))
                     raise SystemExit(1) from None
                 else:
-                    print(f"\n{C_ERR}No torrents were found :({C_RST}", file=sys.stderr)
+                    print(f"\n{T.ERROR}No torrents were found :({T.RST}", file=sys.stderr)
                     if not all_items and args.lite:
                         print(
                             "Lite sources may be unreachable or have no matches. "
@@ -724,7 +745,7 @@ def _run_session(args, teardown_oneshot):
                         raise SystemExit(1) from None
                     else:
                         input("Press Enter to try again...")
-                        print("\033[2J\033[H", end="")
+                        print(f"{T.CLEAR}{T.HOME}", end="")
                         state = "PROMPT"
                         continue
 
@@ -766,7 +787,7 @@ def _run_session(args, teardown_oneshot):
                 )
 
                 if do_teardown == "BACK":
-                    print("\033[2J\033[H", end="")
+                    print(f"{T.CLEAR}{T.HOME}", end="")
                     if args.query:
                         # Cannot go back if started from CLI args
                         raise SystemExit(0) from None
@@ -783,7 +804,7 @@ def _run_session(args, teardown_oneshot):
                 break
 
             except KeyboardInterrupt:
-                print(f"\n{C_SUB}later bozo!{C_RST}")
+                print(f"\n{T.ACCENT}later bozo!{T.RST}")
                 if do_teardown and not args.oneshot and not args.lite:
                     try:
                         teardown_oneshot()
@@ -798,10 +819,10 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         import sys
 
-        print("\n\033[33m[!] Process interrupted by user.\033[0m", file=sys.stderr)
+        print(f"\n{T.WARNING}[!] Process interrupted by user.{T.RST}", file=sys.stderr)
         sys.exit(130)
     except Exception as e:
         import sys
 
-        print(f"\n\033[31m[!] An unexpected error occurred: {e}\033[0m", file=sys.stderr)
+        print(f"\n{T.ERROR}[!] An unexpected error occurred: {e}{T.RST}", file=sys.stderr)
         sys.exit(1)

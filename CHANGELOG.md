@@ -3,6 +3,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
+- Use the theme everywhere the UI, wizard, one-shot mode and Lite downloader print colour, and show the banner when the UI starts. Colours are now off when output is piped or `NO_COLOR` is set. Red messages that used the terminal's basic red now use the theme's error colour.
 - Use one set of service defaults: Jackett `19117`, Prowlarr `19696`, qBittorrent `18080`. Set `[services]` for a native Jackett on `9117`.
 - Report invalid config files clearly instead of resetting them. Runtime choices are stored in `settings.json` in the state directory, below the user's file.
 - Start faster by deferring heavy imports, and split the CLI entry point into separate handlers.

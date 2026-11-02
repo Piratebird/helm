@@ -18,10 +18,18 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
 from helm.core.config_manager import get_config_dir, get_dl_dir, get_state_dir
-from helm.ui.colors import logo as wordmark
 
-# The current UI's wordmark, shared so the default look cannot drift.
-LOGOS = {"helm": wordmark.strip("\n").split("\n")}
+# The current UI's block wordmark.
+LOGOS = {
+    "helm": [
+        "▗▖ ▗▖▗▄▄▄▖▗▖   ▗▖  ▗▖",
+        "▐▌ ▐▌▐▌   ▐▌   ▐▛▚▞▜▌",
+        "▐▛▀▜▌▐▛▀▀▘▐▌   ▐▌  ▐▌",
+        "▐▌ ▐▌▐▙▄▄▖▐▙▄▄▖▐▌  ▐▌",
+    ],
+}
+# The wordmark as one string, with the surrounding blank lines the UI prints.
+WORDMARK = "\n" + "\n".join(LOGOS["helm"]) + "\n"
 PLACEHOLDER = re.compile(r"\{(logo|accent|text|line|error|muted|reset)\}")
 SGR = re.compile(r"\x1b\[[0-9;]*m")
 # Any other escape sequence or control character from a command is dropped.

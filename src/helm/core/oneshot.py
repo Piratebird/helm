@@ -6,6 +6,8 @@ import time
 
 import requests
 
+from helm.ui.ansi import T
+
 
 def print(*args, **kwargs):
     # Route this module's boot/teardown logs to stderr so `--json` output on
@@ -33,8 +35,8 @@ def _container_name(service):
 
 
 def spin_up_oneshot():
-    print("\n\033[1m\033[36mInitializing One-Shot Ephemeral Stack...\033[0m")
-    print("\033[3mBringing up Jackett, Prowlarr, Flaresolverr, and qBittorrent via docker compose...\033[0m")
+    print(f"\n{T.BOLD}{T.INFO}Initializing One-Shot Ephemeral Stack...{T.RST}")
+    print(f"{T.ITALIC}Bringing up Jackett, Prowlarr, Flaresolverr, and qBittorrent via docker compose...{T.RST}")
 
     from helm.core.config_manager import get_state_dir
 
@@ -54,7 +56,7 @@ def spin_up_oneshot():
         pass
 
     def check_container_status(service_name, timeout=45):
-        print(f"\033[3mWaiting for {service_name} to stabilize...\033[0m")
+        print(f"{T.ITALIC}Waiting for {service_name} to stabilize...{T.RST}")
         elapsed = 0
         while elapsed < timeout:
             try:
@@ -71,7 +73,7 @@ def spin_up_oneshot():
                         return True
                     elif status == "exited":
                         print(
-                            f"\033[31m[ERROR] Container {service_name} crashed immediately. Check 'docker compose logs {service_name}'\033[0m"
+                            f"{T.ERROR}[ERROR] Container {service_name} crashed immediately. Check 'docker compose logs {service_name}'{T.RST}"
                         )
                         for svc in CONTAINER_SERVICES:
                             _docker_run(["stop", _container_name(svc)], capture_output=True)
@@ -80,14 +82,14 @@ def spin_up_oneshot():
                 pass
             time.sleep(5)
             elapsed += 5
-        print(f"\033[31m[WARNING] Timeout waiting for {service_name} to stabilize.\033[0m")
+        print(f"{T.ERROR}[WARNING] Timeout waiting for {service_name} to stabilize.{T.RST}")
         return False
 
     check_container_status("jackett")
     check_container_status("prowlarr")
     check_container_status("qbittorrent")
     check_container_status("flaresolverr")
-    print("\033[36mWaiting for internal HTTP servers to fully boot (this ensures 1337x doesn't fail)...\033[0m")
+    print(f"{T.INFO}Waiting for internal HTTP servers to fully boot (this ensures 1337x doesn't fail)...{T.RST}")
 
     # Wait for Jackett to respond to HTTP requests
     jackett_url = os.environ.get("JACKETT_URL", "http://jackett:9117")
@@ -103,7 +105,7 @@ def spin_up_oneshot():
         time.sleep(2)
 
     if not jackett_ready:
-        print("\033[31m[WARNING] Jackett HTTP API didn't respond in time.\033[0m")
+        print(f"{T.ERROR}[WARNING] Jackett HTTP API didn't respond in time.{T.RST}")
 
     # Wait for Flaresolverr to respond to HTTP requests
     flaresolverr_url = os.environ.get("FLARESOLVERR_URL", "http://flaresolverr:8191")
@@ -119,13 +121,13 @@ def spin_up_oneshot():
         time.sleep(2)
 
     if not flaresolverr_ready:
-        print("\033[31m[WARNING] Flaresolverr HTTP API didn't respond in time.\033[0m")
+        print(f"{T.ERROR}[WARNING] Flaresolverr HTTP API didn't respond in time.{T.RST}")
 
-    print("\033[32mEnvironment variables loaded and APIs ready.\033[0m\n")
+    print(f"{T.SUCCESS}Environment variables loaded and APIs ready.{T.RST}\n")
 
 
 def teardown_oneshot():
-    print("\n\033[1m\033[33mTearing down the ephemeral stack to save processing power...\033[0m")
+    print(f"\n{T.BOLD}{T.WARNING}Tearing down the ephemeral stack to save processing power...{T.RST}")
     try:
         # Stop containers individually via 'docker stop' instead of 'docker compose stop'
         # to avoid network namespace destruction that triggers "rootless netns: permission denied"
@@ -134,14 +136,14 @@ def teardown_oneshot():
                 _docker_run(["stop", _container_name(svc)], capture_output=True)
             except KeyboardInterrupt:
                 pass
-        print("\033[1m\033[32mAll containers stopped cleanly. Your RAM is free!\033[0m")
+        print(f"{T.BOLD}{T.SUCCESS}All containers stopped cleanly. Your RAM is free!{T.RST}")
     except Exception as e:
-        print(f"\033[31mCould not tear down docker-compose stack: {e}\033[0m")
+        print(f"{T.ERROR}Could not tear down docker-compose stack: {e}{T.RST}")
 
 
 def wait_for_download():
-    print("\n\033[36mWaiting for download to complete before tearing down the stack...\033[0m")
-    print("\033[3m(Press Ctrl+C to cancel, or Ctrl+P then Ctrl+Q to detach and run in background)\033[0m")
+    print(f"\n{T.INFO}Waiting for download to complete before tearing down the stack...{T.RST}")
+    print(f"{T.ITALIC}(Press Ctrl+C to cancel, or Ctrl+P then Ctrl+Q to detach and run in background){T.RST}")
 
     import helm.core.qbittorrent_client as qbc
 
@@ -166,19 +168,19 @@ def wait_for_download():
                         name = t.get("name", "Unknown")
                         if progress < 1.0:
                             all_done = False
-                            print(f"\r\033[33mDownloading '{name[:40]}...' ({progress * 100:.1f}%) \033[0m", end="")
+                            print(f"\r{T.WARNING}Downloading '{name[:40]}...' ({progress * 100:.1f}%) {T.RST}", end="")
                             sys.stdout.flush()
 
                     if all_done:
-                        print("\n\033[1m\033[32mDownload(s) 100% complete!\033[0m")
+                        print(f"\n{T.BOLD}{T.SUCCESS}Download(s) 100% complete!{T.RST}")
                         break
             except Exception:
                 pass
 
             time.sleep(3)
     except KeyboardInterrupt:
-        print("\n\033[31mDownload cancelled by user!\033[0m")
-        print("\033[3mRemoving unfinished torrents from qBittorrent...\033[0m")
+        print(f"\n{T.ERROR}Download cancelled by user!{T.RST}")
+        print(f"{T.ITALIC}Removing unfinished torrents from qBittorrent...{T.RST}")
         try:
             r = session.get(f"{qb_webui}/api/v2/torrents/info", timeout=15)
             if r.status_code == 200:

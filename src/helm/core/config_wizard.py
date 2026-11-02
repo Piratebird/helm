@@ -5,18 +5,19 @@ import requests
 
 from helm.core.secret_manager import get_secret, set_secrets
 from helm.core.settings import load_settings, remember
+from helm.ui.ansi import T
 
 
 def save_answers(updates):
     for path in remember(updates):
-        print(f"\033[33m[WARN] {path} stays as set in your config file; edit it there to change it.\033[0m")
+        print(f"{T.WARNING}[WARN] {path} stays as set in your config file; edit it there to change it.{T.RST}")
 
 
 def run_wizard():
     import sys
 
     try:
-        print("\033[1mWelcome to Helm Interactive Configuration Wizard!\033[0m")
+        print(f"{T.BOLD}Welcome to Helm Interactive Configuration Wizard!{T.RST}")
         print("It looks like some essential configurations are missing.\n")
 
         settings = load_settings()
@@ -32,7 +33,7 @@ def run_wizard():
             .lower()
         )
         if choice not in ("y", "yes"):
-            print("\n\033[32mOpting for Lite Mode. You can change this later.\033[0m\n")
+            print(f"\n{T.SUCCESS}Opting for Lite Mode. You can change this later.{T.RST}\n")
             save_answers({"search.lite_only": True})
             return
 
@@ -93,7 +94,7 @@ def run_wizard():
             while True:
                 jackett_url_input = input(f"Jackett URL [{jackett_url}]: ").strip()
                 if jackett_url_input.lower() in ("exit", "quit", "q") or "\x03" in jackett_url_input:
-                    print("\n\033[33mConfiguration aborted. later bozo!\033[0m")
+                    print(f"\n{T.WARNING}Configuration aborted. later bozo!{T.RST}")
                     sys.exit(0)
                 if jackett_url_input:
                     jackett_url = jackett_url_input
@@ -103,7 +104,7 @@ def run_wizard():
                 )
                 jackett_api_input = input(f"Jackett API Key [{masked_api}]: ").strip()
                 if jackett_api_input.lower() in ("exit", "quit", "q") or "\x03" in jackett_api_input:
-                    print("\n\033[33mConfiguration aborted. later bozo!\033[0m")
+                    print(f"\n{T.WARNING}Configuration aborted. later bozo!{T.RST}")
                     sys.exit(0)
                 if jackett_api_input:
                     jackett_api = jackett_api_input
@@ -112,7 +113,7 @@ def run_wizard():
                     f"Jackett Admin Password (leave blank if none) [{'***' if jackett_pwd else ''}]: "
                 ).strip()
                 if jackett_pwd_input.lower() in ("exit", "quit", "q") or "\x03" in jackett_pwd_input:
-                    print("\n\033[33mConfiguration aborted. later bozo!\033[0m")
+                    print(f"\n{T.WARNING}Configuration aborted. later bozo!{T.RST}")
                     sys.exit(0)
                 if jackett_pwd_input:
                     jackett_pwd = jackett_pwd_input
@@ -155,21 +156,21 @@ def run_wizard():
         while True:
             qb_webui_input = input(f"qBittorrent WebUI URL [{qb_webui}]: ").strip()
             if qb_webui_input.lower() in ("exit", "quit", "q") or "\x03" in qb_webui_input:
-                print("\n\033[33mConfiguration aborted. later bozo!\033[0m")
+                print(f"\n{T.WARNING}Configuration aborted. later bozo!{T.RST}")
                 sys.exit(0)
             if qb_webui_input:
                 qb_webui = qb_webui_input
 
             qb_username_input = input(f"qBittorrent Username [{qb_username}]: ").strip()
             if qb_username_input.lower() in ("exit", "quit", "q") or "\x03" in qb_username_input:
-                print("\n\033[33mConfiguration aborted. later bozo!\033[0m")
+                print(f"\n{T.WARNING}Configuration aborted. later bozo!{T.RST}")
                 sys.exit(0)
             if qb_username_input:
                 qb_username = qb_username_input
 
             qb_password_input = input(f"qBittorrent Password [{'***' if qb_password else ''}]: ").strip()
             if qb_password_input.lower() in ("exit", "quit", "q") or "\x03" in qb_password_input:
-                print("\n\033[33mConfiguration aborted. later bozo!\033[0m")
+                print(f"\n{T.WARNING}Configuration aborted. later bozo!{T.RST}")
                 sys.exit(0)
             if qb_password_input:
                 qb_password = qb_password_input
@@ -205,11 +206,11 @@ def run_wizard():
         save_answers(updates)
         print("Configuration saved! Secrets are in secrets.env.\n")
     except KeyboardInterrupt:
-        print("\n\n\033[33mConfiguration aborted. later bozo!\033[0m")
+        print(f"\n\n{T.WARNING}Configuration aborted. later bozo!{T.RST}")
         sys.exit(0)
     except EOFError:
         print(
-            "\n\n\033[31m[ERROR] Cannot read input. If you are running via Docker, make sure to use the '-it' flag for interactive mode, or mount your configuration files!\033[0m"
+            f"\n\n{T.ERROR}[ERROR] Cannot read input. If you are running via Docker, make sure to use the '-it' flag for interactive mode, or mount your configuration files!{T.RST}"
         )
         sys.exit(1)
 
@@ -249,7 +250,7 @@ def ensure_config():
     if needs_wizard:
         if not sys.stdin.isatty():
             print(
-                "\n\033[33m[WARN] Missing configuration keys, but running non-interactively (e.g. Docker). Skipping interactive wizard.\033[0m\n"
+                f"\n{T.WARNING}[WARN] Missing configuration keys, but running non-interactively (e.g. Docker). Skipping interactive wizard.{T.RST}\n"
             )
             # We don't exit here so the rest of the app can try to run, or fail with a native API error
         else:

@@ -38,7 +38,7 @@ class Field:
 
 
 THEMES = ("helm", "tokyo-night", "nord", "catppuccin-mocha")
-COLOR_NAMES = ("logo", "accent", "text", "line", "error", "muted")
+COLOR_NAMES = ("logo", "accent", "text", "line", "error", "muted", "success", "warning", "info")
 MODULE_NAMES = ("version", "mode", "indexers", "jobs", "downloads", "services", "separator")
 DEFAULT_MODULES = ("version", "mode", "indexers", "jobs", "downloads")
 HEX_COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
@@ -49,7 +49,14 @@ HELM_COLORS = {
     "line": "#CD6133",
     "error": "#FF5252",
     "muted": "#918383",
+    # The current UI uses the terminal's own palette for these, so the helm
+    # preset keeps them as basic ANSI colours instead of fixed hex values.
+    "success": "ansi:32",
+    "warning": "ansi:33",
+    "info": "ansi:36",
 }
+COLOR_EXAMPLES = {name: value for name, value in HELM_COLORS.items() if value.startswith("#")}
+COLOR_EXAMPLES.update({"success": "#4CAF50", "warning": "#E0AF68", "info": "#7DCFFF"})
 
 FIELDS = (
     Field("search.min_seeds", "int", 3, legacy="min_seeds", minimum=0),
@@ -76,7 +83,7 @@ FIELDS = (
         legacy="QB_DOWNLOADS_ROOT",
     ),
     Field("theme.preset", "str", "helm", env="HELM_THEME", choices=THEMES),
-    *(Field(f"theme.{name}", "color", None, example=HELM_COLORS[name]) for name in COLOR_NAMES),
+    *(Field(f"theme.{name}", "color", None, example=COLOR_EXAMPLES[name]) for name in COLOR_NAMES),
     Field("logo.source", "logo", "builtin:helm"),
     Field("logo.position", "str", "left", choices=("left", "top")),
     Field("logo.art", "art", None, example="{logo}  ~~ my helm ~~  {accent}<3"),

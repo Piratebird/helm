@@ -14,7 +14,7 @@ from typing import Dict
 from helm.core.settings import COLOR_NAMES, HELM_COLORS
 
 PRESETS: Dict[str, Dict[str, str]] = {
-    # The colours the current UI hardcodes in helm.ui.colors, so the default look stays the same.
+    # The colours the UI used before themes existed, so the default look stays the same.
     "helm": dict(HELM_COLORS),
     "tokyo-night": {
         "logo": "#7aa2f7",  # blue
@@ -23,6 +23,9 @@ PRESETS: Dict[str, Dict[str, str]] = {
         "line": "#ff9e64",  # orange
         "error": "#f7768e",  # red
         "muted": "#565f89",  # comment
+        "success": "#9ece6a",  # green
+        "warning": "#e0af68",  # yellow
+        "info": "#7dcfff",  # cyan
     },
     "nord": {
         "logo": "#88c0d0",  # nord8
@@ -31,6 +34,9 @@ PRESETS: Dict[str, Dict[str, str]] = {
         "line": "#d08770",  # nord12
         "error": "#bf616a",  # nord11
         "muted": "#4c566a",  # nord3
+        "success": "#a3be8c",  # nord14
+        "warning": "#ebcb8b",  # nord13
+        "info": "#8fbcbb",  # nord7
     },
     "catppuccin-mocha": {
         "logo": "#89b4fa",  # blue
@@ -39,6 +45,9 @@ PRESETS: Dict[str, Dict[str, str]] = {
         "line": "#fab387",  # peach
         "error": "#f38ba8",  # red
         "muted": "#6c7086",  # overlay0
+        "success": "#a6e3a1",  # green
+        "warning": "#f9e2af",  # yellow
+        "info": "#89dceb",  # sky
     },
 }
 

@@ -11,7 +11,6 @@ from pathlib import Path
 import pytest
 
 from helm.core.settings import BY_PATH, COLOR_NAMES, FIELDS, HEX_COLOR, THEMES, Settings, check
-from helm.ui import colors
 from helm.ui.ansi import color_enabled, render_banner, sgr, visible_width
 from helm.ui.banner import (
     LOGOS,
@@ -93,20 +92,40 @@ def server():
 
 def test_presets_match_settings_and_define_every_colour():
     assert tuple(PRESETS) == THEMES
-    for preset in PRESETS.values():
+    for name, preset in PRESETS.items():
         assert tuple(preset) == COLOR_NAMES
-        assert all(HEX_COLOR.match(value) for value in preset.values())
+        for value in preset.values():
+            assert HEX_COLOR.match(value) or (name == "helm" and re.match(r"^ansi:\d+$", value))
+
+
+# The exact codes and wordmark the UI printed before themes existed.
+OLD_CODES = {
+    "logo": "\033[38;2;74;105;189m",
+    "accent": "\033[38;2;179;57;57m",
+    "text": "\033[38;2;234;218;201m",
+    "line": "\033[38;2;205;97;51m",
+    "error": "\033[38;2;255;82;82m",
+    "success": "\033[32m",
+    "warning": "\033[33m",
+    "info": "\033[36m",
+}
+OLD_WORDMARK = """
+▗▖ ▗▖▗▄▄▄▖▗▖   ▗▖  ▗▖
+▐▌ ▐▌▐▌   ▐▌   ▐▛▚▞▜▌
+▐▛▀▜▌▐▛▀▀▘▐▌   ▐▌  ▐▌
+▐▌ ▐▌▐▙▄▄▖▐▙▄▄▖▐▌  ▐▌
+"""
 
 
 def test_helm_preset_keeps_the_current_look():
+    from helm.ui.banner import WORDMARK
+
     theme = load_theme(make_settings())
     assert theme.name == "helm"
-    assert sgr(theme.get("logo")) == colors.C_LOGO
-    assert sgr(theme.get("accent")) == colors.C_SUB
-    assert sgr(theme.get("text")) == colors.C_TEXT
-    assert sgr(theme.get("line")) == colors.C_LINE
-    assert sgr(theme.get("error")) == colors.C_ERR
-    assert LOGOS["helm"] == colors.logo.strip("\n").split("\n")
+    for name, code in OLD_CODES.items():
+        assert sgr(theme.get(name)) == code, name
+    assert WORDMARK == OLD_WORDMARK
+    assert LOGOS["helm"] == OLD_WORDMARK.strip("\n").split("\n")
 
 
 def test_single_colour_override_keeps_the_rest_of_the_preset():

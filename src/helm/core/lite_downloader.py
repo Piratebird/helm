@@ -2,14 +2,16 @@ import os
 import sys
 import time
 
+from helm.ui.ansi import T
+
 
 def download_magnet(magnet_link, save_path=None, on_complete=None):
     try:
         import libtorrent as lt
     except ImportError:
-        print("\n\033[33m[!] libtorrent is not installed.\033[0m")
+        print(f"\n{T.WARNING}[!] libtorrent is not installed.{T.RST}")
         print("To use the built-in lite downloader, install 'helm-torrent[download]' where supported.")
-        print(f"\n\033[1mMagnet Link:\033[0m {magnet_link}\n")
+        print(f"\n{T.BOLD}Magnet Link:{T.RST} {magnet_link}\n")
         print("Copy the above link and paste it into your torrent client.")
         return False
 
@@ -39,7 +41,7 @@ def download_magnet(magnet_link, save_path=None, on_complete=None):
     source = resolve_torrent(magnet_link)
     ses = lt.session(settings)
 
-    print("\n\033[1m\033[34mAdding magnet link to libtorrent session...\033[0m")
+    print(f"\n{T.BOLD}{T.INFO}Adding magnet link to libtorrent session...{T.RST}")
 
     try:
         # Parse the magnet URI properly for libtorrent 2.x
@@ -61,12 +63,12 @@ def download_magnet(magnet_link, save_path=None, on_complete=None):
             sys.stdout.flush()
             elapsed += 1
             if elapsed >= timeout:
-                print("\n\n\033[31m[!] Timeout reaching metadata. The torrent might be dead or blocked.\033[0m")
+                print(f"\n\n{T.ERROR}[!] Timeout reaching metadata. The torrent might be dead or blocked.{T.RST}")
                 print(f"Fallback Magnet Link: {magnet_link}")
                 return False
 
         print("\nMetadata downloaded. Starting torrent download...")
-        print(f"Saving to: \033[1m{os.path.abspath(save_path)}\033[0m\n")
+        print(f"Saving to: {T.BOLD}{os.path.abspath(save_path)}{T.RST}\n")
 
         while handle.status().state != lt.torrent_status.seeding:
             s = handle.status()
@@ -82,9 +84,9 @@ def download_magnet(magnet_link, save_path=None, on_complete=None):
             ]
 
             sys.stdout.write(
-                f"\r\033[K\033[1m{s.progress * 100:.2f}%\033[0m complete "
-                f"(down: \033[32m{s.download_rate / 1000:.1f} kB/s\033[0m | "
-                f"up: \033[31m{s.upload_rate / 1000:.1f} kB/s\033[0m | "
+                f"\r{T.EOL}{T.BOLD}{s.progress * 100:.2f}%{T.RST} complete "
+                f"(down: {T.SUCCESS}{s.download_rate / 1000:.1f} kB/s{T.RST} | "
+                f"up: {T.ERROR}{s.upload_rate / 1000:.1f} kB/s{T.RST} | "
                 f"peers: {s.num_peers}) [{state_str[s.state]}]"
             )
             sys.stdout.flush()
@@ -93,9 +95,9 @@ def download_magnet(magnet_link, save_path=None, on_complete=None):
             for a in alerts:
                 msg = a.message()
                 if "Permission denied" in msg or "file_open error" in msg or "access denied" in msg.lower():
-                    sys.stdout.write(f"\n\n\033[31m[DISK ERROR] {msg}\033[0m\n")
+                    sys.stdout.write(f"\n\n{T.ERROR}[DISK ERROR] {msg}{T.RST}\n")
                     sys.stdout.write(
-                        f"\033[33mEnsure you have write permissions to {os.path.abspath(save_path)}\033[0m\n"
+                        f"{T.WARNING}Ensure you have write permissions to {os.path.abspath(save_path)}{T.RST}\n"
                     )
                     return False
 
@@ -105,9 +107,9 @@ def download_magnet(magnet_link, save_path=None, on_complete=None):
             info = handle.torrent_file()
             files = info.files()
             on_complete([os.path.join(save_path, files.file_path(index)) for index in range(files.num_files())])
-        print("\n\n\033[32m\033[1mDownload complete!\033[0m")
+        print(f"\n\n{T.SUCCESS}{T.BOLD}Download complete!{T.RST}")
     except KeyboardInterrupt:
-        print("\n\n\033[33mDownload interrupted by user. Cleaning up session...\033[0m")
+        print(f"\n\n{T.WARNING}Download interrupted by user. Cleaning up session...{T.RST}")
         return False
     finally:
         ses.pause()
