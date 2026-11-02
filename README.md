@@ -127,7 +127,7 @@ The script will guide you through:
 2. Choosing your run mode (Ephemeral vs Permanent)
 3. Setting up a VPN (optional)
 
-It writes `docker-compose.yml` in the current directory from `src/helm/core/compose.template.yml`, the same template `helm-torrent init` uses. From a checkout the local template is used; the curl one-liner downloads it from the same branch (set `HELM_REF` to pick another). It also writes `state/.env.docker` with mode `0600`, including `INDEXER_MANAGER` for the containers, and mounts your config directory into the CLI container, so `config.toml` and `config.jsonc` work there too. Set `COMPOSE_PROJECT_NAME` before running it to change the container name prefix (default `helm`).
+`setup.sh` only handles the host: the container engine, native installs and the optional systemd unit. It then pulls `ghcr.io/piratebird/helm` and runs `helm-torrent init` inside it, with the engine socket and your directories mounted at the same paths, so the files it writes are owned by you. `init` writes `docker-compose.yml` in the current directory from `src/helm/core/compose.template.yml`, writes `state/.env.docker` with mode `0600` (including `INDEXER_MANAGER` for the containers), reads the Jackett and Prowlarr API keys, and creates the `helm-torrent.sh` launcher in one-shot mode. The CLI container gets your config directory, so `config.toml` and `config.jsonc` work there too. Set `COMPOSE_PROJECT_NAME` to change the container name prefix (default `helm`), `HELM_IMAGE` to use another image, or `HELM_SETUP_RUNNER=helm-torrent` to run `init` on the host instead of in the image.
 
 <br>
 
@@ -231,8 +231,8 @@ Run `helm-torrent` for the interactive CLI. Use subcommands for scripted searche
 # Search without containers and emit JSON (no download)
 helm-torrent search "Ubuntu" --type software --lite --json
 
-# Configure the full container environment
-helm-torrent init
+# Configure the full container environment (asks for anything not given)
+helm-torrent init --engine docker --indexers both --run-mode oneshot
 
 # Start the configured stack, select a download, then stop it
 helm-torrent search "Ubuntu" --type software --oneshot

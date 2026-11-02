@@ -151,9 +151,12 @@ def build_parser():
 
     # UI
     # Init
-    subparsers.add_parser(
-        "init", help="Bootstrap and initialize the container environment natively", parents=[base_parser]
+    init_parser = subparsers.add_parser(
+        "init", help="Set up the container stack: compose file, .env.docker, API keys", parents=[base_parser]
     )
+    from helm.core.stack_setup import add_arguments as add_init_arguments
+
+    add_init_arguments(init_parser)
 
     # UI
     subparsers.add_parser(
@@ -261,9 +264,10 @@ def _parse_args(parser):
     if getattr(args, "dl_dir", None):
         os.environ["HELM_DL_DIR"] = os.path.abspath(args.dl_dir)
 
-    # Config commands must run on a broken file and report true origins, so they
-    # neither load settings early nor export the worker count.
-    if args.command != "config":
+    # Config commands must run on a broken file and report true origins, and setup
+    # must not stop on one, so they neither load settings early nor export the
+    # worker count.
+    if args.command not in ("config", "init"):
         requested = getattr(args, "lite_workers", None)
         if requested is None and "HELM_LITE_WORKERS" not in os.environ:
             requested = load_settings().get("search.lite_workers")
@@ -480,13 +484,14 @@ def run():
         return
 
     if args.command == "init":
-        from helm.core.init_env import bootstrap_env
+        from helm.core.stack_setup import main as setup_main
 
         try:
-            bootstrap_env()
-        except (KeyboardInterrupt, EOFError):
+            status = setup_main(args)
+        except KeyboardInterrupt:
             print(f"\n{T.ACCENT}later bozo!{T.RST}")
-        raise SystemExit(0) from None
+            status = 130
+        raise SystemExit(status) from None
 
     if args.command in ("paths", "logs", "bug-report"):
         _run_utility(args.command)
