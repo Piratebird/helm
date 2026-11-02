@@ -217,6 +217,10 @@ def build_parser():
     daemon_parser.add_argument("action", choices=["status", "stop"])
     daemon_parser.add_argument("id", nargs="?")
 
+    from helm.core.config_commands import add_parser as add_config_parser
+
+    add_config_parser(subparsers, [base_parser])
+
     return parser
 
 
@@ -254,14 +258,17 @@ def _parse_args(parser):
     if getattr(args, "dl_dir", None):
         os.environ["HELM_DL_DIR"] = os.path.abspath(args.dl_dir)
 
-    requested = getattr(args, "lite_workers", None)
-    if requested is None and "HELM_LITE_WORKERS" not in os.environ:
-        requested = load_settings().get("search.lite_workers")
-    try:
-        workers = worker_count(requested)
-    except ValueError as error:
-        parser.error(str(error))
-    os.environ["HELM_LITE_WORKERS"] = str(workers)
+    # Config commands must run on a broken file and report true origins, so they
+    # neither load settings early nor export the worker count.
+    if args.command != "config":
+        requested = getattr(args, "lite_workers", None)
+        if requested is None and "HELM_LITE_WORKERS" not in os.environ:
+            requested = load_settings().get("search.lite_workers")
+        try:
+            workers = worker_count(requested)
+        except ValueError as error:
+            parser.error(str(error))
+        os.environ["HELM_LITE_WORKERS"] = str(workers)
 
     load_dotenv(get_secrets_file())
     configure_logging()
@@ -411,6 +418,10 @@ def run():
     args = _parse_args(parser)
     if _dispatch_background(args, parser):
         return
+    if args.command == "config":
+        from helm.core.config_commands import run as run_config
+
+        raise SystemExit(run_config(args))
     if args.command in ("watch", "serve", "files", "download"):
         raise SystemExit(_run_headless(args, parser))
 

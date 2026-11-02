@@ -190,6 +190,17 @@ qbittorrent_downloads_root = "/downloads"
 
 The first run creates `config.toml` from any non-default values in an older `config.json`, moves legacy secrets into `secrets.env`, and leaves `config.json` in place with a `.pre-toml.bak` copy. After that, `config.json` is ignored.
 
+Manage the file with the `config` commands. They also work when the file is broken, so you can fix it:
+
+```bash
+helm-torrent config init                 # Write a commented config.toml once (--format jsonc for JSONC)
+helm-torrent config edit                 # Open it in $VISUAL or $EDITOR, then validate it
+helm-torrent config doctor               # Check values, files, permissions, directories and services
+helm-torrent config show --origin        # Print every value and whether it came from env, file, state or default
+```
+
+`config init` never overwrites an existing file. `config doctor` exits with status 1 on errors. Unreachable services only produce warnings, and the service checks are skipped when `search.lite_only` is set. Neither command prints secrets, and passwords in URLs are shown as `***`.
+
 ## Usage
 
 Run `helm-torrent` for the interactive CLI. Use subcommands for scripted searches and administration:

@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 - Respect the configured download directory and reject unknown flags, blank queries, and invalid content types.
 
 ### Added
+- `helm-torrent config init`, `edit`, `doctor` and `show --origin`. They run even when the config file is broken. `doctor` checks syntax, values, unknown keys, ignored files, `secrets.env` permissions, writable directories and service reachability, and never prints secrets.
 - Layered settings from `config.toml` or `config.jsonc`, with validation and a shared JSON Schema. Existing `config.json` values migrate once, and the original file stays in place. If both new files exist, `config.toml` is used.
 - Durable job queue with process-isolated workers, crash recovery, cancellation and a completed-file catalog.
 - `helm-torrent download`, `watch`, `serve`, `files`, `attach` and `daemon`, plus `--daemon` and `--session`.

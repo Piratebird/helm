@@ -334,6 +334,18 @@ def _load_state():
 def load_settings():
     """Resolve settings: environment, then config file, then state, then defaults."""
     migrate_legacy()
+    settings, problems = resolve_settings(strict=True)
+    if problems:
+        raise ConfigError(f"Invalid settings ({settings.path or 'environment'}): " + "; ".join(problems))
+    return settings
+
+
+def resolve_settings(strict=False):
+    """Resolve settings without migrating, and return them with every problem found.
+
+    Invalid values are skipped, so the result holds what would be used if they
+    were removed. With strict=True a file that cannot be parsed raises instead.
+    """
     values = {}
     origins = {}
     for path, value in _load_state().items():
@@ -343,8 +355,15 @@ def load_settings():
     active = active_config_file()
     unknown = []
     problems = []
+    data = {}
     if active:
-        for path, value in _load_cached(active).items():
+        try:
+            data = _load_cached(active)
+        except ConfigError as error:
+            if strict:
+                raise
+            problems.append(str(error))
+        for path, value in data.items():
             field = BY_PATH.get(path)
             if field is None:
                 unknown.append(path)
@@ -364,9 +383,7 @@ def load_settings():
             except ValueError as error:
                 problems.append(f"{field.env} {error}")
 
-    if problems:
-        raise ConfigError(f"Invalid settings ({active or 'environment'}): " + "; ".join(problems))
-    return Settings(values, origins, active, unknown)
+    return Settings(values, origins, active, unknown), problems
 
 
 def remember(updates):
