@@ -37,11 +37,15 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: "pip"
 
+      - name: Install tmux
+        run: sudo apt-get update && sudo apt-get install -y tmux
+
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           pip install -e .[dev] ruff mypy
+          # libtorrent ships wheels for most, not all, of these Pythons; its tests skip without it.
+          pip install "libtorrent>=2.0.0,<2.1.0" || echo "::notice::No libtorrent wheel for Python ${{ matrix.python-version }}"
 
       - name: Lint and Format with Ruff
         run: |
@@ -54,7 +58,7 @@ jobs:
 
       - name: Run Pytest
         run: |
-          if [ -d "tests" ]; then pytest tests/ --cov=src/helm --cov-report=xml; fi
+          if [ -d "tests" ]; then pytest tests/ -rs --cov=src/helm --cov-report=xml; fi
 
   docker-build:
     name: Build Docker Image

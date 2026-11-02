@@ -1,3 +1,6 @@
+# Mirror of the [project] dependencies in pyproject.toml, which is the source of truth.
+# The Dockerfile installs this file first so the dependency layer stays cached;
+# tests/test_project_files.py keeps the two equal.
 requests>=2.31.0
 python-dotenv>=1.0.0
 beautifulsoup4>=4.12.0

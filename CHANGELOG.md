@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
 - Respect the configured download directory and reject unknown flags, blank queries, and invalid content types.
 
 ### Added
+- Tests for the setup wizard's full-automation prompts against a local HTTP server that acts like Jackett, Prowlarr and qBittorrent, and in-process tests for `status`, indexer management and the interactive session. CI now installs tmux and tries libtorrent, so those tests run there instead of skipping, and lists any skips.
 - `helm-torrent daemon prune` deletes the records and logs of daemons that have stopped.
 - Theme presets (`helm`, `tokyo-night`, `nord`, `catppuccin-mocha`) with single-colour overrides, and `helm-torrent banner [--json]`. Banner modules and logo sources (built-in, file, command) run under one time limit, so a slow or failing part cannot break or delay the banner.
 - `helm-torrent config init`, `edit`, `doctor` and `show --origin`. They run even when the config file is broken. `doctor` checks syntax, values, unknown keys, ignored files, `secrets.env` permissions, writable directories and service reachability, and never prints secrets.
