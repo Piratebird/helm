@@ -212,7 +212,7 @@ def job_tag(identifier):
 
 
 def execute_job(store, identifier):
-    from helm.torrents.lite_downloader import download_magnet
+    from helm.torrents.lite_downloader import download_torrent
     from helm.torrents.qbittorrent_client import SHARED_TAG, add_magnet
 
     job = store.get(identifier)
@@ -220,7 +220,7 @@ def execute_job(store, identifier):
         return 1
     try:
         if job["lite"]:
-            if not download_magnet(job["source"], on_complete=lambda paths: store.register_files(identifier, paths)):
+            if not download_torrent(job["source"], on_complete=lambda paths: store.register_files(identifier, paths)):
                 raise RuntimeError("Built-in download did not complete")
             store.update(identifier, "succeeded", result="Download completed")
         else:

@@ -1,24 +1,22 @@
 # Helm Resource Benchmarks
 
-## Reproducible local workload (October 2026)
+## Reproducible local workload (November 2026)
 
 The tested harness is [benchmark.py](../src/helm/benchmarks/benchmark.py). Its [raw samples](benchmarks/local-loopback.json) record three trials at six-worker concurrency, per-sample PSS, phase events, checksums, source SHA-256 fingerprints, the base Git revision and dirty-tree status, Python/kernel/CPU details, and whether engine overhead was included.
 
-Measured environment: **11th Gen Intel(R) Core(TM) i5-1135G7 @ 2.40GHz**, 8 logical CPUs, Linux kernel `7.2.11`, Python `3.14.8`, libtorrent `2.0.11.0`. These measurements were taken from an uncommitted working tree; source hashes identify the measured implementation.
-
-These local figures predate later queue and client changes, so current source hashes do not match every file recorded in the report.
+Measured environment: **11th Gen Intel(R) Core(TM) i5-1135G7 @ 2.40GHz**, 8 logical CPUs, Linux kernel `7.2.13`, Python `3.14.8`, libtorrent `2.0.11.0`. Both runs were taken from a clean tree at revision `a232b57` (the `chore/housekeeping` branch, after the package restructure). That revision will not survive the squash merge, so use the recorded source hashes to identify the measured code.
 
 The workload consists of a warm idle process, twelve offline search plugins emitting 100 generated results each (1,200 total) through the actual isolated worker pipeline, a real loopback BitTorrent transfer of a generated **4 MiB** payload, session teardown, and process exit. Public trackers, DHT, local discovery, UPnP, and NAT-PMP are disabled for the download. Every transfer is verified by SHA-256.
 
 | Phase | Complete samples | Median workload PSS (MiB) | Peak workload PSS (MiB) |
 | :--- | ---: | ---: | ---: |
-| idle | 17 | 20.51 | 20.91 |
-| search | 26 | 31.12 | 126.55 |
-| download | 32 | 30.85 | 39.83 |
-| teardown | 18 | 34.54 | 35.04 |
+| idle | 16 | 20.90 | 21.27 |
+| search | 23 | 22.97 | 125.83 |
+| download | 30 | 32.02 | 40.77 |
+| teardown | 19 | 35.94 | 35.97 |
 | exited | 3 | 0.00 | 0.00 |
 
-Median twelve-job fixture search latency: **0.498 s**, range **0.487–0.524 s**. Median loopback download phase: **0.738 s**, range **0.699–0.740 s**. Download timing includes fixture generation, torrent/session setup, transfer, flushing, and checksum verification; it is not a pure network-throughput measurement.
+Median twelve-job fixture search latency: **0.472 s**, range **0.463–0.497 s**. Median loopback download phase: **0.741 s**, range **0.697–0.746 s**. Download timing includes fixture generation, torrent/session setup, transfer, flushing, and checksum verification; it is not a pure network-throughput measurement.
 
 Teardown retains the Python process and loaded native libraries. Only the `exited` sample reflects the reaped workload; a zero there says nothing about whole-host RAM usage. Races with exiting processes are marked incomplete and excluded from median/peak calculations rather than counted as zero.
 
@@ -28,8 +26,8 @@ The [two-worker samples](benchmarks/local-loopback-workers2.json) use the same t
 
 | Concurrent search workers | Median search latency (s) | Peak search workload PSS (MiB) |
 | ---: | ---: | ---: |
-| 6 | 0.498 | 126.55 |
-| 2 | 0.862 | 58.73 |
+| 6 | 0.472 | 125.83 |
+| 2 | 0.870 | 59.69 |
 
 Two workers reduced the observed peak memory at the cost of a longer fixture search. This host-only comparison does not establish an optimal Android setting. The CLI exposes `--lite-workers 2` (or `HELM_LITE_WORKERS=2`), with six as the default and a valid range of 1–12. The shared search deadline includes queueing, so fewer workers can leave more jobs unstarted when early sources stall; these are reported as `budget_exhausted`.
 

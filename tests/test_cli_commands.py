@@ -261,7 +261,7 @@ def test_ctrl_c_in_results_tears_down_only_when_asked(ui, monkeypatch):
 def test_lite_send_uses_the_built_in_downloader(monkeypatch):
     import helm.torrents.lite_downloader as downloader
 
-    monkeypatch.setattr(downloader, "download_magnet", lambda link: f"downloaded {link[:20]}")
+    monkeypatch.setattr(downloader, "download_torrent", lambda link: f"downloaded {link[:20]}")
     assert session.send_magnet(item(), lite_mode=True) == "downloaded magnet:?xt=urn:btih:"
 
 
@@ -272,6 +272,6 @@ def test_send_falls_back_to_lite_when_qbittorrent_fails(monkeypatch, capsys):
         raise ConnectionError("refused")
 
     monkeypatch.setattr(deps, "add_magnet", refuse)
-    monkeypatch.setattr(downloader, "download_magnet", lambda link: True)
+    monkeypatch.setattr(downloader, "download_torrent", lambda link: True)
     assert session.send_magnet(item(), lite_mode=False) is True
     assert "Falling back to LITE MODE" in capsys.readouterr().err

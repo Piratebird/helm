@@ -141,11 +141,11 @@ def test_empty_search_explains_sources_or_filters(monkeypatch, capsys, has_raw_r
 
 
 def test_lite_downloader_without_libtorrent_shows_magnet(monkeypatch, capsys):
-    from helm.torrents.lite_downloader import download_magnet
+    from helm.torrents.lite_downloader import download_torrent
 
     monkeypatch.setitem(sys.modules, "libtorrent", None)
     magnet = "magnet:?xt=urn:btih:cafe"
-    assert download_magnet(magnet) is False
+    assert download_torrent(magnet) is False
     output = capsys.readouterr().out
     assert magnet in output
     assert "helm-torrent[download]" in output
@@ -178,7 +178,7 @@ def test_lite_downloader_without_legacy_dht_router_api(monkeypatch, tmp_path, ca
     magnet = "magnet:?xt=urn:btih:" + "a" * 40
     destination = str(tmp_path / "downloads")
 
-    assert lite_downloader.download_magnet(magnet, destination) is (outcome == "complete")
+    assert lite_downloader.download_torrent(magnet, destination) is (outcome == "complete")
     settings = lt.session.call_args[0][0]
     assert settings["enable_dht"] is True
     assert "router.bittorrent.com:6881" in settings["dht_bootstrap_nodes"].split(",")

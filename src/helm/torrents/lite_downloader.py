@@ -5,7 +5,7 @@ import time
 from helm.ui.ansi import Progress, T
 
 
-def download_magnet(magnet_link, save_path=None, on_complete=None):
+def download_torrent(magnet_link, save_path=None, on_complete=None):
     try:
         import libtorrent as lt
     except ImportError:
@@ -116,3 +116,7 @@ def download_magnet(magnet_link, save_path=None, on_complete=None):
         ses.pause()
 
     return True
+
+
+# The old name, from when only magnet links were accepted. Kept for plugins and scripts.
+download_magnet = download_torrent

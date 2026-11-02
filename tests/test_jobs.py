@@ -203,14 +203,14 @@ def test_execute_job_outcomes(store, monkeypatch):
     job = store.enqueue(MAGNET, lite=True)
     assert execute_job(store, job["id"]) == 1  # Not claimed.
     store.claim()
-    monkeypatch.setattr(downloader, "download_magnet", lambda source, on_complete: False)
+    monkeypatch.setattr(downloader, "download_torrent", lambda source, on_complete: False)
     assert execute_job(store, job["id"]) == 1
     assert store.get(job["id"])["status"] == "failed"
 
     store.release(job["id"])
     store.enqueue(MAGNET, lite=True)
     store.claim()
-    monkeypatch.setattr(downloader, "download_magnet", lambda source, on_complete: on_complete([]) or True)
+    monkeypatch.setattr(downloader, "download_torrent", lambda source, on_complete: on_complete([]) or True)
     assert execute_job(store, job["id"]) == 0
     assert store.get(job["id"])["status"] == "succeeded"
 

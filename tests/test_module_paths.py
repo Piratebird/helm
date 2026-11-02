@@ -44,3 +44,9 @@ def test_cli_has_one_module_per_command_group():
 
     names = sorted(info.name for info in pkgutil.iter_modules(commands.__path__))
     assert names == ["background", "banner", "headless", "indexers", "session", "status", "utility"]
+
+
+def test_download_magnet_is_kept_as_an_alias():
+    from helm.torrents import lite_downloader
+
+    assert lite_downloader.download_magnet is lite_downloader.download_torrent

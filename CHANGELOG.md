@@ -1,8 +1,11 @@
 # Changelog
 All notable changes to this project will be documented in this file.
-## [Unreleased]
+## [0.11.0] - Unreleased
+
+Headless services, layered TOML/JSONC settings with `config` commands, themes and the banner, a rebuilt setup that runs `helm-torrent init` inside the image, and a package restructure. Set the date when this is tagged.
 
 ### Changed
+- Rename the Lite downloader's `download_magnet` to `download_torrent`, since it also takes `.torrent` URLs and files. `download_magnet` stays as an alias.
 - Split setup: `setup.sh` now only checks the host (engine, native installs, systemd) and runs `helm-torrent init` inside the Helm image as the current user. `init` writes the compose file, `.env.docker`, API keys and the launcher, and takes `--engine`, `--indexers`, `--run-mode`, `--workdir`, `--socket`, `--project`, `--mount-source` and `--skip-prompts`; it asks for whatever is missing and runs even when the config file is broken. It no longer activates Jackett and Prowlarr indexers through their APIs: Jackett gets the seeded indexer files, and Prowlarr seeds its defaults on first search. If the image cannot be pulled, setup uses a local copy.
 - Rewrite `setup.sh` as small functions with a short `main`, tested against fake Docker, Podman and systemctl binaries. `setup.sh` and `helm-torrent init` now render one compose template, `src/helm/core/compose.template.yml`, and `docker-compose.yml.example` is removed. Setup no longer edits `config.json`; the indexer choice goes into `.env.docker` as `INDEXER_MANAGER`. The container name prefix is `helm` (or `COMPOSE_PROJECT_NAME`) everywhere, instead of the directory name in `.env.docker`. An existing `qBittorrent.conf` is kept instead of overwritten.
 - Use the theme everywhere the UI, wizard, one-shot mode and Lite downloader print colour, and show the banner when the UI starts. Colours are now off when output is piped or `NO_COLOR` is set. Red messages that used the terminal's basic red now use the theme's error colour.

@@ -14,9 +14,9 @@ from helm.ui.ansi import T
 def send_magnet(selected, lite_mode, json_mode=False, success_msg="Torrent sent successfully :)", tag=None):
     """Send a torrent to qBittorrent, falling back to the built-in downloader if it is unavailable."""
     if lite_mode:
-        from helm.torrents.lite_downloader import download_magnet
+        from helm.torrents.lite_downloader import download_torrent
 
-        return download_magnet(selected.link)
+        return download_torrent(selected.link)
 
     try:
         deps.add_magnet(selected.link, tag=f"helm,{tag}" if tag else "helm")
@@ -27,9 +27,9 @@ def send_magnet(selected, lite_mode, json_mode=False, success_msg="Torrent sent 
             f"\n{T.WARNING}[!] qBittorrent not available ({e}). Falling back to LITE MODE downloader...{T.RST}\n",
             file=sys.stderr,
         )
-        from helm.torrents.lite_downloader import download_magnet
+        from helm.torrents.lite_downloader import download_torrent
 
-        return download_magnet(selected.link)
+        return download_torrent(selected.link)
     return True
 
 
