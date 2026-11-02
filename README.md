@@ -201,6 +201,27 @@ helm-torrent config show --origin        # Print every value and whether it came
 
 `config init` never overwrites an existing file. `config doctor` exits with status 1 on errors. Unreachable services only produce warnings, and the service checks are skipped when `search.lite_only` is set. Neither command prints secrets, and passwords in URLs are shown as `***`.
 
+### Theme and banner
+
+```toml
+[theme]
+preset = "helm"            # helm, tokyo-night, nord or catppuccin-mocha
+# logo = "#4A69BD"         # Override one preset colour: logo, accent, text, line, error, muted
+
+[logo]
+source = "builtin:helm"    # builtin:helm, file, cmd:<command> or none
+position = "left"          # left or top
+# art_file = "~/.config/helm/logo.txt"
+
+[banner]
+enabled = true
+modules = ["version", "mode", "indexers", "jobs", "downloads"]
+timeout_ms = 400
+```
+
+`helm-torrent banner` prints the banner, and `--json` prints its data. Modules are `version`, `mode`, `indexers`, `jobs`, `downloads`, `services` and `separator`, plus your own commands, such as `{ type = "command", label = "Uptime", command = ["uptime", "-p"] }`. Commands run without a shell, and only the first line of their output is shown. All modules share the `timeout_ms` limit: a slow one shows `timed out`, a failing one shows `unavailable`, and a logo that fails falls back to the built-in one. For `source = "file"`, art can use `{logo}`, `{accent}`, `{text}`, `{line}`, `{muted}` and `{reset}` colour placeholders. `HELM_THEME` and `HELM_BANNER` override the file, and `NO_COLOR` turns colours off.
+
+
 ## Usage
 
 Run `helm-torrent` for the interactive CLI. Use subcommands for scripted searches and administration:

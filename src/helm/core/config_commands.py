@@ -7,6 +7,7 @@ rely on load_settings() succeeding, except `show`, which reports the error.
 import json
 import os
 import shlex
+import shutil
 import stat
 import subprocess
 import sys
@@ -41,6 +42,20 @@ DESCRIPTIONS = {
     "services.qbittorrent": "qBittorrent Web UI address.",
     "services.qbittorrent_user": "qBittorrent user name. The password stays in secrets.env.",
     "services.qbittorrent_downloads_root": "Download path as qBittorrent sees it, such as a container mount.",
+    "theme.preset": "Colour preset: helm, tokyo-night, nord or catppuccin-mocha.",
+    "theme.logo": "Override the preset's logo colour.",
+    "theme.accent": "Override the preset's accent colour, used for labels.",
+    "theme.text": "Override the preset's text colour.",
+    "theme.line": "Override the preset's line colour, used for separators.",
+    "theme.error": "Override the preset's error colour.",
+    "theme.muted": "Override the preset's muted colour, used for placeholders.",
+    "logo.source": 'Logo to show: "builtin:helm", "file" (art or art_file), "cmd:<command>" or "none".',
+    "logo.position": "Logo position next to the banner text: left or top.",
+    "logo.art": 'Your own art for source = "file". Colour placeholders: {logo} {accent} {text} {line} {muted} {reset}.',
+    "logo.art_file": 'File holding your art, used when source = "file" and art is not set.',
+    "banner.enabled": "Show the banner when the UI starts. `helm-torrent banner` always prints it.",
+    "banner.modules": 'Banner lines in order. Built in: version, mode, indexers, jobs, downloads, services, separator. Custom: { type = "command", label = "...", command = ["..."] }.',
+    "banner.timeout_ms": "Time limit for all banner lines together. Slow lines show a placeholder.",
 }
 FORMATS = {"toml": USER_FILES[0], "jsonc": USER_FILES[1]}
 PROBE_TIMEOUT = 2.0
@@ -68,6 +83,12 @@ def run(args):
     return edit() if args.config_action == "edit" else doctor()
 
 
+def _sample(field):
+    """Return the value shown for a field in the template."""
+    value = field.example if field.default is None else field.default
+    return json.dumps(list(value) if isinstance(value, tuple) else value)
+
+
 def _sections():
     sections: dict = {}
     for field in FIELDS:
@@ -89,7 +110,7 @@ def render_template(file_format):
             lines.append(f"[{section}]")
             for key, field in items:
                 lines.append("# " + DESCRIPTIONS[field.path])
-                lines.append(f"# {key} = {json.dumps(field.default)}")
+                lines.append(f"# {key} = {_sample(field)}")
             lines.append("")
         return "\n".join(lines)
     lines = ["// " + line for line in header] + ["{"]
@@ -97,7 +118,7 @@ def render_template(file_format):
         lines.append(f'  "{section}": {{')
         for key, field in items:
             lines.append("    // " + DESCRIPTIONS[field.path])
-            lines.append(f'    // "{key}": {json.dumps(field.default)},')
+            lines.append(f'    // "{key}": {_sample(field)},')
         lines.append("  },")
     lines.append("}")
     return "\n".join(lines) + "\n"
@@ -290,10 +311,32 @@ def _check_services(report, settings):
             report.add("warn", f"{name} is not reachable at {shown}: {reason}")
 
 
+def _check_logo(report, settings):
+    """Warn about logo settings that would fall back to the built-in logo."""
+    source = settings.get("logo.source")
+    if source.startswith("builtin:"):
+        from helm.ui.banner import LOGOS
+
+        name = source.split(":", 1)[1]
+        if name not in LOGOS:
+            report.add("warn", f"logo.source names unknown logo {name!r}; built in: {', '.join(sorted(LOGOS))}")
+    elif source == "file" and settings.get("logo.art") is None:
+        path = settings.get("logo.art_file")
+        if not path:
+            report.add("warn", 'logo.source = "file" needs logo.art or logo.art_file')
+        elif not os.path.isfile(os.path.expanduser(path)):
+            report.add("warn", f"logo.art_file {path} does not exist")
+    elif source.startswith("cmd:"):
+        program = shlex.split(source[4:])[0]
+        if shutil.which(program) is None:
+            report.add("warn", f"logo command {program!r} is not installed; the built-in logo is used")
+
+
 def doctor():
     settings, problems = resolve_settings()
     report = Report()
     report.check_file(settings, problems)
+    _check_logo(report, settings)
     _check_shadowed(report)
     _check_legacy(report, settings)
     _check_secrets(report)

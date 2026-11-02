@@ -7,6 +7,8 @@ which ranks below the user's file. Secrets stay in secrets.env.
 
 import json
 import os
+import re
+import shlex
 import shutil
 import sys
 import tempfile
@@ -31,7 +33,23 @@ class Field:
     choices: Tuple[str, ...] = ()
     minimum: Any = None
     maximum: Any = None
+    # Shown in the config template for settings that have no default value.
+    example: Any = None
 
+
+THEMES = ("helm", "tokyo-night", "nord", "catppuccin-mocha")
+COLOR_NAMES = ("logo", "accent", "text", "line", "error", "muted")
+MODULE_NAMES = ("version", "mode", "indexers", "jobs", "downloads", "services", "separator")
+DEFAULT_MODULES = ("version", "mode", "indexers", "jobs", "downloads")
+HEX_COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
+HELM_COLORS = {
+    "logo": "#4A69BD",
+    "accent": "#B33939",
+    "text": "#EADAC9",
+    "line": "#CD6133",
+    "error": "#FF5252",
+    "muted": "#918383",
+}
 
 FIELDS = (
     Field("search.min_seeds", "int", 3, legacy="min_seeds", minimum=0),
@@ -57,6 +75,15 @@ FIELDS = (
         env="QB_DOWNLOADS_ROOT",
         legacy="QB_DOWNLOADS_ROOT",
     ),
+    Field("theme.preset", "str", "helm", env="HELM_THEME", choices=THEMES),
+    *(Field(f"theme.{name}", "color", None, example=HELM_COLORS[name]) for name in COLOR_NAMES),
+    Field("logo.source", "logo", "builtin:helm"),
+    Field("logo.position", "str", "left", choices=("left", "top")),
+    Field("logo.art", "art", None, example="{logo}  ~~ my helm ~~  {accent}<3"),
+    Field("logo.art_file", "path", None, example="~/.config/helm/logo.txt"),
+    Field("banner.enabled", "bool", True, env="HELM_BANNER"),
+    Field("banner.modules", "modules", DEFAULT_MODULES),
+    Field("banner.timeout_ms", "int", 400, minimum=50, maximum=5000),
 )
 BY_PATH = {field.path: field for field in FIELDS}
 USER_FILES = ("config.toml", "config.jsonc")
@@ -140,8 +167,64 @@ def flatten(data, prefix=""):
     return values
 
 
+def _check_logo_source(value):
+    if not isinstance(value, str):
+        raise ValueError("must be a string")
+    if value in ("none", "file"):
+        return value
+    kind, _, rest = value.partition(":")
+    if kind == "builtin" and rest.strip():
+        return value
+    if kind == "cmd":
+        try:
+            if shlex.split(rest):
+                return value
+        except ValueError as error:
+            raise ValueError(f"has an invalid command: {error}") from None
+    raise ValueError('must be "none", "file", "builtin:<name>" or "cmd:<command>"')
+
+
+def _check_art(value):
+    if isinstance(value, list) and all(isinstance(line, str) for line in value):
+        return "\n".join(value)
+    if isinstance(value, str):
+        return value
+    raise ValueError("must be a string or a list of strings")
+
+
+def _check_module(item):
+    if isinstance(item, str):
+        if item not in MODULE_NAMES:
+            raise ValueError(f"has unknown module {item!r}; use one of " + ", ".join(MODULE_NAMES))
+        return item
+    if not isinstance(item, dict) or item.get("type") != "command":
+        raise ValueError('entries must be module names or tables with type = "command"')
+    extra = set(item) - {"type", "label", "command"}
+    if extra:
+        raise ValueError("command entries only take type, label and command, not " + ", ".join(sorted(extra)))
+    label = item.get("label")
+    command = item.get("command")
+    if not isinstance(label, str) or not label.strip():
+        raise ValueError("command entries need a non-empty label")
+    if not isinstance(command, list) or not command or not all(isinstance(part, str) and part for part in command):
+        raise ValueError("command entries need command as a non-empty list of strings")
+    return {"type": "command", "label": label, "command": list(command)}
+
+
 def check(field, value):
     """Return a valid value for a field, or raise ValueError."""
+    if field.kind == "color":
+        if not isinstance(value, str) or not HEX_COLOR.match(value):
+            raise ValueError('must be a colour like "#4A69BD"')
+        return value
+    if field.kind == "logo":
+        return _check_logo_source(value)
+    if field.kind == "art":
+        return _check_art(value)
+    if field.kind == "modules":
+        if not isinstance(value, list):
+            raise ValueError("must be a list")
+        return tuple(_check_module(item) for item in value)
     if field.kind == "bool":
         if not isinstance(value, bool):
             raise ValueError("must be true or false")
@@ -412,11 +495,35 @@ def get_qb_url():
 
 def settings_schema():
     """Return one JSON Schema that describes both config formats."""
-    kinds = {"bool": "boolean", "int": "integer", "str": "string", "url": "string"}
+    kinds = {
+        "bool": "boolean",
+        "int": "integer",
+        "str": "string",
+        "url": "string",
+        "color": "string",
+        "logo": "string",
+        "path": "string",
+    }
+    strings = {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1}
+    command = {
+        "type": "object",
+        "properties": {"type": {"const": "command"}, "label": {"type": "string", "minLength": 1}, "command": strings},
+        "required": ["type", "label", "command"],
+        "additionalProperties": False,
+    }
+    special = {
+        "art": {"anyOf": [{"type": "string"}, {"type": "array", "items": {"type": "string"}}]},
+        "modules": {"type": "array", "items": {"anyOf": [{"enum": list(MODULE_NAMES)}, command]}},
+    }
     sections: dict = {}
     for field in FIELDS:
         section, key = field.path.split(".", 1)
-        entry: dict = {"type": kinds[field.kind], "default": field.default}
+        entry: dict = dict(special[field.kind]) if field.kind in special else {"type": kinds[field.kind]}
+        entry["default"] = list(field.default) if isinstance(field.default, tuple) else field.default
+        if field.kind == "color":
+            entry["pattern"] = HEX_COLOR.pattern
+        if field.kind == "logo":
+            entry["pattern"] = "^(none|file|builtin:.+|cmd:.+)$"
         if field.kind == "url":
             entry["pattern"] = "^[Hh][Tt][Tt][Pp][Ss]?://"
         if field.choices:

@@ -217,6 +217,8 @@ def build_parser():
     daemon_parser.add_argument("action", choices=["status", "stop"])
     daemon_parser.add_argument("id", nargs="?")
 
+    subparsers.add_parser("banner", help="Print the banner, even when banner.enabled is false", parents=[base_parser])
+
     from helm.core.config_commands import add_parser as add_config_parser
 
     add_config_parser(subparsers, [base_parser])
@@ -404,6 +406,26 @@ def _run_utility(command):
         return
 
 
+def _cmd_banner(args):
+    from helm.ui.ansi import color_enabled, render_banner
+    from helm.ui.banner import build_banner
+    from helm.ui.theme import load_theme
+
+    settings = load_settings()
+    context = {"mode": "lite"} if args.lite else {}
+    banner = build_banner(settings, context)
+    if args.json:
+        data = {
+            "theme": settings.get("theme.preset"),
+            "logo": ["".join(text for _color, text in line) for line in banner.logo],
+            "modules": [entry.__dict__ for entry in banner.entries],
+        }
+        print(json.dumps(data, ensure_ascii=False))
+        return
+    text = render_banner(banner, load_theme(settings), color=color_enabled(sys.stdout))
+    sys.stdout.write(text)
+
+
 def main():
     """Console entry point. It bypasses the __main__ block below."""
     try:
@@ -422,6 +444,9 @@ def run():
         from helm.core.config_commands import run as run_config
 
         raise SystemExit(run_config(args))
+    if args.command == "banner":
+        _cmd_banner(args)
+        return
     if args.command in ("watch", "serve", "files", "download"):
         raise SystemExit(_run_headless(args, parser))
 

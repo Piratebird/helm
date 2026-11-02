@@ -185,8 +185,8 @@ def test_all_problems_are_reported_together(config_dir):
 
 
 def test_unknown_keys_are_kept_for_doctor(config_dir):
-    (config_dir / "config.toml").write_text("[search]\ntypo = 1\n[theme]\npreset = 'helm'\n")
-    assert sorted(load_settings().unknown) == ["search.typo", "theme.preset"]
+    (config_dir / "config.toml").write_text("[search]\ntypo = 1\n[future]\nsetting = 'x'\n")
+    assert sorted(load_settings().unknown) == ["future.setting", "search.typo"]
 
 
 def test_precedence_env_file_state_default(config_dir, monkeypatch):
@@ -367,7 +367,7 @@ def test_schema_covers_every_field_and_its_defaults():
     for field in FIELDS:
         section, key = field.path.split(".", 1)
         entry = schema["properties"][section]["properties"][key]
-        assert entry["default"] == field.default
+        assert entry["default"] == json.loads(json.dumps(field.default))
     assert schema["properties"]["search"]["properties"]["lite_workers"]["maximum"] == 12
     assert "prowlarr" in schema["properties"]["search"]["properties"]["indexer_manager"]["enum"]
     assert BY_PATH["services.jackett"].default == "http://localhost:19117"
@@ -434,3 +434,78 @@ def test_config_worker_count_reaches_the_process(config_dir):
     }
     result = subprocess.run([sys.executable, "-c", code], env=environment, capture_output=True, text=True, timeout=30)
     assert result.stdout.strip().endswith("3"), result.stderr
+
+
+@pytest.mark.parametrize(
+    "path, value, expected",
+    [
+        ("theme.preset", "nord", "nord"),
+        ("theme.logo", "#aabbcc", "#aabbcc"),
+        ("logo.source", "builtin:helm", "builtin:helm"),
+        ("logo.source", "cmd:figlet 'the helm'", "cmd:figlet 'the helm'"),
+        ("logo.source", "none", "none"),
+        ("logo.art", ["a", "b"], "a\nb"),
+        ("logo.art", "a\nb", "a\nb"),
+        ("banner.modules", ["version", "separator"], ("version", "separator")),
+        (
+            "banner.modules",
+            [{"type": "command", "label": "Up", "command": ["uptime"]}],
+            ({"type": "command", "label": "Up", "command": ["uptime"]},),
+        ),
+    ],
+)
+def test_banner_and_theme_values_are_accepted(path, value, expected):
+    from helm.core.settings import check
+
+    assert check(BY_PATH[path], value) == expected
+
+
+@pytest.mark.parametrize(
+    "path, value, message",
+    [
+        ("theme.preset", "solarized", "must be one of"),
+        ("theme.logo", "blue", "colour"),
+        ("theme.logo", "#abc", "colour"),
+        ("logo.source", "cmd:", "must be"),
+        ("logo.source", "cmd:'unclosed", "invalid command"),
+        ("logo.source", "builtin:", "must be"),
+        ("logo.source", 3, "string"),
+        ("logo.art", ["a", 1], "list of strings"),
+        ("banner.modules", "version", "must be a list"),
+        ("banner.modules", ["weather"], "unknown module"),
+        ("banner.modules", [{"type": "shell"}], 'type = "command"'),
+        ("banner.modules", [{"type": "command", "label": "", "command": ["x"]}], "label"),
+        ("banner.modules", [{"type": "command", "label": "x", "command": "uptime"}], "list of strings"),
+        ("banner.modules", [{"type": "command", "label": "x", "command": ["x"], "shell": True}], "not shell"),
+        ("banner.timeout_ms", 10, "at least 50"),
+    ],
+)
+def test_banner_and_theme_values_are_rejected(path, value, message):
+    from helm.core.settings import check
+
+    with pytest.raises(ValueError, match=message):
+        check(BY_PATH[path], value)
+
+
+def test_banner_settings_load_from_toml_and_jsonc(config_dir):
+    (config_dir / "config.toml").write_text(
+        '[theme]\npreset = "nord"\n[banner]\nmodules = ["jobs", { type = "command", label = "Up", command = ["uptime"] }]\n'
+    )
+    from_toml = load_settings()
+    (config_dir / "config.toml").unlink()
+    (config_dir / "config.jsonc").write_text(
+        '{"theme": {"preset": "nord"}, "banner": {"modules": ["jobs", {"type": "command", "label": "Up", "command": ["uptime"]}]}}'
+    )
+    from_jsonc = load_settings()
+    for path in ("theme.preset", "banner.modules"):
+        assert from_toml.get(path) == from_jsonc.get(path)
+    assert from_toml.get("banner.modules")[1]["command"] == ["uptime"]
+
+
+def test_theme_and_banner_environment_overrides(config_dir, monkeypatch):
+    monkeypatch.setenv("HELM_THEME", "tokyo-night")
+    monkeypatch.setenv("HELM_BANNER", "0")
+    settings = load_settings()
+    assert settings.get("theme.preset") == "tokyo-night"
+    assert settings.get("banner.enabled") is False
+    assert settings.origin("theme.preset") == "env"
