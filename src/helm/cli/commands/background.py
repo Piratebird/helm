@@ -14,10 +14,12 @@ def dispatch_background(args, parser):
         attach_session(args.name)
         return True
     if args.command == "daemon":
-        from helm.services.runtime import daemon_records, stop_daemon
+        from helm.services.runtime import daemon_records, prune_daemons, stop_daemon
 
         if args.action == "status":
             print(json.dumps(daemon_records(), indent=2))
+        elif args.action == "prune":
+            print(json.dumps({"pruned": prune_daemons()}))
         elif not args.id:
             parser.error("daemon stop requires an id")
         else:

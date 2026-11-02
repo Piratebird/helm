@@ -2,6 +2,7 @@
 
 import os
 import sys
+import time
 import unicodedata
 
 from helm.ui.banner import SGR
@@ -161,3 +162,38 @@ class Terminal:
 
 
 T = Terminal()
+
+
+class Progress:
+    """One progress line: redrawn in place on a terminal, plain lines elsewhere.
+
+    Job logs and pipes get a new line only when the whole-number percentage
+    changes, or every ``interval`` seconds, and never carry escape codes.
+    """
+
+    def __init__(self, stream=None, interval=30.0, clock=None):
+        self.stream = stream
+        self.interval = interval
+        self.clock = clock or time.monotonic
+        self._last_percent = None
+        self._last_time = None
+
+    def _out(self):
+        return self.stream or sys.stdout
+
+    def update(self, percent, text):
+        """Show ``text`` for ``percent`` (0 to 100); ``text`` may contain T codes."""
+        out = self._out()
+        isatty = getattr(out, "isatty", None)
+        if isatty and isatty():
+            out.write(f"\r{EOL}{text}")
+            out.flush()
+            return
+        now = self.clock()
+        whole = int(percent)
+        due = self._last_time is None or now - self._last_time >= self.interval
+        if whole == self._last_percent and not due:
+            return
+        self._last_percent, self._last_time = whole, now
+        out.write(SGR.sub("", text) + "\n")
+        out.flush()

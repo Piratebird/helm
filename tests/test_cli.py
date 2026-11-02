@@ -308,7 +308,8 @@ def test_oneshot_cleans_up_once_on_every_exit(monkeypatch, outcome):
             raise RuntimeError("download failed")
         return outcome != "send_failure"
 
-    def wait():
+    def wait(tag=None):
+        assert tag and tag.startswith("helm-ui-")
         events.append("wait")
         if outcome == "wait_failure":
             raise RuntimeError("wait failed")

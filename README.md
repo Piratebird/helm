@@ -266,6 +266,7 @@ helm-torrent --daemon serve --port 8765
 # List or stop background commands
 helm-torrent daemon status
 helm-torrent daemon stop <id>
+helm-torrent daemon prune     # forget daemons that have stopped
 
 # Start a tmux UI that survives SSH disconnects, then reconnect to it
 helm-torrent --session main

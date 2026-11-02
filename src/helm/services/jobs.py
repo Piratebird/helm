@@ -245,7 +245,7 @@ def cancel_job(store, identifier):
 
         try:
             delete_tagged(job_tag(identifier))
-        except Exception:
+        except (OSError, ValueError):  # network and login errors are OSErrors; ValueError is bad JSON
             get_logger(__name__).warning("Cannot remove cancelled job %s from qBittorrent", identifier, exc_info=True)
     return changed
 
@@ -357,7 +357,7 @@ def queue_loop(store, stop, reconcile_every=5):
             next_reconcile = time.monotonic() + reconcile_every
             try:
                 reconcile_qbittorrent(store)
-            except Exception:
+            except Exception:  # like the job loop above: the service must keep running
                 logger.debug("Cannot reconcile qBittorrent jobs", exc_info=True)
         if not busy:
             stop.wait(0.5)

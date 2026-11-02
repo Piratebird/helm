@@ -7,6 +7,7 @@ core/qbittorrent_client.py
 
 """
 
+import secrets
 import threading
 
 import requests
@@ -20,6 +21,16 @@ logger = get_logger(__name__)
 
 # Applied to every Helm job so reconciliation needs one list call per pass.
 SHARED_TAG = "helm"
+
+
+class QBittorrentAuthError(ConnectionError):
+    """qBittorrent refused Helm's credentials, or none are configured."""
+
+
+def session_tag():
+    """A tag that marks the torrents one interactive run submits."""
+    return f"helm-ui-{secrets.token_hex(6)}"
+
 
 _session = None
 _session_key = None
@@ -39,7 +50,7 @@ def login_qbittorrent(force=False):
         if _session is not None and _session_key == key and not force:
             return _session
         if not qb_password:
-            raise Exception("Please set QB_PASSWORD in .env file !!")
+            raise QBittorrentAuthError("Please set QB_PASSWORD in .env file !!")
 
         session = requests.Session()
 
@@ -51,7 +62,7 @@ def login_qbittorrent(force=False):
                 logger.info("qBittorrent subnet authentication accepted")
                 _session, _session_key = session, key
                 return session
-        except Exception:
+        except requests.RequestException:
             pass
 
         login_url = f"{qb_webui}/api/v2/auth/login"
@@ -60,15 +71,17 @@ def login_qbittorrent(force=False):
 
         if r.status_code == 200 or r.status_code == 204:
             # Verify authentication by making a secondary request
+            prefix = "Failed to verify qbittorrent authentication"
             try:
                 r_verify = session.get(version_url, timeout=10)
-                if r_verify.status_code != 200:
-                    raise ConnectionError("Secondary verification request failed, authentication was not successful.")
-            except Exception as e:
-                # catching errors like pokemons
-                raise ConnectionError(f"Failed to verify qbittorrent authentication: {e}")  # noqa: B904
+            except requests.RequestException as e:
+                raise ConnectionError(f"{prefix}: {e}") from e
+            if r_verify.status_code != 200:
+                raise QBittorrentAuthError(
+                    f"{prefix}: Secondary verification request failed, authentication was not successful."
+                )
         else:
-            raise ConnectionError(f"Failed to login to qbittorrent: HTTP {r.status_code} {r.text}")
+            raise QBittorrentAuthError(f"Failed to login to qbittorrent: HTTP {r.status_code} {r.text}")
 
         logger.info("qBittorrent authentication accepted")
         _session, _session_key = session, key

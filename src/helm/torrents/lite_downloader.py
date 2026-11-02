@@ -2,7 +2,7 @@ import os
 import sys
 import time
 
-from helm.ui.ansi import T
+from helm.ui.ansi import Progress, T
 
 
 def download_magnet(magnet_link, save_path=None, on_complete=None):
@@ -70,6 +70,7 @@ def download_magnet(magnet_link, save_path=None, on_complete=None):
         print("\nMetadata downloaded. Starting torrent download...")
         print(f"Saving to: {T.BOLD}{os.path.abspath(save_path)}{T.RST}\n")
 
+        progress = Progress()
         while handle.status().state != lt.torrent_status.seeding:
             s = handle.status()
 
@@ -83,13 +84,13 @@ def download_magnet(magnet_link, save_path=None, on_complete=None):
                 "allocating",
             ]
 
-            sys.stdout.write(
-                f"\r{T.EOL}{T.BOLD}{s.progress * 100:.2f}%{T.RST} complete "
+            progress.update(
+                s.progress * 100,
+                f"{T.BOLD}{s.progress * 100:.2f}%{T.RST} complete "
                 f"(down: {T.SUCCESS}{s.download_rate / 1000:.1f} kB/s{T.RST} | "
                 f"up: {T.ERROR}{s.upload_rate / 1000:.1f} kB/s{T.RST} | "
-                f"peers: {s.num_peers}) [{state_str[s.state]}]"
+                f"peers: {s.num_peers}) [{state_str[s.state]}]",
             )
-            sys.stdout.flush()
 
             alerts = ses.pop_alerts()
             for a in alerts:

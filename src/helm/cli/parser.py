@@ -130,9 +130,9 @@ def build_parser():
     attach_parser = subparsers.add_parser("attach", help="Reconnect to a named tmux UI", parents=[base_parser])
     attach_parser.add_argument("name", nargs="?", default="main")
     daemon_parser = subparsers.add_parser(
-        "daemon", help="List or stop managed background commands", parents=[base_parser]
+        "daemon", help="List, stop or prune managed background commands", parents=[base_parser]
     )
-    daemon_parser.add_argument("action", choices=["status", "stop"])
+    daemon_parser.add_argument("action", choices=["status", "stop", "prune"])
     daemon_parser.add_argument("id", nargs="?")
 
     subparsers.add_parser("banner", help="Print the banner, even when banner.enabled is false", parents=[base_parser])

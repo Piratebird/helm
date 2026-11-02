@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
 - Respect the configured download directory and reject unknown flags, blank queries, and invalid content types.
 
 ### Added
+- `helm-torrent daemon prune` deletes the records and logs of daemons that have stopped.
 - Theme presets (`helm`, `tokyo-night`, `nord`, `catppuccin-mocha`) with single-colour overrides, and `helm-torrent banner [--json]`. Banner modules and logo sources (built-in, file, command) run under one time limit, so a slow or failing part cannot break or delay the banner.
 - `helm-torrent config init`, `edit`, `doctor` and `show --origin`. They run even when the config file is broken. `doctor` checks syntax, values, unknown keys, ignored files, `secrets.env` permissions, writable directories and service reachability, and never prints secrets.
 - Layered settings from `config.toml` or `config.jsonc`, with validation and a shared JSON Schema. Existing `config.json` values migrate once, and the original file stays in place. If both new files exist, `config.toml` is used.
@@ -30,6 +31,9 @@ All notable changes to this project will be documented in this file.
 - Standalone `uninstall.sh` for raw GitHub execution, with preview-by-default, selective removal and unit tests.
 
 ### Fixed
+- One-shot waits now watch only the torrents this run sent (tagged `helm` plus a per-run `helm-ui-…` tag), so torrents added to qBittorrent by hand no longer hold up the teardown, and Ctrl+C removes only this run's unfinished torrents. The wait goes through the shared qBittorrent session and URL instead of its own `QB_WEBUI` default, and a missing password now stops it instead of retrying forever.
+- Progress lines from the Lite downloader and the one-shot wait are plain text, at most one per whole percent or 30 seconds, when output is not a terminal, so job logs no longer fill with escape codes.
+- qBittorrent login failures raise `QBittorrentAuthError` (a `ConnectionError`), and one-shot startup, readiness checks and teardown catch only the subprocess and HTTP errors they expect.
 - Setup: detect an existing Jackett or Prowlarr container before writing the compose and env files, so the detected one is used instead of a second copy.
 - Setup: mount the config directory into the CLI container and set `HELM_CONFIG_DIR`; the old `/app/config.json` mount was never read.
 - Setup: use the published `ghcr.io/piratebird/helm` image on Podman instead of a `mini-helm` image nothing built.

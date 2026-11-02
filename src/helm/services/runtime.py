@@ -142,6 +142,25 @@ def daemon_records():
     return records
 
 
+def prune_daemons():
+    """Delete the records (and logs) of daemons that are no longer running; return their ids."""
+    directory = Path(get_state_dir()) / "daemons"
+    removed = []
+    for record in daemon_records():
+        if record["running"]:
+            continue
+        identifier = record.get("id")
+        if not identifier or not re.fullmatch(r"[a-f0-9]{12}", identifier):
+            continue
+        for path in (directory / f"{identifier}.json", directory / f"{identifier}.log"):
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+        removed.append(identifier)
+    return removed
+
+
 def stop_daemon(identifier, timeout=5):
     if not re.fullmatch(r"[a-f0-9]{12}", identifier):
         raise ValueError("Invalid daemon id")

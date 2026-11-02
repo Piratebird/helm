@@ -11,7 +11,7 @@ from helm.config.config_manager import CONTENT_PROFILES, NEGATIVE_KEYWORDS
 from helm.ui.ansi import T
 
 
-def send_magnet(selected, lite_mode, json_mode=False, success_msg="Torrent sent successfully :)"):
+def send_magnet(selected, lite_mode, json_mode=False, success_msg="Torrent sent successfully :)", tag=None):
     """Send a torrent to qBittorrent, falling back to the built-in downloader if it is unavailable."""
     if lite_mode:
         from helm.torrents.lite_downloader import download_magnet
@@ -19,7 +19,7 @@ def send_magnet(selected, lite_mode, json_mode=False, success_msg="Torrent sent 
         return download_magnet(selected.link)
 
     try:
-        deps.add_magnet(selected.link)
+        deps.add_magnet(selected.link, tag=f"helm,{tag}" if tag else "helm")
         if not json_mode:
             print(f"{T.TEXT}{success_msg}{T.RST}")
     except Exception as e:
@@ -37,7 +37,10 @@ def run(args, teardown_oneshot):
     if args.command == "indexers":
         manage_indexers(args)
 
+    from helm.torrents.qbittorrent_client import session_tag
+
     mode_str = " (ONE-SHOT MODE)" if args.oneshot else ""
+    tag = session_tag()  # marks this run's torrents, so the wait ignores everyone else's
 
     if not args.json and not args.query:
         print_header(args, f"THE HELM - Torrent automation MVP{mode_str}")
@@ -167,10 +170,13 @@ def run(args, teardown_oneshot):
 
             if args.auto:
                 selected = filtered[0]
-                if send_magnet(selected, args.lite, args.json, success_msg="Top torrent sent successfully :)") is False:
+                if (
+                    send_magnet(selected, args.lite, args.json, success_msg="Top torrent sent successfully :)", tag=tag)
+                    is False
+                ):
                     raise SystemExit(1)
                 if args.oneshot and not args.lite:
-                    deps.wait_for_download()
+                    deps.wait_for_download(tag)
                 raise SystemExit(0) from None
 
             state = "RESULTS"
@@ -192,10 +198,10 @@ def run(args, teardown_oneshot):
                     continue
 
                 print()
-                if send_magnet(selected, args.lite, args.json) is False:
+                if send_magnet(selected, args.lite, args.json, tag=tag) is False:
                     raise SystemExit(1)
                 if (args.oneshot or do_teardown) and not args.lite:
-                    deps.wait_for_download()
+                    deps.wait_for_download(tag)
                     if not args.oneshot:
                         teardown_oneshot()
                 break

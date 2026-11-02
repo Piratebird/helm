@@ -6,7 +6,7 @@ import time
 
 import requests
 
-from helm.ui.ansi import T
+from helm.ui.ansi import Progress, T
 
 
 def print(*args, **kwargs):
@@ -52,7 +52,7 @@ def spin_up_oneshot():
             + ["up", "-d", "--remove-orphans", "jackett", "prowlarr", "qbittorrent", "flaresolverr"],
             check=False,
         )
-    except Exception:
+    except OSError:
         pass
 
     def check_container_status(service_name, timeout=45):
@@ -78,7 +78,7 @@ def spin_up_oneshot():
                         for svc in CONTAINER_SERVICES:
                             _docker_run(["stop", _container_name(svc)], capture_output=True)
                         sys.exit(1)
-            except Exception:
+            except (OSError, subprocess.SubprocessError):
                 pass
             time.sleep(5)
             elapsed += 5
@@ -100,7 +100,7 @@ def spin_up_oneshot():
             if r.status_code in [200, 401]:
                 jackett_ready = True
                 break
-        except Exception:
+        except requests.RequestException:
             pass
         time.sleep(2)
 
@@ -116,7 +116,7 @@ def spin_up_oneshot():
             if "ready" in r.text.lower() or r.status_code == 200:
                 flaresolverr_ready = True
                 break
-        except Exception:
+        except requests.RequestException:
             pass
         time.sleep(2)
 
@@ -137,62 +137,55 @@ def teardown_oneshot():
             except KeyboardInterrupt:
                 pass
         print(f"{T.BOLD}{T.SUCCESS}All containers stopped cleanly. Your RAM is free!{T.RST}")
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         print(f"{T.ERROR}Could not tear down docker-compose stack: {e}{T.RST}")
 
 
-def wait_for_download():
-    print(f"\n{T.INFO}Waiting for download to complete before tearing down the stack...{T.RST}")
-    print(f"{T.ITALIC}(Press Ctrl+C to cancel, or Ctrl+P then Ctrl+Q to detach and run in background){T.RST}")
+def _unfinished(torrents):
+    return [t for t in torrents if t.get("progress", 0.0) < 1.0]
 
+
+def wait_for_download(tag=None, poll=3.0, settle=5.0):
+    """Wait until every torrent with ``tag`` finishes; Ctrl+C removes the unfinished ones.
+
+    Only Helm's torrents are watched (the run's own tag, or every ``helm`` tag),
+    so torrents someone added to qBittorrent by hand never hold up the teardown.
+    """
     import helm.torrents.qbittorrent_client as qbc
 
-    # temporarily inject webui for the wait functionality
-    qb_webui = os.environ.get("QB_WEBUI", "http://qbittorrent:18080")
-    session = qbc.login_qbittorrent()
-    time.sleep(5)  # give qbittorrent time to parse the magnet metadata
+    tag = tag or qbc.SHARED_TAG
+    print(f"\n{T.INFO}Waiting for download to complete before tearing down the stack...{T.RST}")
+    print(f"{T.ITALIC}(Press Ctrl+C to cancel, or Ctrl+P then Ctrl+Q to detach and run in background){T.RST}")
+    time.sleep(settle)  # give qBittorrent time to parse the magnet metadata
+    progress = Progress(sys.stderr)  # like every message here, so --json stdout stays clean
 
     try:
         while True:
             try:
-                r = session.get(f"{qb_webui}/api/v2/torrents/info", timeout=15)
-                if r.status_code == 200:
-                    torrents = r.json()
-                    if not torrents:
-                        time.sleep(3)
-                        continue
-
-                    all_done = True
-                    for t in torrents:
-                        progress = t.get("progress", 0.0)
-                        name = t.get("name", "Unknown")
-                        if progress < 1.0:
-                            all_done = False
-                            print(f"\r{T.WARNING}Downloading '{name[:40]}...' ({progress * 100:.1f}%) {T.RST}", end="")
-                            sys.stdout.flush()
-
-                    if all_done:
-                        print(f"\n{T.BOLD}{T.SUCCESS}Download(s) 100% complete!{T.RST}")
-                        break
-            except Exception:
-                pass
-
-            time.sleep(3)
+                torrents = qbc.tagged_torrents(tag)
+            except (requests.RequestException, ValueError):
+                # qBittorrent restarting or briefly unreachable: keep waiting.
+                time.sleep(poll)
+                continue
+            pending = _unfinished(torrents)
+            if torrents and not pending:
+                print(f"\n{T.BOLD}{T.SUCCESS}Download(s) 100% complete!{T.RST}")
+                return
+            for torrent in pending:
+                percent = torrent.get("progress", 0.0) * 100
+                name = torrent.get("name", "Unknown")
+                progress.update(percent, f"{T.WARNING}Downloading '{name[:40]}...' ({percent:.1f}%) {T.RST}")
+            time.sleep(poll)
     except KeyboardInterrupt:
         print(f"\n{T.ERROR}Download cancelled by user!{T.RST}")
         print(f"{T.ITALIC}Removing unfinished torrents from qBittorrent...{T.RST}")
         try:
-            r = session.get(f"{qb_webui}/api/v2/torrents/info", timeout=15)
-            if r.status_code == 200:
-                torrents = r.json()
-                hashes_to_delete = [t.get("hash") for t in torrents if t.get("progress", 0.0) < 1.0]
-                if hashes_to_delete:
-                    # delete torrent and downloaded data
-                    session.post(
-                        f"{qb_webui}/api/v2/torrents/delete",
-                        data={"hashes": "|".join(hashes_to_delete), "deleteFiles": "true"},
-                        timeout=15,
-                    )
-        except Exception:
+            hashes = [t["hash"] for t in _unfinished(qbc.tagged_torrents(tag))]
+            if hashes:
+                # delete torrent and downloaded data
+                qbc.qb_request(
+                    "POST", "/api/v2/torrents/delete", data={"hashes": "|".join(hashes), "deleteFiles": "true"}
+                )
+        except (requests.RequestException, ValueError, KeyError, ConnectionError):
             pass
         raise
