@@ -13,7 +13,7 @@ os.environ["HELM_DL_DIR"] = os.path.join(_TMP_BASE, "downloads")
 def pytest_runtest_setup(item):
     # The secret manager caches the contents of secrets.env; make sure a cached
     # value from a previous test's temp dir never leaks into the next test.
-    import helm.core.secret_manager as sm
+    import helm.config.secret_manager as sm
 
     sm._invalidate_cache()
     import sys

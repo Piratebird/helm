@@ -1,11 +1,14 @@
 import json
+import os
 import sys
 import tempfile
 
 import pytest
 
 import helm.cli
-from helm.core.settings import Settings
+import helm.cli.commands.session
+import helm.cli.deps
+from helm.config.settings import Settings
 
 
 class FakeItem:
@@ -41,9 +44,9 @@ def test_search_json_output_is_machine_readable(monkeypatch, capsys):
     with tempfile.TemporaryDirectory() as tmp:
         monkeypatch.setenv("HELM_CONFIG_DIR", tmp)
         monkeypatch.setenv("JACKETT_API_KEY", "testkey")
-        monkeypatch.setattr(helm.cli, "ensure_config", lambda: None)
+        monkeypatch.setattr(helm.cli.deps, "ensure_config", lambda: None)
         monkeypatch.setattr(
-            helm.cli,
+            helm.cli.deps,
             "animated_search",
             lambda query, content_type, lite_mode=False, show_spinner=True: (_make_items(), True),
         )
@@ -67,9 +70,9 @@ def test_search_with_no_results_exits_one(monkeypatch, capsys):
     with tempfile.TemporaryDirectory() as tmp:
         monkeypatch.setenv("HELM_CONFIG_DIR", tmp)
         monkeypatch.setenv("JACKETT_API_KEY", "testkey")
-        monkeypatch.setattr(helm.cli, "ensure_config", lambda: None)
+        monkeypatch.setattr(helm.cli.deps, "ensure_config", lambda: None)
         monkeypatch.setattr(
-            helm.cli,
+            helm.cli.deps,
             "animated_search",
             lambda query, content_type, lite_mode=False, show_spinner=True: ([], False),
         )
@@ -95,7 +98,7 @@ def test_json_without_config_defaults_to_lite_without_prompting(monkeypatch, cap
             captured["lite_mode"] = lite_mode
             return (_make_items(), lite_mode)
 
-        monkeypatch.setattr(helm.cli, "animated_search", fake_search)
+        monkeypatch.setattr(helm.cli.deps, "animated_search", fake_search)
         monkeypatch.setattr(sys, "argv", ["helm-torrent", "search", "--json", "ubuntu"])
 
         with pytest.raises(SystemExit) as exc_info:
@@ -122,8 +125,8 @@ def test_search_rejects_blank_query(monkeypatch, capsys, query):
 @pytest.mark.parametrize("has_raw_results", [False, True])
 def test_empty_search_explains_sources_or_filters(monkeypatch, capsys, has_raw_results):
     items = _make_items() if has_raw_results else []
-    monkeypatch.setattr(helm.cli, "animated_search", lambda *a, **kw: (items, True))
-    monkeypatch.setattr(helm.cli, "load_settings", lambda: Settings.from_legacy({"min_seeds": 1000}))
+    monkeypatch.setattr(helm.cli.deps, "animated_search", lambda *a, **kw: (items, True))
+    monkeypatch.setattr(helm.cli.deps, "load_settings", lambda: Settings.from_legacy({"min_seeds": 1000}))
     monkeypatch.setattr(sys, "argv", ["helm-torrent", "search", "--lite", "ubuntu"])
     with pytest.raises(SystemExit) as exc_info:
         helm.cli.main()
@@ -138,7 +141,7 @@ def test_empty_search_explains_sources_or_filters(monkeypatch, capsys, has_raw_r
 
 
 def test_lite_downloader_without_libtorrent_shows_magnet(monkeypatch, capsys):
-    from helm.core.lite_downloader import download_magnet
+    from helm.torrents.lite_downloader import download_magnet
 
     monkeypatch.setitem(sys.modules, "libtorrent", None)
     magnet = "magnet:?xt=urn:btih:cafe"
@@ -153,7 +156,7 @@ def test_lite_downloader_without_legacy_dht_router_api(monkeypatch, tmp_path, ca
     from types import SimpleNamespace
     from unittest.mock import Mock
 
-    from helm.core import lite_downloader
+    from helm.torrents import lite_downloader
 
     # Match bindings that expose session settings but no add_dht_router method.
     session = Mock(spec=["add_torrent", "pause"])
@@ -197,13 +200,13 @@ def test_lite_downloader_without_legacy_dht_router_api(monkeypatch, tmp_path, ca
 def test_bug_report_omits_unredactable_config(monkeypatch, tmp_path, capsys):
     import zipfile
 
-    from helm.core import config_manager, secret_manager
+    from helm.config import config_manager, secret_manager
 
     config_file = tmp_path / "config.json"
     config_file.write_text('{"JACKETT_API_KEY": "must-stay-private"}')
     monkeypatch.setattr(config_manager, "get_config_file", lambda: str(config_file))
     monkeypatch.setattr(config_manager, "get_log_dir", lambda: str(tmp_path / "logs"))
-    monkeypatch.setattr(helm.cli.os.path, "expanduser", lambda path: str(tmp_path))
+    monkeypatch.setattr(os.path, "expanduser", lambda path: str(tmp_path))
 
     def failed_redaction(config):
         raise ValueError("Cannot redact")
@@ -223,7 +226,7 @@ def test_search_rejects_invalid_options_before_setup(monkeypatch, capsys, argume
     from unittest.mock import Mock
 
     setup = Mock(side_effect=AssertionError("Validation must precede setup"))
-    monkeypatch.setattr(helm.cli, "load_settings", setup)
+    monkeypatch.setattr(helm.cli.deps, "load_settings", setup)
     monkeypatch.setattr(sys, "argv", ["helm-torrent", "search", "ubuntu"] + arguments)
     with pytest.raises(SystemExit) as error:
         helm.cli.main()
@@ -235,7 +238,7 @@ def test_search_rejects_invalid_options_before_setup(monkeypatch, capsys, argume
 def test_cli_normalizes_content_type(monkeypatch):
     captured = []
     monkeypatch.setattr(
-        helm.cli, "animated_search", lambda query, category, **kw: captured.append(category) or ([], True)
+        helm.cli.deps, "animated_search", lambda query, category, **kw: captured.append(category) or ([], True)
     )
     monkeypatch.setattr(sys, "argv", ["helm-torrent", "search", "ubuntu", "--lite", "--json", "--type", "MUSIC"])
     with pytest.raises(SystemExit) as error:
@@ -248,14 +251,14 @@ def test_cli_normalizes_content_type(monkeypatch):
 def test_lite_oneshot_never_starts_or_stops_containers(monkeypatch, explicit_lite):
     from unittest.mock import Mock
 
-    from helm.core import oneshot
+    from helm.stack import oneshot
 
     start = Mock()
     stop = Mock()
     monkeypatch.setattr(oneshot, "spin_up_oneshot", start)
     monkeypatch.setattr(oneshot, "teardown_oneshot", stop)
-    monkeypatch.setattr(helm.cli, "load_settings", lambda: Settings.from_legacy({"LITE_MODE_ONLY": True}))
-    monkeypatch.setattr(helm.cli, "animated_search", lambda *a, **kw: (_make_items(), True))
+    monkeypatch.setattr(helm.cli.deps, "load_settings", lambda: Settings.from_legacy({"LITE_MODE_ONLY": True}))
+    monkeypatch.setattr(helm.cli.deps, "animated_search", lambda *a, **kw: (_make_items(), True))
     arguments = ["helm-torrent", "search", "ubuntu", "--oneshot", "--json"]
     monkeypatch.setattr(sys, "argv", arguments + (["--lite"] if explicit_lite else []))
     with pytest.raises(SystemExit) as error:
@@ -280,12 +283,12 @@ def test_lite_oneshot_never_starts_or_stops_containers(monkeypatch, explicit_lit
     ],
 )
 def test_oneshot_cleans_up_once_on_every_exit(monkeypatch, outcome):
-    from helm.core import oneshot
+    from helm.stack import oneshot
 
     events = []
     monkeypatch.setenv("JACKETT_API_KEY", "testkey")
-    monkeypatch.setattr(helm.cli, "ensure_config", lambda: None)
-    monkeypatch.setattr(helm.cli, "load_settings", lambda: Settings.from_legacy({"min_seeds": 3}))
+    monkeypatch.setattr(helm.cli.deps, "ensure_config", lambda: None)
+    monkeypatch.setattr(helm.cli.deps, "load_settings", lambda: Settings.from_legacy({"min_seeds": 3}))
 
     def start():
         events.append("start")
@@ -312,9 +315,9 @@ def test_oneshot_cleans_up_once_on_every_exit(monkeypatch, outcome):
 
     monkeypatch.setattr(oneshot, "spin_up_oneshot", start)
     monkeypatch.setattr(oneshot, "teardown_oneshot", lambda: events.append("stop"))
-    monkeypatch.setattr(helm.cli, "animated_search", search)
-    monkeypatch.setattr(helm.cli, "_send_magnet", send)
-    monkeypatch.setattr(helm.cli, "wait_for_download", wait)
+    monkeypatch.setattr(helm.cli.deps, "animated_search", search)
+    monkeypatch.setattr(helm.cli.commands.session, "send_magnet", send)
+    monkeypatch.setattr(helm.cli.deps, "wait_for_download", wait)
     monkeypatch.setattr(
         sys,
         "argv",
@@ -352,7 +355,7 @@ def test_download_uses_cli_directory_override(monkeypatch, tmp_path):
         ),
     )
     destination = tmp_path / "custom downloads"
-    monkeypatch.setattr(helm.cli, "animated_search", lambda *a, **kw: (_make_items(), True))
+    monkeypatch.setattr(helm.cli.deps, "animated_search", lambda *a, **kw: (_make_items(), True))
     monkeypatch.setattr(
         sys, "argv", ["helm-torrent", "search", "ubuntu", "--lite", "--auto", "--dl-dir", str(destination)]
     )
@@ -365,7 +368,7 @@ def test_download_uses_cli_directory_override(monkeypatch, tmp_path):
 
 
 def test_real_search_fallback_keeps_json_stdout_clean(monkeypatch, capsys):
-    from helm.core import lite_fetcher, rss_fetcher
+    from helm.search import lite_fetcher, rss_fetcher
 
     items = _make_items()
     results = rss_fetcher.SearchResults(items, [rss_fetcher.SourceOutcome("Nyaa", "timeout")])
@@ -374,8 +377,8 @@ def test_real_search_fallback_keeps_json_stdout_clean(monkeypatch, capsys):
         raise RuntimeError("indexer unavailable with private-token")
 
     monkeypatch.setenv("JACKETT_API_KEY", "testkey")
-    monkeypatch.setattr(helm.cli, "load_settings", lambda: Settings.from_legacy({"min_seeds": 3}))
-    monkeypatch.setattr(helm.cli, "ensure_config", lambda: None)
+    monkeypatch.setattr(helm.cli.deps, "load_settings", lambda: Settings.from_legacy({"min_seeds": 3}))
+    monkeypatch.setattr(helm.cli.deps, "ensure_config", lambda: None)
     monkeypatch.setattr(rss_fetcher, "search_indexers", unavailable)
     monkeypatch.setattr(lite_fetcher, "search_lite", lambda query, content_type: results)
     monkeypatch.setattr(sys, "argv", ["helm-torrent", "search", "ubuntu", "--json"])
@@ -392,12 +395,13 @@ def test_real_search_fallback_keeps_json_stdout_clean(monkeypatch, capsys):
 def test_indexer_exit_cleans_up_once(monkeypatch):
     from types import SimpleNamespace
 
-    from helm.core import indexer_manager, oneshot
+    from helm.search import indexer_manager
+    from helm.stack import oneshot
 
     events = []
     monkeypatch.setenv("JACKETT_API_KEY", "testkey")
-    monkeypatch.setattr(helm.cli, "ensure_config", lambda: None)
-    monkeypatch.setattr(helm.cli, "load_settings", lambda: Settings.from_legacy({}))
+    monkeypatch.setattr(helm.cli.deps, "ensure_config", lambda: None)
+    monkeypatch.setattr(helm.cli.deps, "load_settings", lambda: Settings.from_legacy({}))
     monkeypatch.setattr(oneshot, "spin_up_oneshot", lambda: events.append("start"))
     monkeypatch.setattr(oneshot, "teardown_oneshot", lambda: events.append("stop"))
     monkeypatch.setattr(indexer_manager, "JackettManager", lambda: SimpleNamespace(get_all_indexers=lambda: []))
@@ -408,7 +412,7 @@ def test_indexer_exit_cleans_up_once(monkeypatch):
     def end_input(*args):
         raise EOFError
 
-    monkeypatch.setattr(helm.cli, "interactive_indexer_selector", exit_indexers)
+    monkeypatch.setattr(helm.cli.deps, "interactive_indexer_selector", exit_indexers)
     monkeypatch.setattr("builtins.input", end_input)
     monkeypatch.setattr(sys, "argv", ["helm-torrent", "indexers", "--oneshot"])
     with pytest.raises(SystemExit) as error:
@@ -420,7 +424,7 @@ def test_indexer_exit_cleans_up_once(monkeypatch):
 def test_bug_report_streams_and_redacts_historical_logs(monkeypatch, tmp_path):
     import zipfile
 
-    from helm.core import config_manager
+    from helm.config import config_manager
 
     config = tmp_path / "config.json"
     config.write_text('{"nested": {"password": "nested-private"}}')
@@ -431,7 +435,7 @@ def test_bug_report_streams_and_redacts_historical_logs(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(config_manager, "get_config_file", lambda: str(config))
     monkeypatch.setattr(config_manager, "get_log_dir", lambda: str(logs))
-    monkeypatch.setattr(helm.cli.os.path, "expanduser", lambda path: str(tmp_path))
+    monkeypatch.setattr(os.path, "expanduser", lambda path: str(tmp_path))
     monkeypatch.setattr(sys, "argv", ["helm-torrent", "bug-report"])
     with pytest.raises(SystemExit) as error:
         helm.cli.main()
@@ -449,7 +453,7 @@ def test_cli_worker_limit_overrides_environment(monkeypatch):
     seen = []
     monkeypatch.setenv("HELM_LITE_WORKERS", "6")
     monkeypatch.setattr(
-        helm.cli, "animated_search", lambda *a, **kw: seen.append(os.environ["HELM_LITE_WORKERS"]) or ([], True)
+        helm.cli.deps, "animated_search", lambda *a, **kw: seen.append(os.environ["HELM_LITE_WORKERS"]) or ([], True)
     )
     monkeypatch.setattr(sys, "argv", ["helm-torrent", "search", "generated", "--lite", "--json", "--lite-workers", "2"])
     with pytest.raises(SystemExit) as error:

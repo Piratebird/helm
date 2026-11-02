@@ -9,8 +9,8 @@ import re
 
 from novaprinter import prettyPrinter, report_error
 
-from helm.core.http import get_shared_session
-from helm.core.logger import get_logger
+from helm.logger import get_logger
+from helm.net.http import get_shared_session
 
 logger = get_logger(__name__)
 

@@ -4,7 +4,7 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
-from helm.core.logger import FileOnlyFilter
+from helm.logger import FileOnlyFilter
 
 
 def test_file_only_filter_drops_file_only_records():
@@ -58,7 +58,7 @@ def test_importing_logging_does_not_create_files(tmp_path):
         PYTHONPATH=root, HELM_CONFIG_DIR=str(tmp_path / "config"), HELM_STATE_DIR=str(tmp_path / "state")
     )
     result = subprocess.run(
-        [sys.executable, "-c", "import helm.cli; import helm.core.lite_fetcher"],
+        [sys.executable, "-c", "import helm.cli; import helm.search.lite_fetcher"],
         env=environment,
         capture_output=True,
         text=True,
@@ -69,7 +69,7 @@ def test_importing_logging_does_not_create_files(tmp_path):
 
 
 def test_logging_reconfigures_after_path_override(monkeypatch, tmp_path):
-    from helm.core.logger import configure_logging, get_logger
+    from helm.logger import configure_logging, get_logger
 
     first, second = tmp_path / "first", tmp_path / "second"
     monkeypatch.setenv("HELM_STATE_DIR", str(first))
@@ -84,7 +84,7 @@ def test_logging_reconfigures_after_path_override(monkeypatch, tmp_path):
 
 
 def test_formatters_redact_exception_and_structured_extras(monkeypatch):
-    from helm.core.logger import ConsoleFormatter, JSONFormatter, PlainTextFormatter
+    from helm.logger import ConsoleFormatter, JSONFormatter, PlainTextFormatter
 
     monkeypatch.setenv("JACKETT_API_KEY", "private-key-123")
     try:
@@ -107,7 +107,7 @@ def test_formatters_redact_exception_and_structured_extras(monkeypatch):
 
 
 def test_tail_reads_only_bounded_suffix_and_redacts(tmp_path, monkeypatch):
-    from helm.core.logger import tail_log
+    from helm.logger import tail_log
 
     path = tmp_path / "large.log"
     path.write_text("old line\n" * 200000 + "apikey=old-unknown-secret\nlast line\n")
@@ -120,7 +120,7 @@ def test_tail_reads_only_bounded_suffix_and_redacts(tmp_path, monkeypatch):
 
 
 def test_tail_handles_a_single_oversized_record(tmp_path):
-    from helm.core.logger import tail_log
+    from helm.logger import tail_log
 
     path = tmp_path / "huge.log"
     path.write_text("x" * 10000)

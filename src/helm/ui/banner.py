@@ -17,7 +17,7 @@ import time
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
-from helm.core.config_manager import get_config_dir, get_dl_dir, get_state_dir
+from helm.config.config_manager import get_config_dir, get_dl_dir, get_state_dir
 
 # The current UI's block wordmark.
 LOGOS = {
@@ -156,7 +156,7 @@ def _mode(settings, context):
 
 
 def _lite_sources():
-    from helm.core.lite_plugin_loader import plugin_jobs
+    from helm.search.lite_plugin_loader import plugin_jobs
 
     bundled = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "plugins")
     return len(plugin_jobs([os.path.join(get_config_dir(), "plugins"), bundled]))
@@ -167,7 +167,7 @@ def _manager_count(name, settings, timeout):
 
     import requests
 
-    from helm.core.secret_manager import get_secret
+    from helm.config.secret_manager import get_secret
 
     url = settings.get(f"services.{name}")
     key = get_secret(f"{name.upper()}_API_KEY")
@@ -226,7 +226,7 @@ def _downloads():
 
 
 def _services(settings, timeout):
-    from helm.core.config_commands import probe
+    from helm.config.config_commands import probe
 
     if settings.get("search.lite_only"):
         return "not used in Lite mode"

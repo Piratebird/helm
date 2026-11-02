@@ -11,10 +11,10 @@ from pathlib import Path
 import pytest
 import responses
 
-import helm.core.jobs as jobs
-import helm.core.qbittorrent_client as client
-from helm.core.config_manager import get_dl_dir
-from helm.core.jobs import (
+import helm.services.jobs as jobs
+import helm.torrents.qbittorrent_client as client
+from helm.config.config_manager import get_dl_dir
+from helm.services.jobs import (
     JobStore,
     cancel_job,
     execute_job,
@@ -198,7 +198,7 @@ def test_public_job_redacts_and_hides_internals(store, monkeypatch):
 
 
 def test_execute_job_outcomes(store, monkeypatch):
-    import helm.core.lite_downloader as downloader
+    import helm.torrents.lite_downloader as downloader
 
     job = store.enqueue(MAGNET, lite=True)
     assert execute_job(store, job["id"]) == 1  # Not claimed.
@@ -227,8 +227,8 @@ def test_execute_job_submits_with_shared_and_job_tags(store, qbittorrent):
 
 
 def write_worker(tmp_path, body):
-    """Install a fake helm.core.jobs worker module found through PYTHONPATH."""
-    package = tmp_path / "fake" / "helm" / "core"
+    """Install a fake helm.services.jobs worker module found through PYTHONPATH."""
+    package = tmp_path / "fake" / "helm" / "services"
     package.mkdir(parents=True)
     (package.parent / "__init__.py").write_text("")
     (package / "__init__.py").write_text("")
@@ -428,7 +428,7 @@ def test_orphaned_worker_exits_when_its_parent_dies(tmp_path):
     marker = tmp_path / "pid"
     child = (
         "import os,threading,time\n"
-        "from helm.core.jobs import exit_with_parent\n"
+        "from helm.services.jobs import exit_with_parent\n"
         "threading.Thread(target=exit_with_parent,args=(os.getppid(),0.05),daemon=True).start()\n"
         f"open({str(marker)!r},'w').write(str(os.getpid()))\n"
         "time.sleep(30)\n"

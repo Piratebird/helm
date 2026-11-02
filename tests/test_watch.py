@@ -4,9 +4,9 @@ import time
 
 import pytest
 
-import helm.core.watch as watch
-from helm.core.jobs import JobStore
-from helm.core.watch import run_watch, safe_scan, scan_directory
+import helm.services.watch as watch
+from helm.services.jobs import JobStore
+from helm.services.watch import run_watch, safe_scan, scan_directory
 
 MAGNET = "magnet:?xt=urn:btih:" + "a" * 40
 OTHER = "magnet:?xt=urn:btih:" + "b" * 40

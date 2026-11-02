@@ -88,7 +88,7 @@ def animated_search(query, content_type, lite_mode=False, show_spinner=True):
         t = threading.Thread(target=animate)
         t.start()
 
-    from helm.core.rss_fetcher import SearchResults
+    from helm.search.rss_fetcher import SearchResults
 
     res = SearchResults()
     used_lite = lite_mode
@@ -96,12 +96,12 @@ def animated_search(query, content_type, lite_mode=False, show_spinner=True):
         import concurrent.futures
 
         def fetch_jackett():
-            from helm.core.rss_fetcher import search_indexers
+            from helm.search.rss_fetcher import search_indexers
 
             return search_indexers(query, content_type, fallback_lite=False)
 
         def fetch_lite():
-            from helm.core.lite_fetcher import search_lite
+            from helm.search.lite_fetcher import search_lite
 
             return search_lite(query, content_type)
 
@@ -125,7 +125,7 @@ def animated_search(query, content_type, lite_mode=False, show_spinner=True):
                 try:
                     res.extend(lite_future.result())
                 except Exception as error:
-                    from helm.core.rss_fetcher import SourceOutcome, source_status
+                    from helm.search.rss_fetcher import SourceOutcome, source_status
 
                     res.outcomes.append(SourceOutcome("Lite", source_status(error)))
         else:

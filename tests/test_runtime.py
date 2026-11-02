@@ -13,9 +13,9 @@ from types import SimpleNamespace
 
 import pytest
 
-import helm.core.runtime as runtime
-from helm.core.config_manager import get_state_dir
-from helm.core.runtime import (
+import helm.services.runtime as runtime
+from helm.config.config_manager import get_state_dir
+from helm.services.runtime import (
     child_arguments,
     child_environment,
     daemon_records,

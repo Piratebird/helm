@@ -10,7 +10,7 @@ from urllib.parse import unquote
 from helpers import retrieve_url, validate_html
 from novaprinter import prettyPrinter
 
-from helm.core.logger import get_logger
+from helm.logger import get_logger
 
 
 class torrentproject:

@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from helm.core.config_commands import DESCRIPTIONS, redact_url, render_template
-from helm.core.settings import FIELDS, flatten, load_settings, parse_jsonc, read_file
+from helm.config.config_commands import DESCRIPTIONS, redact_url, render_template
+from helm.config.settings import FIELDS, flatten, load_settings, parse_jsonc, read_file
 
 SRC = str(Path(__file__).resolve().parents[1] / "src")
 SCRUBBED = {field.env for field in FIELDS if field.env} | {
@@ -364,7 +364,7 @@ def test_redact_url_leaves_plain_urls_alone():
 
 def run_in_process(arguments, capsys):
     from helm.cli import build_parser
-    from helm.core import config_commands
+    from helm.config import config_commands
 
     args = build_parser().parse_args(["config", *arguments])
     code = config_commands.run(args)

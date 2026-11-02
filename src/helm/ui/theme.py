@@ -11,7 +11,7 @@ particular theme. The upstream sources were checked on 2026-11-02:
 from dataclasses import dataclass, field
 from typing import Dict
 
-from helm.core.settings import COLOR_NAMES, HELM_COLORS
+from helm.config.settings import COLOR_NAMES, HELM_COLORS
 
 PRESETS: Dict[str, Dict[str, str]] = {
     # The colours the UI used before themes existed, so the default look stays the same.

@@ -6,7 +6,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from helm.core import benchmark
+from helm.benchmarks import benchmark
 
 
 def fake_proc(root, pid, parent, name, pss):
@@ -168,7 +168,7 @@ def test_published_raw_samples_have_valid_phases_and_checksums(filename):
 
 
 def test_benchmark_deadline_stops_worker(monkeypatch):
-    from helm.core import search_runner
+    from helm.search import search_runner
 
     process = Mock()
     process.poll.return_value = None

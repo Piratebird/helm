@@ -1,4 +1,4 @@
-from helm.core.config_manager import CONTENT_PROFILES, NEGATIVE_KEYWORDS
+from helm.config.config_manager import CONTENT_PROFILES, NEGATIVE_KEYWORDS
 
 
 def test_negative_keywords_derived_from_other_categories():

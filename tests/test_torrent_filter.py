@@ -3,7 +3,7 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
-from helm.core.torrent_filter import dedupe, filter_items
+from helm.search.torrent_filter import dedupe, filter_items
 
 
 class MockItem:

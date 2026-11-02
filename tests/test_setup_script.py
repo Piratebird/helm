@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from helm.core import compose, stack_setup
+from helm.stack import compose, stack_setup
 
 ROOT = Path(__file__).resolve().parents[1]
 SETUP = ROOT / "setup.sh"
@@ -225,7 +225,7 @@ def test_docker_compose_accepts_every_rendered_file(tmp_path):
 
 
 def test_template_ships_as_package_data():
-    assert '"helm.core" = ["compose.template.yml"]' in (ROOT / "pyproject.toml").read_text()
+    assert '"helm.stack" = ["compose.template.yml"]' in (ROOT / "pyproject.toml").read_text()
     assert compose.TEMPLATE.is_file()
 
 

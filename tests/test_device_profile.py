@@ -3,9 +3,9 @@ from types import SimpleNamespace
 
 import pytest
 
-import helm.core.device_profile as device
-from helm.core.benchmark import binding_version
-from helm.core.device_profile import battery_adb, battery_sysfs, cleanup_probe, energy_delta
+import helm.benchmarks.device_profile as device
+from helm.benchmarks.benchmark import binding_version
+from helm.benchmarks.device_profile import battery_adb, battery_sysfs, cleanup_probe, energy_delta
 
 DISCHARGING = {"status": 3, "Charge counter": 2000000, "voltage": 4000, "USB powered": False}
 

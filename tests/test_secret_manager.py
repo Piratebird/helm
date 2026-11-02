@@ -1,7 +1,7 @@
 import os
 import tempfile
 
-from helm.core.secret_manager import (
+from helm.config.secret_manager import (
     get_secret,
     get_secrets_file,
     load_secrets,
@@ -97,7 +97,7 @@ def test_sanitize_link_leaves_magnets_alone():
 
 
 def test_secrets_cache_follows_config_override(monkeypatch, tmp_path):
-    from helm.core import secret_manager
+    from helm.config import secret_manager
 
     first, second = tmp_path / "first", tmp_path / "second"
     first.mkdir()
@@ -112,7 +112,7 @@ def test_secrets_cache_follows_config_override(monkeypatch, tmp_path):
 
 
 def test_redaction_handles_nested_config_and_encoded_secrets(monkeypatch):
-    from helm.core.secret_manager import redact_config, redact_text
+    from helm.config.secret_manager import redact_config, redact_text
 
     monkeypatch.setenv("QB_PASSWORD", "p@ss word")
     original = {

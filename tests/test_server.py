@@ -10,11 +10,11 @@ from pathlib import Path
 import pytest
 import requests
 
-import helm.core.server as server_module
-from helm.core.config_manager import get_dl_dir
-from helm.core.jobs import JobStore
-from helm.core.secret_manager import get_secret
-from helm.core.server import byte_range, is_loopback, make_server, run_server
+import helm.services.server as server_module
+from helm.config.config_manager import get_dl_dir
+from helm.config.secret_manager import get_secret
+from helm.services.jobs import JobStore
+from helm.services.server import byte_range, is_loopback, make_server, run_server
 
 TOKEN = "t" * 32
 AUTH = {"Authorization": "Bearer " + TOKEN}

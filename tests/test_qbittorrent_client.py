@@ -3,8 +3,8 @@ from urllib.parse import parse_qs
 import pytest
 import responses
 
-import helm.core.qbittorrent_client as client
-from helm.core.qbittorrent_client import add_magnet, delete_tagged, login_qbittorrent, qb_request
+import helm.torrents.qbittorrent_client as client
+from helm.torrents.qbittorrent_client import add_magnet, delete_tagged, login_qbittorrent, qb_request
 
 BASE = "http://localhost:8080"
 MAGNET = "magnet:?xt=urn:btih:" + "a" * 40

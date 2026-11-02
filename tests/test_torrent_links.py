@@ -6,8 +6,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from helm.core import torrent_links
-from helm.core.torrent_links import (
+from helm.torrents import torrent_links
+from helm.torrents.torrent_links import (
     TorrentSource,
     decode_metadata,
     info_hash,

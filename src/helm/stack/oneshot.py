@@ -1,0 +1,198 @@
+import builtins
+import os
+import subprocess
+import sys
+import time
+
+import requests
+
+from helm.ui.ansi import T
+
+
+def print(*args, **kwargs):
+    # Route this module's boot/teardown logs to stderr so `--json` output on
+    # stdout stays pure and jq-parseable.
+    kwargs.setdefault("file", sys.stderr)
+    builtins.print(*args, **kwargs)
+
+
+# The CLI runs inside the mini-helm container, whose docker socket is mounted at
+# /var/run/docker.sock. Both Docker and Podman provide that socket, so the docker
+# CLI works for either engine; override via HELM_DOCKER_CMD if you ever run the
+# CLI without the socket (e.g. native mode with a remote daemon).
+DOCKER_CMD = os.environ.get("HELM_DOCKER_CMD", "docker")
+
+CONTAINER_SERVICES = frozenset(["jackett", "prowlarr", "qbittorrent", "flaresolverr", "gluetun"])
+
+
+def _docker_run(args, **kwargs):
+    return subprocess.run([DOCKER_CMD] + args, **kwargs)
+
+
+def _container_name(service):
+    project = os.environ.get("COMPOSE_PROJECT_NAME", "helm")
+    return f"{project}-{service}"
+
+
+def spin_up_oneshot():
+    print(f"\n{T.BOLD}{T.INFO}Initializing One-Shot Ephemeral Stack...{T.RST}")
+    print(f"{T.ITALIC}Bringing up Jackett, Prowlarr, Flaresolverr, and qBittorrent via docker compose...{T.RST}")
+
+    from helm.config.config_manager import get_state_dir
+
+    state_dir = get_state_dir()
+    compose_file = os.path.join(state_dir, "docker-compose.yml")
+    compose_flags = ["-f", compose_file] if os.path.exists(compose_file) else []
+
+    # Explicitly ensure all background containers are up just in case host depends_on fails
+    try:
+        _docker_run(
+            ["compose"]
+            + compose_flags
+            + ["up", "-d", "--remove-orphans", "jackett", "prowlarr", "qbittorrent", "flaresolverr"],
+            check=False,
+        )
+    except Exception:
+        pass
+
+    def check_container_status(service_name, timeout=45):
+        print(f"{T.ITALIC}Waiting for {service_name} to stabilize...{T.RST}")
+        elapsed = 0
+        while elapsed < timeout:
+            try:
+                # Get container ID
+                cid = subprocess.check_output(
+                    [DOCKER_CMD, "compose"] + compose_flags + ["ps", "-q", service_name], text=True
+                ).strip()
+                if cid:
+                    # Check status
+                    status = subprocess.check_output(
+                        [DOCKER_CMD, "inspect", "-f", "{{.State.Status}}", cid], text=True
+                    ).strip()
+                    if status == "running":
+                        return True
+                    elif status == "exited":
+                        print(
+                            f"{T.ERROR}[ERROR] Container {service_name} crashed immediately. Check 'docker compose logs {service_name}'{T.RST}"
+                        )
+                        for svc in CONTAINER_SERVICES:
+                            _docker_run(["stop", _container_name(svc)], capture_output=True)
+                        sys.exit(1)
+            except Exception:
+                pass
+            time.sleep(5)
+            elapsed += 5
+        print(f"{T.ERROR}[WARNING] Timeout waiting for {service_name} to stabilize.{T.RST}")
+        return False
+
+    check_container_status("jackett")
+    check_container_status("prowlarr")
+    check_container_status("qbittorrent")
+    check_container_status("flaresolverr")
+    print(f"{T.INFO}Waiting for internal HTTP servers to fully boot (this ensures 1337x doesn't fail)...{T.RST}")
+
+    # Wait for Jackett to respond to HTTP requests
+    jackett_url = os.environ.get("JACKETT_URL", "http://jackett:9117")
+    jackett_ready = False
+    for _ in range(30):
+        try:
+            r = requests.get(f"{jackett_url}/UI/Dashboard", timeout=5)
+            if r.status_code in [200, 401]:
+                jackett_ready = True
+                break
+        except Exception:
+            pass
+        time.sleep(2)
+
+    if not jackett_ready:
+        print(f"{T.ERROR}[WARNING] Jackett HTTP API didn't respond in time.{T.RST}")
+
+    # Wait for Flaresolverr to respond to HTTP requests
+    flaresolverr_url = os.environ.get("FLARESOLVERR_URL", "http://flaresolverr:8191")
+    flaresolverr_ready = False
+    for _ in range(30):
+        try:
+            r = requests.get(flaresolverr_url, timeout=5)
+            if "ready" in r.text.lower() or r.status_code == 200:
+                flaresolverr_ready = True
+                break
+        except Exception:
+            pass
+        time.sleep(2)
+
+    if not flaresolverr_ready:
+        print(f"{T.ERROR}[WARNING] Flaresolverr HTTP API didn't respond in time.{T.RST}")
+
+    print(f"{T.SUCCESS}Environment variables loaded and APIs ready.{T.RST}\n")
+
+
+def teardown_oneshot():
+    print(f"\n{T.BOLD}{T.WARNING}Tearing down the ephemeral stack to save processing power...{T.RST}")
+    try:
+        # Stop containers individually via 'docker stop' instead of 'docker compose stop'
+        # to avoid network namespace destruction that triggers "rootless netns: permission denied"
+        for svc in CONTAINER_SERVICES:
+            try:
+                _docker_run(["stop", _container_name(svc)], capture_output=True)
+            except KeyboardInterrupt:
+                pass
+        print(f"{T.BOLD}{T.SUCCESS}All containers stopped cleanly. Your RAM is free!{T.RST}")
+    except Exception as e:
+        print(f"{T.ERROR}Could not tear down docker-compose stack: {e}{T.RST}")
+
+
+def wait_for_download():
+    print(f"\n{T.INFO}Waiting for download to complete before tearing down the stack...{T.RST}")
+    print(f"{T.ITALIC}(Press Ctrl+C to cancel, or Ctrl+P then Ctrl+Q to detach and run in background){T.RST}")
+
+    import helm.torrents.qbittorrent_client as qbc
+
+    # temporarily inject webui for the wait functionality
+    qb_webui = os.environ.get("QB_WEBUI", "http://qbittorrent:18080")
+    session = qbc.login_qbittorrent()
+    time.sleep(5)  # give qbittorrent time to parse the magnet metadata
+
+    try:
+        while True:
+            try:
+                r = session.get(f"{qb_webui}/api/v2/torrents/info", timeout=15)
+                if r.status_code == 200:
+                    torrents = r.json()
+                    if not torrents:
+                        time.sleep(3)
+                        continue
+
+                    all_done = True
+                    for t in torrents:
+                        progress = t.get("progress", 0.0)
+                        name = t.get("name", "Unknown")
+                        if progress < 1.0:
+                            all_done = False
+                            print(f"\r{T.WARNING}Downloading '{name[:40]}...' ({progress * 100:.1f}%) {T.RST}", end="")
+                            sys.stdout.flush()
+
+                    if all_done:
+                        print(f"\n{T.BOLD}{T.SUCCESS}Download(s) 100% complete!{T.RST}")
+                        break
+            except Exception:
+                pass
+
+            time.sleep(3)
+    except KeyboardInterrupt:
+        print(f"\n{T.ERROR}Download cancelled by user!{T.RST}")
+        print(f"{T.ITALIC}Removing unfinished torrents from qBittorrent...{T.RST}")
+        try:
+            r = session.get(f"{qb_webui}/api/v2/torrents/info", timeout=15)
+            if r.status_code == 200:
+                torrents = r.json()
+                hashes_to_delete = [t.get("hash") for t in torrents if t.get("progress", 0.0) < 1.0]
+                if hashes_to_delete:
+                    # delete torrent and downloaded data
+                    session.post(
+                        f"{qb_webui}/api/v2/torrents/delete",
+                        data={"hashes": "|".join(hashes_to_delete), "deleteFiles": "true"},
+                        timeout=15,
+                    )
+        except Exception:
+            pass
+        raise

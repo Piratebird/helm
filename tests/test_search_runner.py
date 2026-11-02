@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from helm.core.search_runner import SearchJob, run_searches
+from helm.search.search_runner import SearchJob, run_searches
 
 
 def make_plugin(tmp_path, name, body):
@@ -42,7 +42,7 @@ def test_stalled_worker_cannot_delay_process_exit(tmp_path):
     environment = os.environ.copy()
     environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
     code = """import json
-from helm.core.search_runner import SearchJob, run_searches
+from helm.search.search_runner import SearchJob, run_searches
 jobs = [SearchJob(**job) for job in json.loads(__import__('sys').argv[1])]
 result = run_searches(jobs, 'generated', timeout=1)
 print(json.dumps({'titles': [i.title for i in result], 'outcomes': [(o.source, o.status) for o in result.outcomes]}))
@@ -98,7 +98,7 @@ def test_invalid_worker_limits(timeout, workers):
 def test_keyboard_interrupt_reaps_workers(monkeypatch, tmp_path):
     import concurrent.futures
 
-    import helm.core.search_runner as runner
+    import helm.search.search_runner as runner
 
     job = make_plugin(tmp_path, "stalled", "import time\ntime.sleep(20)")
     original = concurrent.futures.Future.result
@@ -156,7 +156,7 @@ def test_windows_cleanup_uses_tree_termination(monkeypatch):
     from types import SimpleNamespace
     from unittest.mock import Mock
 
-    import helm.core.search_runner as runner
+    import helm.search.search_runner as runner
 
     process = Mock()
     process.pid = 123
@@ -177,7 +177,7 @@ def test_invalid_job_kind_reports_failure(tmp_path):
 
 
 def test_worker_limit_environment_and_explicit_override(monkeypatch):
-    from helm.core.search_runner import worker_count
+    from helm.search.search_runner import worker_count
 
     monkeypatch.setenv("HELM_LITE_WORKERS", "2")
     assert worker_count() == 2
@@ -190,7 +190,7 @@ def test_worker_limit_environment_and_explicit_override(monkeypatch):
 
 
 def test_worker_errors_reach_parent_log_with_secrets_redacted(monkeypatch, tmp_path):
-    from helm.core.logger import configure_logging
+    from helm.logger import configure_logging
 
     logs = tmp_path / "logs"
     monkeypatch.setenv("HELM_STATE_DIR", str(logs))

@@ -2,7 +2,7 @@
 
 ## Reproducible local workload (October 2026)
 
-The tested harness is [benchmark.py](../src/helm/core/benchmark.py). Its [raw samples](benchmarks/local-loopback.json) record three trials at six-worker concurrency, per-sample PSS, phase events, checksums, source SHA-256 fingerprints, the base Git revision and dirty-tree status, Python/kernel/CPU details, and whether engine overhead was included.
+The tested harness is [benchmark.py](../src/helm/benchmarks/benchmark.py). Its [raw samples](benchmarks/local-loopback.json) record three trials at six-worker concurrency, per-sample PSS, phase events, checksums, source SHA-256 fingerprints, the base Git revision and dirty-tree status, Python/kernel/CPU details, and whether engine overhead was included.
 
 Measured environment: **11th Gen Intel(R) Core(TM) i5-1135G7 @ 2.40GHz**, 8 logical CPUs, Linux kernel `7.2.11`, Python `3.14.8`, libtorrent `2.0.11.0`. These measurements were taken from an uncommitted working tree; source hashes identify the measured implementation.
 
@@ -35,7 +35,7 @@ Two workers reduced the observed peak memory at the cost of a longer fixture sea
 
 ## Production stack (November 2026)
 
-[stack_benchmark.py](../src/helm/core/stack_benchmark.py) starts Jackett, Prowlarr, qBittorrent and FlareSolverr in a disposable project, using the same image IDs on both engines. A generated indexer page is searched through Prowlarr and Jackett, then qBittorrent downloads a generated 16 MiB payload from a local seeder and its SHA-256 is verified. The raw samples are in [stack-docker.json](benchmarks/stack-docker.json) and [stack-podman.json](benchmarks/stack-podman.json).
+[stack_benchmark.py](../src/helm/benchmarks/stack_benchmark.py) starts Jackett, Prowlarr, qBittorrent and FlareSolverr in a disposable project, using the same image IDs on both engines. A generated indexer page is searched through Prowlarr and Jackett, then qBittorrent downloads a generated 16 MiB payload from a local seeder and its SHA-256 is verified. The raw samples are in [stack-docker.json](benchmarks/stack-docker.json) and [stack-podman.json](benchmarks/stack-podman.json).
 
 Each engine completed three trials. Effective cgroup limits matched the request on every service: 256 MiB and 0.5 CPU, or 512 MiB and 0.5 CPU for FlareSolverr. All containers stopped, and cleanup reported no errors.
 
@@ -51,19 +51,19 @@ Do not read these runs as a Docker-versus-Podman ranking. The engines ran one af
 The default image IDs exist only on the host that recorded them. Elsewhere, pass `--image-manifest images.json` or `--image service=reference`:
 
 ```bash
-PYTHONPATH=src python -m helm.core.stack_benchmark --engine docker --output docs/benchmarks/stack-docker.json --repeats 3
+PYTHONPATH=src python -m helm.benchmarks.stack_benchmark --engine docker --output docs/benchmarks/stack-docker.json --repeats 3
 ```
 
 ## Run the harness
 
 ```bash
 python -m pip install -e '.[dev,download]'
-PYTHONPATH=src python -m helm.core.benchmark --output docs/benchmarks/local-loopback.json --repeats 3 --search-workers 6
-PYTHONPATH=src python -m helm.core.benchmark --output docs/benchmarks/local-loopback-workers2.json --repeats 3 --search-workers 2
+PYTHONPATH=src python -m helm.benchmarks.benchmark --output docs/benchmarks/local-loopback.json --repeats 3 --search-workers 6
+PYTHONPATH=src python -m helm.benchmarks.benchmark --output docs/benchmarks/local-loopback-workers2.json --repeats 3 --search-workers 2
 
 # Optional: sample an ALREADY RUNNING stack and shared engine processes.
 # This does not start, stop, configure, or download through the attached stack.
-PYTHONPATH=src python -m helm.core.benchmark --output /tmp/helm-attached.json --engine docker --project helm --include-engine
+PYTHONPATH=src python -m helm.benchmarks.benchmark --output /tmp/helm-attached.json --engine docker --project helm --include-engine
 
 python -m pytest tests/test_benchmark.py tests/test_search_runner.py tests/test_scraper_fixtures.py -q
 ```

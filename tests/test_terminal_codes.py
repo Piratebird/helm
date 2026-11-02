@@ -8,8 +8,10 @@ from types import SimpleNamespace
 import pytest
 
 import helm.cli
-from helm.core.settings import FIELDS
-from helm.ui.ansi import CONTROLS, Terminal, sgr
+import helm.cli.deps
+from helm.cli.commands import banner as banner_command
+from helm.config.settings import FIELDS
+from helm.ui.ansi import CONTROLS, T, Terminal, sgr
 from helm.ui.banner import LOGOS
 from helm.ui.theme import PRESETS
 
@@ -24,9 +26,9 @@ def home(tmp_path, monkeypatch):
     (tmp_path / "config").mkdir()
     for key in {field.env for field in FIELDS if field.env} | {"NO_COLOR", "FORCE_COLOR"}:
         monkeypatch.delenv(key, raising=False)
-    helm.cli.T.reset()
+    T.reset()
     yield tmp_path
-    helm.cli.T.reset()
+    T.reset()
 
 
 class Tty(io.StringIO):
@@ -114,9 +116,9 @@ def items():
 def test_json_stdout_stays_pure_with_colours_forced(home, monkeypatch, capsys, found):
     monkeypatch.setenv("FORCE_COLOR", "1")
     monkeypatch.setenv("JACKETT_API_KEY", "testkey")
-    monkeypatch.setattr(helm.cli, "ensure_config", lambda: None)
+    monkeypatch.setattr(helm.cli.deps, "ensure_config", lambda: None)
     monkeypatch.setattr(
-        helm.cli,
+        helm.cli.deps,
         "animated_search",
         lambda query, content_type, lite_mode=False, show_spinner=True: (items() if found else [], True),
     )
@@ -140,7 +142,7 @@ def args(**values):
 
 def test_ui_header_shows_banner_when_enabled(home, capsys):
     (home / "config" / "config.toml").write_text('[banner]\nmodules = ["mode"]\n')
-    helm.cli._print_header(args(lite=True), "THE HELM - Torrent automation MVP")
+    banner_command.print_header(args(lite=True), "THE HELM - Torrent automation MVP")
     out = capsys.readouterr().out
     assert LOGOS["helm"][0] in out
     assert re.search(r"Mode\s+lite", out)
@@ -150,7 +152,7 @@ def test_ui_header_shows_banner_when_enabled(home, capsys):
 
 def test_ui_header_shows_plain_wordmark_when_disabled(home, capsys):
     (home / "config" / "config.toml").write_text("[banner]\nenabled = false\n")
-    helm.cli._print_header(args(oneshot=True), "subtitle")
+    banner_command.print_header(args(oneshot=True), "subtitle")
     out = capsys.readouterr().out
     assert LOGOS["helm"][0] in out
     assert "Mode" not in out
@@ -158,6 +160,6 @@ def test_ui_header_shows_plain_wordmark_when_disabled(home, capsys):
 
 
 def test_banner_mode_context(home):
-    assert helm.cli._banner_context(args(lite=True)) == {"mode": "lite"}
-    assert helm.cli._banner_context(args(oneshot=True)) == {"mode": "one-shot"}
-    assert helm.cli._banner_context(args()) == {}
+    assert banner_command.banner_context(args(lite=True)) == {"mode": "lite"}
+    assert banner_command.banner_context(args(oneshot=True)) == {"mode": "one-shot"}
+    assert banner_command.banner_context(args()) == {}

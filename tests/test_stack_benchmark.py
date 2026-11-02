@@ -12,8 +12,8 @@ import pytest
 import requests
 import responses
 
-import helm.core.stack_benchmark as stack_benchmark
-from helm.core.stack_benchmark import (
+import helm.benchmarks.stack_benchmark as stack_benchmark
+from helm.benchmarks.stack_benchmark import (
     DEFAULT_IMAGES,
     Stack,
     cgroup_path,
@@ -23,7 +23,7 @@ from helm.core.stack_benchmark import (
     scrub_logs,
     verify_limits,
 )
-from helm.core.torrent_links import metadata_source
+from helm.torrents.torrent_links import metadata_source
 
 
 def test_default_images_cover_every_service():

@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from helpers import retrieve_url, validate_html
 from novaprinter import prettyPrinter, report_error
 
-from helm.core.logger import get_logger
+from helm.logger import get_logger
 
 logger = get_logger(__name__)
 

@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../s
 
 import novaprinter  # noqa: E402
 
-from helm.core.lite_plugin_loader import run_plugins  # noqa: E402
+from helm.search.lite_plugin_loader import run_plugins  # noqa: E402
 
 # A dummy plugin script mimicking a qBittorrent plugin
 DUMMY_PLUGIN_CODE = """
@@ -114,7 +114,7 @@ def test_run_plugins_does_not_leak_between_runs(plugin_dir):
 def test_reused_worker_keeps_previous_plugin_results():
     from concurrent.futures import ThreadPoolExecutor
 
-    from helm.core.lite_plugin_loader import _execute_plugin
+    from helm.search.lite_plugin_loader import _execute_plugin
 
     class Plugin:
         def search(self, query):
@@ -132,7 +132,7 @@ def test_plugin_error_retains_partial_results_and_outcome():
 
     import requests
 
-    from helm.core.lite_plugin_loader import _execute_plugin
+    from helm.search.lite_plugin_loader import _execute_plugin
 
     class Plugin:
         name = "Partial"

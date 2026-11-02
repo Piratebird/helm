@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from helm.core.settings import BY_PATH, COLOR_NAMES, FIELDS, HEX_COLOR, THEMES, Settings, check
+from helm.config.settings import BY_PATH, COLOR_NAMES, FIELDS, HEX_COLOR, THEMES, Settings, check
 from helm.ui.ansi import color_enabled, render_banner, sgr, visible_width
 from helm.ui.banner import (
     LOGOS,
@@ -256,7 +256,7 @@ def test_mode_follows_context_and_manager(home):
 
 
 def test_jobs_module_counts_active_jobs(home):
-    from helm.core.jobs import JobStore
+    from helm.services.jobs import JobStore
 
     store = JobStore()
     magnets = [f"magnet:?xt=urn:btih:{str(index) * 40}" for index in range(4)]

@@ -64,7 +64,7 @@ def wait_for_health(port, timeout=20):
 def test_heavy_modules_stay_out_of_light_commands(environment):
     code = (
         "import sys, helm.cli\n"
-        "print(sorted(m for m in ('requests', 'bs4', 'helm.ui.tui', 'helm.core.config_wizard') if m in sys.modules))"
+        "print(sorted(m for m in ('requests', 'bs4', 'helm.ui.tui', 'helm.config.config_wizard') if m in sys.modules))"
     )
     result = subprocess.run([sys.executable, "-c", code], env=environment, capture_output=True, text=True, check=True)
     assert result.stdout.strip() == "[]"

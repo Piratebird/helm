@@ -3,15 +3,15 @@ import asyncio
 import pytest
 import responses
 
-from helm.core.lite_fetcher import search_all_plugins, search_lite
+from helm.search.lite_fetcher import search_all_plugins, search_lite
 
 
 @pytest.fixture(autouse=True)
 def inline_sources_in_process(monkeypatch):
     # Parsing/HTTP unit tests execute synchronously; subprocess behavior has its
     # own integration tests with real workers and disposable fixture plugins.
-    from helm.core import lite_plugin_loader, search_runner
-    from helm.core.rss_fetcher import SearchResults
+    from helm.search import lite_plugin_loader, search_runner
+    from helm.search.rss_fetcher import SearchResults
 
     monkeypatch.setattr(lite_plugin_loader, "plugin_jobs", lambda directories: [])
 
@@ -61,7 +61,7 @@ CSV_ITEM = {
 
 @responses.activate
 def test_search_lite_aggregates_all_sources(monkeypatch):
-    monkeypatch.setattr("helm.core.lite_plugin_loader.run_plugins", lambda query, dirs: [])
+    monkeypatch.setattr("helm.search.lite_plugin_loader.run_plugins", lambda query, dirs: [])
 
     responses.add(
         responses.GET,
@@ -101,10 +101,10 @@ def test_search_lite_aggregates_all_sources(monkeypatch):
 
 
 def test_search_all_plugins_delegates_to_search_lite(monkeypatch):
-    from helm.core.rss_fetcher import TorrentItem
+    from helm.search.rss_fetcher import TorrentItem
 
     item = TorrentItem("Ubuntu 24.04 ISO", "magnet:?xt=urn:btih:cafe", 42, 7, 999)
-    monkeypatch.setattr("helm.core.lite_fetcher.search_lite", lambda query, content_type: [item])
+    monkeypatch.setattr("helm.search.lite_fetcher.search_lite", lambda query, content_type: [item])
 
     result = asyncio.run(search_all_plugins("ubuntu", "video"))
 
@@ -115,13 +115,15 @@ def test_search_lite_rejects_empty_queries_without_network(monkeypatch):
     def unexpected_search(query, content_type):
         raise AssertionError("Blank queries must not reach sources")
 
-    monkeypatch.setattr("helm.core.lite_fetcher._collect_all", unexpected_search)
+    monkeypatch.setattr("helm.search.lite_fetcher._collect_all", unexpected_search)
     assert search_lite("  \t\n") == []
 
 
 def test_search_lite_trims_query(monkeypatch):
     queries = []
-    monkeypatch.setattr("helm.core.lite_fetcher._collect_all", lambda query, content_type: queries.append(query) or [])
+    monkeypatch.setattr(
+        "helm.search.lite_fetcher._collect_all", lambda query, content_type: queries.append(query) or []
+    )
     assert search_lite("  ubuntu  ") == []
     assert queries == ["ubuntu"]
 
@@ -130,7 +132,7 @@ def test_search_lite_trims_query(monkeypatch):
 def test_nyaa_timeout_preserves_other_source_results(monkeypatch):
     import requests
 
-    monkeypatch.setattr("helm.core.lite_plugin_loader.run_plugins", lambda query, dirs: [])
+    monkeypatch.setattr("helm.search.lite_plugin_loader.run_plugins", lambda query, dirs: [])
     responses.add(responses.GET, "https://apibay.org/q.php", json=[APITBAY_ITEM])
     responses.add(responses.GET, "https://torrents-csv.com/service/search", json={"torrents": [CSV_ITEM]})
     responses.add(responses.GET, "https://nyaa.si/", body=requests.exceptions.ConnectTimeout("Nyaa timed out"))
@@ -139,7 +141,7 @@ def test_nyaa_timeout_preserves_other_source_results(monkeypatch):
 
 
 def test_search_uses_one_budget_for_inline_and_plugin_jobs(monkeypatch):
-    from helm.core import lite_plugin_loader, search_runner
+    from helm.search import lite_plugin_loader, search_runner
 
     jobs_seen = []
     plugin = search_runner.SearchJob("Fixture", "plugin", "fixture.py")
@@ -161,7 +163,7 @@ def test_search_uses_one_budget_for_inline_and_plugin_jobs(monkeypatch):
 def test_search_outcomes_distinguish_source_failures(monkeypatch):
     import requests
 
-    monkeypatch.setattr("helm.core.lite_plugin_loader.run_plugins", lambda query, dirs: [])
+    monkeypatch.setattr("helm.search.lite_plugin_loader.run_plugins", lambda query, dirs: [])
     responses.add(responses.GET, "https://apibay.org/q.php", json=[])
     responses.add(responses.GET, "https://torrents-csv.com/service/search", status=503)
     responses.add(responses.GET, "https://nyaa.si/", body=requests.exceptions.ConnectTimeout("private URL"))
@@ -176,7 +178,7 @@ def test_search_outcomes_distinguish_source_failures(monkeypatch):
 
 @responses.activate
 def test_parse_failure_keeps_successful_sources_and_counts(monkeypatch):
-    monkeypatch.setattr("helm.core.lite_plugin_loader.run_plugins", lambda query, dirs: [])
+    monkeypatch.setattr("helm.search.lite_plugin_loader.run_plugins", lambda query, dirs: [])
     responses.add(responses.GET, "https://apibay.org/q.php", json=[APITBAY_ITEM])
     responses.add(responses.GET, "https://torrents-csv.com/service/search", body="not-json")
     responses.add(responses.GET, "https://nyaa.si/", body="broken XML")
@@ -190,8 +192,8 @@ def test_parse_failure_keeps_successful_sources_and_counts(monkeypatch):
 
 
 def test_search_outcomes_do_not_leak_between_calls(monkeypatch):
-    from helm.core import lite_fetcher
-    from helm.core.rss_fetcher import SearchResults, SourceOutcome
+    from helm.search import lite_fetcher
+    from helm.search.rss_fetcher import SearchResults, SourceOutcome
 
     monkeypatch.setattr(
         lite_fetcher, "_fetch_apibay", lambda query: SearchResults([], [SourceOutcome("Apibay", query)])

@@ -131,7 +131,7 @@ class Terminal:
         self._codes = None
 
     def _build(self):
-        from helm.core.settings import COLOR_NAMES, ConfigError, Settings, load_settings
+        from helm.config.settings import COLOR_NAMES, ConfigError, Settings, load_settings
         from helm.ui.theme import load_theme
 
         try:

@@ -1,4 +1,4 @@
-from helm.core.http import get_shared_session
+from helm.net.http import get_shared_session
 
 
 def retrieve_url(url, request_data=None):

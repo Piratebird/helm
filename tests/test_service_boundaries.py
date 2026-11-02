@@ -9,11 +9,11 @@ from types import SimpleNamespace
 
 import pytest
 
-import helm.core.config_wizard as wizard
-import helm.core.oneshot as oneshot
-from helm.core.config_manager import get_state_dir
-from helm.core.secret_manager import get_secret
-from helm.core.settings import load_settings, remember
+import helm.config.config_wizard as wizard
+import helm.stack.oneshot as oneshot
+from helm.config.config_manager import get_state_dir
+from helm.config.secret_manager import get_secret
+from helm.config.settings import load_settings, remember
 
 
 def install_engine(tmp_path, monkeypatch, status):

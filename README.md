@@ -127,7 +127,7 @@ The script will guide you through:
 2. Choosing your run mode (Ephemeral vs Permanent)
 3. Setting up a VPN (optional)
 
-`setup.sh` only handles the host: the container engine, native installs and the optional systemd unit. It then pulls `ghcr.io/piratebird/helm` and runs `helm-torrent init` inside it, with the engine socket and your directories mounted at the same paths, so the files it writes are owned by you. `init` writes `docker-compose.yml` in the current directory from `src/helm/core/compose.template.yml`, writes `state/.env.docker` with mode `0600` (including `INDEXER_MANAGER` for the containers), reads the Jackett and Prowlarr API keys, and creates the `helm-torrent.sh` launcher in one-shot mode. The CLI container gets your config directory, so `config.toml` and `config.jsonc` work there too. Set `COMPOSE_PROJECT_NAME` to change the container name prefix (default `helm`), `HELM_IMAGE` to use another image, or `HELM_SETUP_RUNNER=helm-torrent` to run `init` on the host instead of in the image.
+`setup.sh` only handles the host: the container engine, native installs and the optional systemd unit. It then pulls `ghcr.io/piratebird/helm` and runs `helm-torrent init` inside it, with the engine socket and your directories mounted at the same paths, so the files it writes are owned by you. `init` writes `docker-compose.yml` in the current directory from `src/helm/stack/compose.template.yml`, writes `state/.env.docker` with mode `0600` (including `INDEXER_MANAGER` for the containers), reads the Jackett and Prowlarr API keys, and creates the `helm-torrent.sh` launcher in one-shot mode. The CLI container gets your config directory, so `config.toml` and `config.jsonc` work there too. Set `COMPOSE_PROJECT_NAME` to change the container name prefix (default `helm`), `HELM_IMAGE` to use another image, or `HELM_SETUP_RUNNER=helm-torrent` to run `init` on the host instead of in the image.
 
 <br>
 
@@ -304,7 +304,7 @@ Host downloads, user plugins, source files, images, and Kubernetes Helm configur
 
 The generated Compose configuration declares per-service CPU and memory limits. Enforcement depends on the container engine and host cgroup configuration; verify the limits on your deployment. One-shot mode stops service containers after use, while the container engine, filesystem cache, and other host processes may remain active.
 
-The [resource benchmark report](docs/BENCHMARK.md) includes a tested harness, raw PSS samples, and three verified local search/download trials at each of two concurrency settings. It separates these measurements from unverified historical container figures. Run `python -m helm.core.benchmark --help` for reproduction options.
+The [resource benchmark report](docs/BENCHMARK.md) includes a tested harness, raw PSS samples, and three verified local search/download trials at each of two concurrency settings. It separates these measurements from unverified historical container figures. Run `python -m helm.benchmarks.benchmark --help` for reproduction options.
 
 ## Disclaimer
 

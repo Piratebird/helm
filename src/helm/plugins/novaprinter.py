@@ -1,7 +1,7 @@
 import threading
 from typing import List
 
-from helm.core.rss_fetcher import TorrentItem, source_status
+from helm.search.rss_fetcher import TorrentItem, source_status
 
 
 class _ThreadLocalResults(threading.local):

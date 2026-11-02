@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from helm.core import settings as settings_module
-from helm.core.secret_manager import get_secret
-from helm.core.settings import (
+from helm.config import settings as settings_module
+from helm.config.secret_manager import get_secret
+from helm.config.settings import (
     BY_PATH,
     FIELDS,
     ConfigError,
@@ -455,7 +455,7 @@ def test_config_worker_count_reaches_the_process(config_dir):
     ],
 )
 def test_banner_and_theme_values_are_accepted(path, value, expected):
-    from helm.core.settings import check
+    from helm.config.settings import check
 
     assert check(BY_PATH[path], value) == expected
 
@@ -481,7 +481,7 @@ def test_banner_and_theme_values_are_accepted(path, value, expected):
     ],
 )
 def test_banner_and_theme_values_are_rejected(path, value, message):
-    from helm.core.settings import check
+    from helm.config.settings import check
 
     with pytest.raises(ValueError, match=message):
         check(BY_PATH[path], value)

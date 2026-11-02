@@ -7,7 +7,7 @@ import pytest
 import requests
 import responses
 
-from helm.core.lite_plugin_loader import _execute_plugin, load_plugin, plugin_categories
+from helm.search.lite_plugin_loader import _execute_plugin, load_plugin, plugin_categories
 
 PLUGIN_DIR = Path(__file__).resolve().parents[1] / "src" / "helm" / "plugins"
 sys.path.insert(0, str(PLUGIN_DIR))
@@ -132,7 +132,7 @@ def test_loader_passes_category_keys_and_avoids_duplicate_all():
 
 @responses.activate
 def test_unknown_subsplease_seeders_survive_filter():
-    from helm.core.torrent_filter import filter_items
+    from helm.search.torrent_filter import filter_items
 
     plugin = load_plugin(str(PLUGIN_DIR / "subsplease.py"))
     responses.add(
@@ -150,7 +150,7 @@ def test_unknown_subsplease_seeders_survive_filter():
 def test_http_sessions_are_reused_per_thread_but_not_shared():
     import threading
 
-    from helm.core.http import get_shared_session
+    from helm.net.http import get_shared_session
 
     main = get_shared_session()
     assert main is get_shared_session()
