@@ -127,6 +127,8 @@ The script will guide you through:
 2. Choosing your run mode (Ephemeral vs Permanent)
 3. Setting up a VPN (optional)
 
+It writes `docker-compose.yml` in the current directory from `src/helm/core/compose.template.yml`, the same template `helm-torrent init` uses. From a checkout the local template is used; the curl one-liner downloads it from the same branch (set `HELM_REF` to pick another). It also writes `state/.env.docker` with mode `0600`, including `INDEXER_MANAGER` for the containers, and mounts your config directory into the CLI container, so `config.toml` and `config.jsonc` work there too. Set `COMPOSE_PROJECT_NAME` before running it to change the container name prefix (default `helm`).
+
 <br>
 
 ## Why this exists

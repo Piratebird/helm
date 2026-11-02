@@ -2,148 +2,23 @@ import os
 import subprocess
 import time
 
+from helm.core import compose
 from helm.core.config_manager import get_config_dir, get_dl_dir, get_state_dir
 
-DOCKER_COMPOSE_BASE = """
-services:
-  jackett:
-    container_name: "{project_name}-jackett"
-    image: lscr.io/linuxserver/jackett:latest
-    deploy:
-      resources:
-        limits:
-          cpus: "0.50"
-          memory: 256M
-    labels:
-      - "com.docker.compose.project={project_name}"
-      - "com.docker.compose.service=jackett"
-      - "com.docker.compose.oneoff=False"
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Etc/UTC
-    security_opt:
-      - label=disable
-    volumes:
-      - "{state_dir}/jackett:/config"
-      - "{dl_dir}:/downloads"
-    ports:
-      - 19117:9117
-    restart: unless-stopped
 
-  flaresolverr:
-    container_name: "{project_name}-flaresolverr"
-    image: ghcr.io/flaresolverr/flaresolverr:latest
-    deploy:
-      resources:
-        limits:
-          cpus: "0.50"
-          memory: 512M
-    labels:
-      - "com.docker.compose.project={project_name}"
-      - "com.docker.compose.service=flaresolverr"
-      - "com.docker.compose.oneoff=False"
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
-    environment:
-      - LOG_LEVEL=info
-      - TZ=Etc/UTC
-    security_opt:
-      - label=disable
-    ports:
-      - 18191:8191
-    restart: unless-stopped
-"""
+def build_compose(state_dir, dl_dir, config_dir, use_vpn):
+    """Render the shared compose template without the setup.sh-only cli service."""
+    blocks = {"jackett", "prowlarr", "vpn" if use_vpn else "novpn"}
+    values = {"HELM_STATE": state_dir, "HELM_DL": dl_dir, "HELM_CONFIG": config_dir, "ENGINE_SOCKET": ""}
+    return compose.render(blocks, values)
 
-QBITTORRENT_BASE = """
-  qbittorrent:
-    container_name: "{project_name}-qbittorrent"
-    image: lscr.io/linuxserver/qbittorrent:latest
-    deploy:
-      resources:
-        limits:
-          cpus: "0.50"
-          memory: 256M
-    labels:
-      - "com.docker.compose.project={project_name}"
-      - "com.docker.compose.service=qbittorrent"
-      - "com.docker.compose.oneoff=False"
-    {network_settings}
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Etc/UTC
-      - WEBUI_PORT=18080
-    security_opt:
-      - label=disable
-    volumes:
-      - "{state_dir}/qbittorrent:/config"
-      - "{dl_dir}:/downloads"
-    {depends_on}
-    {ports}
-    restart: unless-stopped
-"""
 
-GLUETUN_BASE = """
-  gluetun:
-    container_name: "{project_name}-gluetun"
-    image: qmcgaw/gluetun:latest
-    deploy:
-      resources:
-        limits:
-          cpus: "0.25"
-          memory: 128M
-    labels:
-      - "com.docker.compose.project={project_name}"
-      - "com.docker.compose.service=gluetun"
-      - "com.docker.compose.oneoff=False"
-    cap_add:
-      - NET_ADMIN
-    devices:
-      - /dev/net/tun:/dev/net/tun
-    env_file:
-      - "{state_dir}/.env.docker"
-    volumes:
-      - "{state_dir}/gluetun:/gluetun"
-    ports:
-      - 18080:8080
-      - 6881:6881
-      - 6881:6881/udp
-    restart: unless-stopped
-"""
-
-PROWLARR_BASE = """
-  prowlarr:
-    container_name: "{project_name}-prowlarr"
-    image: lscr.io/linuxserver/prowlarr:latest
-    deploy:
-      resources:
-        limits:
-          cpus: "0.50"
-          memory: 256M
-    labels:
-      - "com.docker.compose.project={project_name}"
-      - "com.docker.compose.service=prowlarr"
-      - "com.docker.compose.oneoff=False"
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Etc/UTC
-    security_opt:
-      - label=disable
-    volumes:
-      - "{state_dir}/prowlarr:/config"
-    ports:
-      - 19696:9696
-    restart: unless-stopped
-"""
+def write_private(path, text):
+    """Write a file only the user can read; .env.docker holds passwords."""
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(descriptor, "w") as handle:
+        handle.write(text)
+    os.chmod(path, 0o600)
 
 
 def bootstrap_env():
@@ -195,27 +70,7 @@ def bootstrap_env():
             ovpn_pass = input("Enter OpenVPN Password (leave blank if using token): ").strip()
             vpn_extra = f"OPENVPN_USER={ovpn_user}\nOPENVPN_PASSWORD={ovpn_pass}"
 
-    compose_yaml = DOCKER_COMPOSE_BASE.format(project_name=project_name, state_dir=state_dir, dl_dir=dl_dir)
-    compose_yaml += PROWLARR_BASE.format(project_name=project_name, state_dir=state_dir)
-
-    if use_vpn == "y":
-        compose_yaml += GLUETUN_BASE.format(project_name=project_name, state_dir=state_dir)
-        qb_network = 'network_mode: "service:gluetun"'
-        qb_depends = "depends_on:\n      - gluetun"
-        qb_ports = ""
-    else:
-        qb_network = ""
-        qb_depends = ""
-        qb_ports = "ports:\n      - 18080:18080\n      - 6881:6881\n      - 6881:6881/udp"
-
-    compose_yaml += QBITTORRENT_BASE.format(
-        project_name=project_name,
-        state_dir=state_dir,
-        dl_dir=dl_dir,
-        network_settings=qb_network,
-        depends_on=qb_depends,
-        ports=qb_ports,
-    )
+    compose_yaml = build_compose(state_dir, dl_dir, config_dir, use_vpn == "y")
 
     compose_path = os.path.join(state_dir, "docker-compose.yml")
     with open(compose_path, "w") as f:
@@ -226,7 +81,7 @@ JACKETT_URL=http://jackett:9117
 JACKETT_API_KEY=placeholder
 PROWLARR_URL=http://prowlarr:9696
 PROWLARR_API_KEY=placeholder
-QB_WEBUI=http://qbittorrent:18080
+QB_WEBUI=http://{"gluetun" if use_vpn == "y" else "qbittorrent"}:18080
 QB_USERNAME=admin
 QB_PASSWORD=adminadmin
 COMPOSE_PROJECT_NAME={project_name}
@@ -239,8 +94,7 @@ VPN_SERVICE_PROVIDER={vpn_provider}
 VPN_TYPE={vpn_type}
 {vpn_extra}
 """
-    with open(os.path.join(state_dir, ".env.docker"), "w") as f:
-        f.write(env_docker_content)
+    write_private(os.path.join(state_dir, ".env.docker"), env_docker_content)
 
     print("\nPre-seeding qBittorrent configuration...")
     qb_conf = """[Preferences]
@@ -278,8 +132,7 @@ WebUI\\LocalHostAuth=false
 
     if jackett_api:
         env_docker_content = env_docker_content.replace("JACKETT_API_KEY=placeholder", f"JACKETT_API_KEY={jackett_api}")
-        with open(os.path.join(state_dir, ".env.docker"), "w") as f:
-            f.write(env_docker_content)
+        write_private(os.path.join(state_dir, ".env.docker"), env_docker_content)
         print("[+] Successfully grabbed Jackett API Key.")
 
     prowlarr_api = ""
@@ -298,8 +151,7 @@ WebUI\\LocalHostAuth=false
         env_docker_content = env_docker_content.replace(
             "PROWLARR_API_KEY=placeholder", f"PROWLARR_API_KEY={prowlarr_api}"
         )
-        with open(os.path.join(state_dir, ".env.docker"), "w") as f:
-            f.write(env_docker_content)
+        write_private(os.path.join(state_dir, ".env.docker"), env_docker_content)
         print("[+] Successfully grabbed Prowlarr API Key.")
 
     print("\n[INFO] Auto-configuring default Prowlarr indexers...")

@@ -28,6 +28,7 @@ download = ["libtorrent>=2.0.0,<2.1.0"]
 dev = [
     "pytest",
     "pytest-cov",
+    "pyyaml",
     "responses",
     "types-requests"
 ]
@@ -40,6 +41,9 @@ helm-torrent = "helm.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"helm.core" = ["compose.template.yml"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

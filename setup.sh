@@ -1,309 +1,384 @@
 #!/usr/bin/env bash
+#
+# Helm setup: installs the services Helm uses (Jackett and/or Prowlarr,
+# qBittorrent, FlareSolverr) with Docker, Podman, or natively.
+#
+#   ./setup.sh [--skip-prompts] [--config-dir DIR] [--state-dir DIR] [--downloads-dir DIR]
+#   bash <(curl -sL https://raw.githubusercontent.com/Piratebird/helm/main/setup.sh)
+#
+# The compose file comes from src/helm/core/compose.template.yml, the same
+# template `helm-torrent init` uses. From a checkout the local copy is used;
+# otherwise it is downloaded from the same branch.
 
-# Exit immediately if a command exits with a non-zero status
-set -e
-# Catch errors in piped commands (e.g., command1 | command2)
-set -o pipefail
+set -eo pipefail
 
-OS="$(uname -s)"
-case "${OS}" in
-    Darwin*)
-        DEFAULT_CONFIG="$HOME/Library/Application Support/helm"
-        DEFAULT_STATE="$HOME/Library/Application Support/helm/state"
-        ;;
-    MINGW*|CYGWIN*|MSYS*)
-        DEFAULT_CONFIG="${APPDATA:-$HOME/AppData/Roaming}/helm"
-        DEFAULT_STATE="${LOCALAPPDATA:-$HOME/AppData/Local}/helm"
-        ;;
-    *)
-        DEFAULT_CONFIG="$HOME/.config/helm"
-        DEFAULT_STATE="$HOME/.local/state/helm"
-        ;;
-esac
+HELM_IMAGE="ghcr.io/piratebird/helm:latest"
+HELM_RAW_BASE="${HELM_RAW_BASE:-https://raw.githubusercontent.com/Piratebird/helm/${HELM_REF:-main}}"
+TEMPLATE_PATH_IN_REPO="src/helm/core/compose.template.yml"
+SETUP_TIMEOUT="${HELM_SETUP_TIMEOUT:-45}"
+SETUP_POLL="${HELM_SETUP_POLL:-5}"
+KEY_TRIES="${HELM_SETUP_KEY_TRIES:-15}"
+KEY_POLL="${HELM_SETUP_KEY_POLL:-3}"
 
-HELM_CONFIG="${DEFAULT_CONFIG}"
-HELM_STATE="${DEFAULT_STATE}"
-HELM_DL="$HOME/Downloads/helm"
+# Answers, set by ask() through printf -v.
+install_mode="" indexer_mode="" run_mode="" qb_user="" use_vpn=""
+vpn_provider="" vpn_type="" vpn_extra=""
 
-while [[ $# -gt 0 ]]; do
-  case $1 in
-    --config-dir)
-      HELM_CONFIG="$2"
-      shift 2
-      ;;
-    --state-dir)
-      HELM_STATE="$2"
-      shift 2
-      ;;
-    --downloads-dir)
-      HELM_DL="$2"
-      shift 2
-      ;;
-    --skip-prompts)
-      SKIP_PROMPTS=1
-      shift
-      ;;
-    --help)
-      echo "Usage: ./setup.sh [OPTIONS]"
-      echo "Options:"
-      echo "  --config-dir <path>       Set configuration directory (default: OS native config path)"
-      echo "  --state-dir <path>        Set state directory (default: OS native state path)"
-      echo "  --downloads-dir <path>    Set downloads directory (default: ~/Downloads/helm)"
-      echo "  --skip-prompts            Run silently with default values"
-      exit 0
-      ;;
-    *)
-      echo "Unknown option: $1"
-      exit 1
-      ;;
-  esac
-done
+# ---------------------------------------------------------------- output
 
-echo "Using paths:"
-echo "  Config:    $HELM_CONFIG"
-echo "  State:     $HELM_STATE"
-echo "  Downloads: $HELM_DL"
-echo ""
+setup_colours() {
+    C_RED="" C_GREEN="" C_YELLOW="" C_CYAN="" C_BOLD="" C_RST=""
+    if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+        C_RED=$'\033[31m' C_GREEN=$'\033[32m' C_YELLOW=$'\033[33m'
+        C_CYAN=$'\033[36m' C_BOLD=$'\033[1m' C_RST=$'\033[0m'
+    fi
+}
 
-echo "==========================================="
-echo "        Helm Application Setup Script      "
-echo "==========================================="
-echo ""
+say()   { printf '%s\n' "$*"; }
+info()  { printf '%s[INFO]%s %s\n' "$C_CYAN" "$C_RST" "$*"; }
+ok()    { printf '%s[OK]%s %s\n' "$C_GREEN" "$C_RST" "$*"; }
+warn()  { printf '%s[WARN]%s %s\n' "$C_YELLOW" "$C_RST" "$*" >&2; }
+error() { printf '%s[ERROR]%s %s\n' "$C_RED" "$C_RST" "$*" >&2; }
+die()   { error "$@"; exit 1; }
+rule()  { say "==========================================="; }
 
-if [ -n "$SKIP_PROMPTS" ]; then
-    install_mode=1
-else
-    echo "How would you like to install the required services (Jackett/Prowlarr & qBittorrent)?"
-    echo "  [1] Docker (Recommended) - Uses standard docker-compose, isolates dependencies."
-    echo "  [2] Podman               - Daemonless, rootless containers for lower memory overhead."
-    echo "  [3] Native               - Installs directly to your OS (/opt/Jackett & /usr/bin/qbittorrent). Highest performance but clutters OS."
-    read -r -p "Choose your installation method (1/2/3, default 1): " install_mode
-    install_mode=${install_mode:-1}
-    echo ""
-fi
+# ask VAR PROMPT DEFAULT [DEFAULT_WITH_SKIP_PROMPTS]
+ask() {
+    local __var=$1 __prompt=$2 __default=$3 __reply=""
+    if [ -n "$SKIP_PROMPTS" ]; then
+        __reply="${4-$__default}"
+    else
+        read -r -p "$__prompt" __reply || true
+        __reply="${__reply:-$__default}"
+    fi
+    printf -v "$__var" '%s' "$__reply"
+}
 
-if [ -n "$SKIP_PROMPTS" ]; then
-    indexer_mode=3
-else
-    echo "Which indexer manager would you like to use?"
-    echo "  [1] Jackett (Default) - Stable, battle-tested."
-    echo "  [2] Prowlarr (BETA)   - Modern UI, becoming the standard."
-    echo "  [3] Both              - Run both Jackett and Prowlarr simultaneously."
-    read -r -p "Choose your indexer manager (1/2/3, default 1): " indexer_mode
-    indexer_mode=${indexer_mode:-1}
-    echo ""
-fi
+ask_secret() {
+    local __var=$1 __prompt=$2 __reply=""
+    if [ -z "$SKIP_PROMPTS" ]; then
+        read -r -s -p "$__prompt" __reply || true
+        say ""
+    fi
+    printf -v "$__var" '%s' "$__reply"
+}
 
+is_yes() { [[ "$1" =~ ^[Yy]$ ]]; }
+
+# ---------------------------------------------------------------- arguments
+
+default_paths() {
+    case "$(uname -s)" in
+        Darwin*)
+            HELM_CONFIG="$HOME/Library/Application Support/helm"
+            HELM_STATE="$HOME/Library/Application Support/helm/state"
+            ;;
+        MINGW*|CYGWIN*|MSYS*)
+            HELM_CONFIG="${APPDATA:-$HOME/AppData/Roaming}/helm"
+            HELM_STATE="${LOCALAPPDATA:-$HOME/AppData/Local}/helm"
+            ;;
+        *)
+            HELM_CONFIG="$HOME/.config/helm"
+            HELM_STATE="$HOME/.local/state/helm"
+            ;;
+    esac
+    HELM_DL="$HOME/Downloads/helm"
+}
+
+usage() {
+    cat <<'EOF'
+Usage: ./setup.sh [OPTIONS]
+Options:
+  --config-dir <path>       Set configuration directory (default: OS native config path)
+  --state-dir <path>        Set state directory (default: OS native state path)
+  --downloads-dir <path>    Set downloads directory (default: ~/Downloads/helm)
+  --skip-prompts            Run silently with default values
+EOF
+}
+
+parse_args() {
+    SKIP_PROMPTS=""
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --config-dir|--state-dir|--downloads-dir)
+                [[ $# -ge 2 ]] || die "$1 needs a path"
+                case $1 in
+                    --config-dir) HELM_CONFIG="$2" ;;
+                    --state-dir) HELM_STATE="$2" ;;
+                    --downloads-dir) HELM_DL="$2" ;;
+                esac
+                shift 2
+                ;;
+            --skip-prompts) SKIP_PROMPTS=1; shift ;;
+            --help|-h) usage; exit 0 ;;
+            *) usage >&2; die "Unknown option: $1" ;;
+        esac
+    done
+    local name value
+    for name in HELM_CONFIG HELM_STATE HELM_DL; do
+        value="${!name}"
+        if [[ "$value" == *'"'* || "$value" == *$'\n'* ]]; then
+            die "$name cannot contain quotes or line breaks: $value"
+        fi
+    done
+}
+
+# ---------------------------------------------------------------- choices
+
+choose_install() {
+    if [ -z "$SKIP_PROMPTS" ]; then
+        say "How would you like to install the required services (Jackett/Prowlarr & qBittorrent)?"
+        say "  [1] Docker (Recommended) - Uses standard docker-compose, isolates dependencies."
+        say "  [2] Podman               - Daemonless, rootless containers for lower memory overhead."
+        say "  [3] Native               - Installs directly to your OS (/opt/Jackett & /usr/bin/qbittorrent). Highest performance but clutters OS."
+    fi
+    ask install_mode "Choose your installation method (1/2/3, default 1): " 1
+    [ -n "$SKIP_PROMPTS" ] || say ""
+
+    if [ -z "$SKIP_PROMPTS" ]; then
+        say "Which indexer manager would you like to use?"
+        say "  [1] Jackett (Default) - Stable, battle-tested."
+        say "  [2] Prowlarr (BETA)   - Modern UI, becoming the standard."
+        say "  [3] Both              - Run both Jackett and Prowlarr simultaneously."
+    fi
+    ask indexer_mode "Choose your indexer manager (1/2/3, default 1): " 1 3
+    [ -n "$SKIP_PROMPTS" ] || say ""
+
+    case "$indexer_mode" in
+        2) INDEXER_MANAGER="prowlarr" ;;
+        3) INDEXER_MANAGER="both" ;;
+        *) indexer_mode=1; INDEXER_MANAGER="jackett" ;;
+    esac
+}
+
+wants_jackett()  { [ "$indexer_mode" == "1" ] || [ "$indexer_mode" == "3" ]; }
+wants_prowlarr() { [ "$indexer_mode" == "2" ] || [ "$indexer_mode" == "3" ]; }
+local_jackett()  { wants_jackett && [ -z "$EXTERNAL_JACKETT_API" ]; }
+local_prowlarr() { wants_prowlarr && [ -z "$EXTERNAL_PROWLARR_API" ]; }
+
+choose_stack() {
+    if [ -z "$SKIP_PROMPTS" ]; then
+        say "How would you like to run Helm?"
+        say "  [1] Permanent (Always-On) - Containers run 24/7 in the background."
+        say "  [2] Ephemeral (One-Shot)  - Containers spin up only when downloading, then tear down."
+    fi
+    ask run_mode "Choose your mode (1/2, default 2): " 2
+    [ -n "$SKIP_PROMPTS" ] || say ""
+
+    JACKETT_API="" PROWLARR_API=""
+    if wants_jackett && [ -z "$EXTERNAL_JACKETT_API" ]; then
+        ask JACKETT_API "Enter Jackett API Key (press Enter to auto-extract later): " ""
+    fi
+    if wants_prowlarr && [ -z "$EXTERNAL_PROWLARR_API" ]; then
+        ask PROWLARR_API "Enter Prowlarr API Key (press Enter to auto-extract later): " ""
+    fi
+    ask qb_user "Enter qBittorrent Username (default: admin): " admin
+    [ -n "$SKIP_PROMPTS" ] || say ""
+    ask use_vpn "Do you want to route qBittorrent through a VPN using Gluetun? (y/N): " n
+    if is_yes "$use_vpn"; then
+        choose_vpn
+    fi
+}
+
+choose_vpn() {
+    vpn_provider="" vpn_type="" vpn_extra=""
+    say ""
+    say "--- VPN Configuration ---"
+    ask vpn_provider "Enter VPN Provider (e.g. nordvpn, custom): " ""
+    if [ "$vpn_provider" = "protonvpn" ]; then
+        warn "ProtonVPN blocks P2P/torrent traffic on its Free tier, so qBittorrent would stay stalled."
+        warn "Make sure you are using a paid ProtonVPN account."
+    fi
+    ask vpn_type "Enter VPN Type (wireguard/openvpn) (default: wireguard): " wireguard
+
+    if [ -z "$vpn_provider" ]; then
+        error "VPN Provider cannot be empty. Disabling VPN."
+        use_vpn="n"
+    elif [ "$vpn_type" = "wireguard" ]; then
+        local wg_key
+        ask wg_key "Enter WireGuard Private Key: " ""
+        if [ -z "$wg_key" ]; then
+            error "WireGuard key cannot be empty. Disabling VPN."
+            use_vpn="n"
+        else
+            vpn_extra="WIREGUARD_PRIVATE_KEY=$wg_key"
+        fi
+    elif [ "$vpn_type" = "openvpn" ]; then
+        if [ "$vpn_provider" != "custom" ]; then
+            local ovpn_user ovpn_pass
+            ask ovpn_user "Enter OpenVPN Username (or token): " ""
+            ask_secret ovpn_pass "Enter OpenVPN Password (leave blank if using token): "
+            if [ -z "$ovpn_user" ]; then
+                error "OpenVPN user cannot be empty. Disabling VPN."
+                use_vpn="n"
+            else
+                vpn_extra="OPENVPN_USER=$ovpn_user"$'\n'"OPENVPN_PASSWORD=$ovpn_pass"
+            fi
+        else
+            info "For 'custom' OpenVPN, place custom.conf (and auth.conf if needed) in $HELM_STATE/gluetun"
+        fi
+    fi
+}
+
+# ---------------------------------------------------------------- engines
+
+# NAME and ID come from /etc/os-release.
+# shellcheck disable=SC2153
+print_docker_install_help() {
+    if [ "$(uname)" == "Darwin" ]; then
+        say "To install Docker on macOS, run:"
+        say "  brew install --cask docker"
+    elif [ -f /etc/os-release ]; then
+        # shellcheck disable=SC1091
+        . /etc/os-release
+        case "$ID" in
+            ubuntu|debian|pop|linuxmint)
+                say "To install Docker on $NAME, run:"
+                say "  sudo apt update && sudo apt install -y docker.io docker-compose" ;;
+            fedora|centos|rhel|almalinux|rocky)
+                say "To install Docker on $NAME, run:"
+                say "  sudo dnf install -y docker docker-compose" ;;
+            arch|manjaro)
+                say "To install Docker on $NAME, run:"
+                say "  sudo pacman -S docker docker-compose" ;;
+            *)
+                say "Please install Docker manually for your OS ($NAME)." ;;
+        esac
+    fi
+    say ""
+    say "--- Unix Shenanigans Reminder ---"
+    say "1. Start the Docker daemon:  sudo systemctl enable --now docker"
+    say "2. Add user to docker group: sudo usermod -aG docker \$USER"
+    say "3. Apply group changes:      newgrp docker (or just log out and log back in)"
+    say ""
+}
 
 check_docker() {
     if ! command -v docker &> /dev/null; then
-        echo "[-] Error: Docker is not installed or not in your PATH."
-        echo ""
-        if [ "$(uname)" == "Darwin" ]; then
-            echo "To install Docker on macOS, run:"
-            echo "  brew install --cask docker"
-        elif [ -f /etc/os-release ]; then
-            # shellcheck disable=SC1091
-            . /etc/os-release
-            case "$ID" in
-                ubuntu|debian|pop|linuxmint)
-                    echo "To install Docker on $NAME, run:"
-                    echo "  sudo apt update && sudo apt install -y docker.io docker-compose"
-                ;;
-                fedora|centos|rhel|almalinux|rocky)
-                    echo "To install Docker on $NAME, run:"
-                    echo "  sudo dnf install -y docker docker-compose"
-                ;;
-                arch|manjaro)
-                    echo "To install Docker on $NAME, run:"
-                    echo "  sudo pacman -S docker docker-compose"
-                ;;
-                *)
-                    echo "Please install Docker manually for your OS ($NAME)."
-                ;;
-            esac
-        fi
-        echo ""
-        echo "--- Unix Shenanigans Reminder ---"
-        echo "1. Start the Docker daemon:  sudo systemctl enable --now docker"
-        echo "2. Add user to docker group: sudo usermod -aG docker \$USER"
-        echo "3. Apply group changes:      newgrp docker (or just log out and log back in)"
-        echo ""
+        error "Docker is not installed or not in your PATH."
+        say ""
+        print_docker_install_help
         exit 1
     fi
-    
-    # Ensure docker compose is available
-    if ! docker compose version &> /dev/null; then
-        echo "[-] Error: 'docker compose' is not available."
-        echo "Please ensure you have the docker-compose-plugin installed."
-        exit 1
+    docker compose version &> /dev/null \
+        || die "'docker compose' is not available. Please install the docker-compose-plugin."
+    docker info > /dev/null 2>&1 \
+        || die "Cannot connect to the Docker daemon. Make sure it is running and your user is in the 'docker' group."
+    ENGINE="docker"
+    COMPOSE_CMD=(docker compose)
+    ENGINE_SOCKET="/var/run/docker.sock"
+}
+
+# shellcheck disable=SC2153
+install_podman() {
+    say "Installing Podman..."
+    if [ "$(uname)" == "Darwin" ]; then
+        command -v brew &> /dev/null || die "Please install Homebrew (https://brew.sh/) first, then re-run this script."
+        brew install podman podman-desktop podman-compose
+    elif [ -f /etc/os-release ]; then
+        # shellcheck disable=SC1091
+        . /etc/os-release
+        case "$ID" in
+            ubuntu|debian|pop|linuxmint) sudo apt update && sudo apt install -y podman podman-compose ;;
+            fedora|centos|rhel|almalinux|rocky) sudo dnf install -y podman podman-compose ;;
+            arch|manjaro) sudo pacman -S --noconfirm podman podman-compose ;;
+            *) die "Automatic installation is not supported for your OS ($NAME). See https://podman.io/docs/installation" ;;
+        esac
+    else
+        die "Cannot determine OS. Please install Podman manually."
     fi
-    
-    if ! docker info > /dev/null 2>&1; then
-        echo "[ERROR] Cannot connect to the Docker daemon."
-        echo "Resolution: Ensure the Docker service is running and your user is in the 'docker' group."
-        exit 1
-    fi
-    
-    DOCKER_CMD="docker"
-    COMPOSE_CMD="docker compose"
+    command -v podman &> /dev/null || die "Automatic installation failed. Please install Podman manually."
 }
 
 check_podman() {
     if ! command -v podman &> /dev/null; then
-        echo "[-] Podman is not installed."
-        if [ -n "$SKIP_PROMPTS" ]; then
-            auto_install="Y"
-        else
-            read -r -p "Would you like this script to install Podman automatically? [Y/n]: " auto_install
-            auto_install=${auto_install:-Y}
-        fi
-        
-        if [[ ! "$auto_install" =~ ^[Yy]$ ]]; then
-            echo "Please install Podman manually and re-run the script."
-            exit 1
-        fi
-        
-        echo "Installing Podman..."
-        if [ "$(uname)" == "Darwin" ]; then
-            if command -v brew &> /dev/null; then
-                brew install podman podman-desktop podman-compose
-            else
-                echo "Please install Homebrew (https://brew.sh/) first, then re-run this script."
-                exit 1
-            fi
-        elif [ -f /etc/os-release ]; then
-            # shellcheck disable=SC1091
-            . /etc/os-release
-            case "$ID" in
-                ubuntu|debian|pop|linuxmint)
-                    sudo apt update && sudo apt install -y podman podman-compose
-                ;;
-                fedora|centos|rhel|almalinux|rocky)
-                    sudo dnf install -y podman podman-compose
-                ;;
-                arch|manjaro)
-                    sudo pacman -S --noconfirm podman podman-compose
-                ;;
-                *)
-                    echo "Automatic installation is not supported for your OS ($NAME)."
-                    echo "Please install Podman manually from https://podman.io/docs/installation"
-                    exit 1
-                ;;
-            esac
-        else
-            echo "Cannot determine OS. Please install Podman manually."
-            exit 1
-        fi
-        
-        if ! command -v podman &> /dev/null; then
-            echo "[-] Error: Automatic installation failed. Please install Podman manually."
-            exit 1
-        fi
+        warn "Podman is not installed."
+        local auto_install
+        ask auto_install "Would you like this script to install Podman automatically? [Y/n]: " Y
+        is_yes "$auto_install" || die "Please install Podman manually and re-run the script."
+        install_podman
     fi
-    
-    # Check if podman compose is available
     if podman compose version &> /dev/null; then
-        COMPOSE_CMD="podman compose"
-        elif command -v podman-compose &> /dev/null; then
-        COMPOSE_CMD="podman-compose"
+        COMPOSE_CMD=(podman compose)
+    elif command -v podman-compose &> /dev/null; then
+        COMPOSE_CMD=(podman-compose)
     else
-        echo "[-] Error: Neither 'podman-compose' nor 'podman compose' is available."
-        echo "Please install podman-compose (e.g., sudo apt install podman-compose)."
-        exit 1
+        die "Neither 'podman-compose' nor 'podman compose' is available. Please install podman-compose."
     fi
-    
-    DOCKER_CMD="podman"
+    ENGINE="podman"
+    info "Enabling the Podman rootless socket for container orchestration..."
+    systemctl --user enable --now podman.socket 2>/dev/null || true
+    ENGINE_SOCKET=$(podman info --format '{{.Host.RemoteSocket.Path}}' 2>/dev/null || true)
+    ENGINE_SOCKET="${ENGINE_SOCKET:-/run/user/$(id -u)/podman/podman.sock}"
 }
 
-install_native() {
-    echo "--- Native Installation ---"
+# ---------------------------------------------------------------- native
 
-    if [ "$indexer_mode" == "2" ] || [ "$indexer_mode" == "3" ]; then
-        echo -e "
-[33m[WARNING] Prowlarr integration is currently in BETA.[0m"
-        echo -e "Installing Prowlarr natively involves complex .NET dependencies that might clutter your system."
-        echo -e "It is [1mHIGHLY RECOMMENDED[0m to use Docker (Option 1) or Podman (Option 2) for Prowlarr instead.
-"
-        read -r -p "Are you sure you want to continue with Native Installation? [y/N]: " confirm_native
-        confirm_native=${confirm_native:-N}
-        if [[ ! "$confirm_native" =~ ^[Yy]$ ]]; then
-            echo "Aborting native installation. Please run the script again and select Docker."
-            exit 1
-        fi
-    fi
+native_confirm() {
     if [ "$(uname)" == "Darwin" ]; then
-        echo -e "\n\033[31m[ERROR] Native mode on macOS is blocked.\033[0m"
-        echo "i aint messing with yall system"
-        echo "Please re-run the script and select Docker (Option 1) or Podman (Option 2)."
-        exit 1
+        error "Native mode on macOS is blocked."
+        say "i aint messing with yall system"
+        die "Please re-run the script and select Docker (Option 1) or Podman (Option 2)."
     fi
-    
-    needs_install=0
-    if ! command -v qbittorrent-nox &> /dev/null || ! command -v wget &> /dev/null || ! command -v tar &> /dev/null; then
-        needs_install=1
+    if wants_prowlarr; then
+        say ""
+        warn "Prowlarr integration is currently in BETA."
+        say "Installing Prowlarr natively involves complex .NET dependencies that might clutter your system."
+        say "It is ${C_BOLD}HIGHLY RECOMMENDED${C_RST} to use Docker (Option 1) or Podman (Option 2) for Prowlarr instead."
+        say ""
+        local confirm_native
+        ask confirm_native "Are you sure you want to continue with Native Installation? [y/N]: " N
+        is_yes "$confirm_native" || die "Aborting native installation. Please run the script again and select Docker."
     fi
-    
-    if [ "$needs_install" -eq 1 ]; then
-        echo "[-] Some native dependencies (qbittorrent-nox, wget, libicu, etc.) are missing."
-        if [ -n "$SKIP_PROMPTS" ]; then
-            auto_install="Y"
-        else
-            read -r -p "Would you like this script to install them automatically? [Y/n]: " auto_install
-            auto_install=${auto_install:-Y}
-        fi
-        
-        if [[ ! "$auto_install" =~ ^[Yy]$ ]]; then
-            echo "Please install them manually and re-run the script."
-            exit 1
-        fi
-        
-        echo "Installing native dependencies..."
-        if [ -f /etc/os-release ]; then
-            # shellcheck disable=SC1091
-            . /etc/os-release
-            if [[ "$ID" == "ubuntu" || "$ID" == "debian" || "$ID" == "pop" || "$ID" == "linuxmint" ]]; then
-                sudo apt update && sudo apt install -y qbittorrent-nox wget tar curl libicu-dev libssl-dev zlib1g
-                elif [[ "$ID" == "fedora" || "$ID" == "centos" || "$ID" == "rhel" || "$ID" == "almalinux" || "$ID" == "rocky" ]]; then
-                sudo dnf install -y qbittorrent-nox wget tar curl icu openssl zlib
-                elif [[ "$ID" == "arch" || "$ID" == "manjaro" ]]; then
-                sudo pacman -S --noconfirm qbittorrent-nox wget tar curl icu openssl zlib
-            else
-                echo "Please ensure you have qbittorrent-nox and .NET dependencies (ICU, OpenSSL, zlib) installed manually."
-            fi
-        fi
+}
+
+native_dependencies() {
+    if command -v qbittorrent-nox &> /dev/null && command -v wget &> /dev/null && command -v tar &> /dev/null; then
+        return 0
     fi
-    
-    if ! command -v qbittorrent-nox &> /dev/null; then
-        echo "[-] Error: qbittorrent-nox failed to install or is not in PATH."
-    else
-        echo "[OK] qBittorrent-nox is installed."
+    warn "Some native dependencies (qbittorrent-nox, wget, libicu, etc.) are missing."
+    local auto_install
+    ask auto_install "Would you like this script to install them automatically? [Y/n]: " Y
+    is_yes "$auto_install" || die "Please install them manually and re-run the script."
+
+    say "Installing native dependencies..."
+    [ -f /etc/os-release ] || return 0
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    case "$ID" in
+        ubuntu|debian|pop|linuxmint)
+            sudo apt update && sudo apt install -y qbittorrent-nox wget tar curl libicu-dev libssl-dev zlib1g ;;
+        fedora|centos|rhel|almalinux|rocky)
+            sudo dnf install -y qbittorrent-nox wget tar curl icu openssl zlib ;;
+        arch|manjaro)
+            sudo pacman -S --noconfirm qbittorrent-nox wget tar curl icu openssl zlib ;;
+        *)
+            say "Please ensure you have qbittorrent-nox and .NET dependencies (ICU, OpenSSL, zlib) installed manually." ;;
+    esac
+}
+
+native_jackett() {
+    if [ -d "/opt/Jackett" ]; then
+        say "Jackett already installed at /opt/Jackett"
+        return 0
     fi
-    
-    if [ "$indexer_mode" == "1" ] || [ "$indexer_mode" == "3" ]; then
-    if [ ! -d "/opt/Jackett" ]; then
-        echo "Installing Jackett to /opt/Jackett..."
-        cd /opt
-        wget -O - -o /dev/null https://github.com/Jackett/Jackett/releases/latest/download/Jackett.Binaries.LinuxAMDx64.tar.gz | sudo tar -xz
-        sudo chown "$(whoami)":"$(id -g)" -R "/opt/Jackett"
-        cd Jackett
-        sudo ./install_service_systemd.sh
-        cd -
-    else
-        echo "Jackett already installed at /opt/Jackett"
+    say "Installing Jackett to /opt/Jackett..."
+    wget -O - -o /dev/null https://github.com/Jackett/Jackett/releases/latest/download/Jackett.Binaries.LinuxAMDx64.tar.gz \
+        | sudo tar -xz -C /opt
+    sudo chown "$(whoami)":"$(id -g)" -R "/opt/Jackett"
+    (cd /opt/Jackett && sudo ./install_service_systemd.sh)
+}
+
+native_prowlarr() {
+    if [ -d "/opt/Prowlarr" ]; then
+        say "Prowlarr already installed at /opt/Prowlarr"
+        return 0
     fi
-    fi
-    
-    
-    if [ "$indexer_mode" == "2" ] || [ "$indexer_mode" == "3" ]; then
-        if [ ! -d "/opt/Prowlarr" ]; then
-            echo "Installing Prowlarr to /opt/Prowlarr..."
-            cd /opt
-            wget -O - -o /dev/null https://github.com/Prowlarr/Prowlarr/releases/latest/download/Prowlarr.master.linux-core-x64.tar.gz | sudo tar -xz
-            sudo chown "$(whoami)":"$(id -g)" -R "/opt/Prowlarr"
-            
-            # Create a simple systemd service for Prowlarr
-            cat << SVC | sudo tee /etc/systemd/system/prowlarr.service > /dev/null
+    say "Installing Prowlarr to /opt/Prowlarr..."
+    wget -O - -o /dev/null https://github.com/Prowlarr/Prowlarr/releases/latest/download/Prowlarr.master.linux-core-x64.tar.gz \
+        | sudo tar -xz -C /opt
+    sudo chown "$(whoami)":"$(id -g)" -R "/opt/Prowlarr"
+    sudo tee /etc/systemd/system/prowlarr.service > /dev/null <<SVC
 [Unit]
 Description=Prowlarr Daemon
 After=network.target
@@ -320,468 +395,203 @@ Restart=on-failure
 [Install]
 WantedBy=multi-user.target
 SVC
-            sudo systemctl daemon-reload
-            sudo systemctl enable --now prowlarr
-            cd -
-        else
-            echo "Prowlarr already installed at /opt/Prowlarr"
-        fi
-    fi
-echo "Native installation completed! Ensure services are running using systemctl."
-    exit 0
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now prowlarr
 }
 
-# Branch logic based on selection
-if [ "$install_mode" == "3" ]; then
-    install_native
-    elif [ "$install_mode" == "2" ]; then
-    check_podman
-else
-    check_docker
-fi
-
-echo "[OK] Container engine and compose are functional."
-
-mkdir -p "$HELM_STATE/jackett" "$HELM_STATE/prowlarr" "$HELM_STATE/qbittorrent" "$HELM_STATE/gluetun" "$HELM_DL"
-mkdir -p "$HELM_CONFIG"
-touch "$HELM_CONFIG/config.json"
-
-# Record the chosen indexer manager so the CLI knows which backend to query.
-if [ "$indexer_mode" == "2" ]; then
-    INDEXER_MANAGER="prowlarr"
-elif [ "$indexer_mode" == "3" ]; then
-    INDEXER_MANAGER="both"
-else
-    INDEXER_MANAGER="jackett"
-fi
-python3 - "$HELM_CONFIG/config.json" "$INDEXER_MANAGER" <<'PY' || true
-import json
-import sys
-
-path, manager = sys.argv[1], sys.argv[2]
-try:
-    with open(path) as f:
-        data = json.load(f)
-except (OSError, json.JSONDecodeError):
-    data = {}
-data["INDEXER_MANAGER"] = manager
-with open(path, "w") as f:
-    json.dump(data, f, indent=4)
-PY
-if [ -f "$HELM_CONFIG/config.toml" ] || [ -f "$HELM_CONFIG/config.jsonc" ]; then
-    echo "[WARN] Your config file takes priority. Set search.indexer_manager = \"$INDEXER_MANAGER\" there if needed."
-fi
-
-echo ""
-if [ -n "$SKIP_PROMPTS" ]; then
-    run_mode=2
-else
-    echo "How would you like to run Helm?"
-    echo "  [1] Permanent (Always-On) - Containers run 24/7 in the background."
-    echo "  [2] Ephemeral (One-Shot)  - Containers spin up only when downloading, then tear down."
-    read -r -p "Choose your mode (1/2, default 2): " run_mode
-    run_mode=${run_mode:-2}
-    echo ""
-fi
-
-if [ -n "$SKIP_PROMPTS" ]; then
-    JACKETT_API=""
-    PROWLARR_API=""
-    qb_user="admin"
-    use_vpn="n"
-else
-    if [ "$indexer_mode" == "1" ] || [ "$indexer_mode" == "3" ]; then
-        read -r -p "Enter Jackett API Key (press Enter to auto-extract later): " JACKETT_API
-    fi
-    if [ "$indexer_mode" == "2" ] || [ "$indexer_mode" == "3" ]; then
-        read -r -p "Enter Prowlarr API Key (press Enter to auto-extract later): " PROWLARR_API
-    fi
-    read -r -p "Enter qBittorrent Username (default: admin): " qb_user
-    qb_user=${qb_user:-admin}
-
-    echo ""
-    read -r -p "Do you want to route qBittorrent through a VPN using Gluetun? (y/N): " use_vpn
-fi
-
-# Write docker-compose.yml
-cat << 'EOF' > docker-compose.yml
-services:
-EOF
-
-if [[ ( "$indexer_mode" == "1" || "$indexer_mode" == "3" ) && -z "$EXTERNAL_JACKETT_API" ]]; then
-cat << 'EOF' >> docker-compose.yml
-  jackett:
-    container_name: "${COMPOSE_PROJECT_NAME:-helm}-jackett"
-    image: lscr.io/linuxserver/jackett:latest
-    deploy:
-      resources:
-        limits:
-          cpus: "0.50"
-          memory: 256M
-    labels:
-      - "com.docker.compose.project=${COMPOSE_PROJECT_NAME:-helm}"
-      - "com.docker.compose.service=jackett"
-      - "com.docker.compose.oneoff=False"
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Etc/UTC
-    security_opt:
-      - label=disable
-    volumes:
-      - "$HELM_STATE"/jackett:/config
-      - "$HELM_DL":/downloads
-    ports:
-      - 19117:9117
-    restart: unless-stopped
-EOF
-fi
-
-if [[ ( "$indexer_mode" == "2" || "$indexer_mode" == "3" ) && -z "$EXTERNAL_PROWLARR_API" ]]; then
-cat << 'EOF' >> docker-compose.yml
-  prowlarr:
-    container_name: "${COMPOSE_PROJECT_NAME:-helm}-prowlarr"
-    image: lscr.io/linuxserver/prowlarr:latest
-    deploy:
-      resources:
-        limits:
-          cpus: "0.50"
-          memory: 256M
-    labels:
-      - "com.docker.compose.project=${COMPOSE_PROJECT_NAME:-helm}"
-      - "com.docker.compose.service=prowlarr"
-      - "com.docker.compose.oneoff=False"
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Etc/UTC
-    security_opt:
-      - label=disable
-    volumes:
-      - "$HELM_STATE"/prowlarr:/config
-    ports:
-      - 19696:9696
-    restart: unless-stopped
-EOF
-fi
-
-cat << 'EOF' >> docker-compose.yml
-  flaresolverr:
-    container_name: "${COMPOSE_PROJECT_NAME:-helm}-flaresolverr"
-    image: ghcr.io/flaresolverr/flaresolverr:latest
-    deploy:
-      resources:
-        limits:
-          cpus: "0.50"
-          memory: 512M
-    labels:
-      - "com.docker.compose.project=${COMPOSE_PROJECT_NAME:-helm}"
-      - "com.docker.compose.service=flaresolverr"
-      - "com.docker.compose.oneoff=False"
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
-    environment:
-      - LOG_LEVEL=info
-      - TZ=Etc/UTC
-    security_opt:
-      - label=disable
-    ports:
-      - 18191:8191
-    restart: unless-stopped
-
-  cli:
-    container_name: "${COMPOSE_PROJECT_NAME:-helm}-cli"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    image: ghcr.io/piratebird/helm:latest
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
-    stdin_open: true
-    tty: true
-    env_file:
-      - "$HELM_STATE"/.env.docker
-    security_opt:
-      - label=disable
-    volumes:
-      - "$HELM_CONFIG"/config.json:/app/config.json
-      - ${HOST_PWD:-.}/src:/app/src
-      - ${HOST_PWD:-.}/docker-compose.yml:/app/docker-compose.yml
-EOF
-
-if [ "$DOCKER_CMD" == "docker" ]; then
-    cat << 'EOF' >> docker-compose.yml
-      - /var/run/docker.sock:/var/run/docker.sock
-EOF
-    elif [ "$DOCKER_CMD" == "podman" ]; then
-    echo "[INFO] Enabling Podman rootless socket for container orchestration..."
-    systemctl --user enable --now podman.socket 2>/dev/null || true
-    # Get the podman socket path (usually /run/user/1000/podman/podman.sock)
-    PODMAN_SOCK=$(podman info --format '{{.Host.RemoteSocket.Path}}' 2>/dev/null || echo "/run/user/$(id -u)/podman/podman.sock")
-    cat << EOF >> docker-compose.yml
-      - $PODMAN_SOCK:/var/run/docker.sock
-EOF
-fi
-
-cat << 'EOF' >> docker-compose.yml
-    profiles:
-      - cli
-EOF
-
-if [[ "$use_vpn" =~ ^[Yy]$ ]]; then
-    echo ""
-    echo "--- VPN Configuration ---"
-    read -r -p "Enter VPN Provider (e.g. nordvpn, custom): " vpn_provider
-    
-    if [ "$vpn_provider" = "protonvpn" ]; then
-        echo ""
-        echo "[WARNING] ProtonVPN strictly blocks P2P/torrent traffic on their Free tier."
-        echo "          If you are on the Free tier, qBittorrent will be permanently stalled."
-        echo "          Please ensure you are using a Paid ProtonVPN account."
-        echo ""
-    fi
-    
-    read -r -p "Enter VPN Type (wireguard/openvpn) (default: wireguard): " vpn_type
-    vpn_type=${vpn_type:-wireguard}
-    
-    vpn_extra=""
-    if [ -z "$vpn_provider" ]; then
-        echo "[ERROR] VPN Provider cannot be empty. Disabling VPN."
-        use_vpn="n"
-    elif [ "$vpn_type" = "wireguard" ]; then
-        read -r -p "Enter WireGuard Private Key: " wg_key
-        if [ -z "$wg_key" ]; then
-            echo "[ERROR] WireGuard key cannot be empty. Disabling VPN."
-            use_vpn="n"
-        else
-            vpn_extra="WIREGUARD_PRIVATE_KEY=$wg_key"
-        fi
-    elif [ "$vpn_type" = "openvpn" ]; then
-        if [ "$vpn_provider" != "custom" ]; then
-            read -r -p "Enter OpenVPN Username (or token): " ovpn_user
-            read -r -s -p "Enter OpenVPN Password (leave blank if using token): " ovpn_pass
-            echo ""
-            if [ -z "$ovpn_user" ]; then
-                echo "[ERROR] OpenVPN user cannot be empty. Disabling VPN."
-                use_vpn="n"
-            else
-                vpn_extra="OPENVPN_USER=$ovpn_user"$'\n'"OPENVPN_PASSWORD=$ovpn_pass"
-            fi
-        else
-            echo "[INFO] For 'custom' OpenVPN, ensure you place custom.conf (and auth.conf if needed) in ${HELM_STATE}/gluetun"
-        fi
-    fi
-fi
-
-if [[ "$use_vpn" =~ ^[Yy]$ ]]; then
-    echo "Configuring with VPN (Gluetun)..."
-    cat << 'EOF' >> docker-compose.yml
-
-  gluetun:
-    container_name: "${COMPOSE_PROJECT_NAME:-helm}-gluetun"
-    image: qmcgaw/gluetun:latest
-    deploy:
-      resources:
-        limits:
-          cpus: "0.25"
-          memory: 128M
-    labels:
-      - "com.docker.compose.project=${COMPOSE_PROJECT_NAME:-helm}"
-      - "com.docker.compose.service=gluetun"
-      - "com.docker.compose.oneoff=False"
-    cap_add:
-      - NET_ADMIN
-    devices:
-      - /dev/net/tun:/dev/net/tun
-    env_file:
-      - "$HELM_STATE"/.env.docker
-    volumes:
-      - "$HELM_STATE"/gluetun:/gluetun
-    ports:
-      - 18080:8080
-      - 6881:6881
-      - 6881:6881/udp
-    restart: unless-stopped
-
-  qbittorrent:
-    container_name: "${COMPOSE_PROJECT_NAME:-helm}-qbittorrent"
-    image: lscr.io/linuxserver/qbittorrent:latest
-    deploy:
-      resources:
-        limits:
-          cpus: "0.50"
-          memory: 256M
-    labels:
-      - "com.docker.compose.project=${COMPOSE_PROJECT_NAME:-helm}"
-      - "com.docker.compose.service=qbittorrent"
-      - "com.docker.compose.oneoff=False"
-    network_mode: "service:gluetun"
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Etc/UTC
-      - WEBUI_PORT=18080
-    security_opt:
-      - label=disable
-    volumes:
-      - "$HELM_STATE"/qbittorrent:/config
-      - "$HELM_DL":/downloads
-    depends_on:
-      - gluetun
-    restart: unless-stopped
-EOF
-else
-    echo "Configuring WITHOUT VPN..."
-    cat << 'EOF' >> docker-compose.yml
-
-  qbittorrent:
-    container_name: "${COMPOSE_PROJECT_NAME:-helm}-qbittorrent"
-    image: lscr.io/linuxserver/qbittorrent:latest
-    deploy:
-      resources:
-        limits:
-          cpus: "0.50"
-          memory: 256M
-    labels:
-      - "com.docker.compose.project=${COMPOSE_PROJECT_NAME:-helm}"
-      - "com.docker.compose.service=qbittorrent"
-      - "com.docker.compose.oneoff=False"
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Etc/UTC
-      - WEBUI_PORT=18080
-    security_opt:
-      - label=disable
-    volumes:
-      - "$HELM_STATE"/qbittorrent:/config
-      - "$HELM_DL":/downloads
-    ports:
-      - 18080:18080
-      - 6881:6881
-      - 6881:6881/udp
-    restart: unless-stopped
-EOF
-fi
-
-sed -i "s|\"\$HELM_STATE\"|$HELM_STATE|g" docker-compose.yml
-sed -i "s|\"\$HELM_CONFIG\"|$HELM_CONFIG|g" docker-compose.yml
-sed -i "s|\"\$HELM_DL\"|$HELM_DL|g" docker-compose.yml
-
-cat << EOF > "$HELM_STATE"/.env.docker
-# --- Helm Container Isolated Configuration ---
-JACKETT_URL=http://${EXTERNAL_JACKETT_PORT:+host.docker.internal:$EXTERNAL_JACKETT_PORT}${EXTERNAL_JACKETT_PORT:-jackett:9117}
-JACKETT_API_KEY=\${JACKETT_API:-placeholder}
-PROWLARR_URL=http://${EXTERNAL_PROWLARR_PORT:+host.docker.internal:$EXTERNAL_PROWLARR_PORT}${EXTERNAL_PROWLARR_PORT:-prowlarr:9696}
-PROWLARR_API_KEY=\${PROWLARR_API:-placeholder}
-QB_WEBUI=http://qbittorrent:18080
-QB_USERNAME=$qb_user
-QB_PASSWORD=adminadmin
-COMPOSE_PROJECT_NAME=${PWD##*/}
-HOST_PWD=$PWD
-EOF
-
-if [[ "$use_vpn" =~ ^[Yy]$ ]]; then
-    cat << EOF >> "$HELM_STATE"/.env.docker
-
-# --- VPN (Gluetun) Configuration ---
-VPN_SERVICE_PROVIDER=$vpn_provider
-VPN_TYPE=$vpn_type
-$vpn_extra
-EOF
-fi
-
-
-# Orchestrate existing containers
-detect_existing_indexer() {
-    local indexer_name=$1
-    local existing_container
-    local bound_port
-    local ext_api
-    existing_container=$($DOCKER_CMD ps --format '{{.Names}}' | grep -i "$indexer_name" | grep -v "helm-$indexer_name" | head -n 1 || true)
-    if [ -n "$existing_container" ]; then
-        echo "[+] Found existing external $indexer_name container: $existing_container"
-        # Try to extract the port it's bound to
-        bound_port=$($DOCKER_CMD port "$existing_container" | head -n 1 | awk -F':' '{print $NF}')
-        if [ -z "$bound_port" ]; then
-            if [ "$indexer_name" == "prowlarr" ]; then bound_port="9696"; else bound_port="9117"; fi
-        fi
-        
-        # Try to extract API key
-        ext_api=""
-        if [ "$indexer_name" == "prowlarr" ]; then
-            ext_api=$($DOCKER_CMD exec "$existing_container" grep -oP '(?<=<ApiKey>)[^<]+' /config/config.xml 2>/dev/null || true)
-        elif [ "$indexer_name" == "jackett" ]; then
-            ext_api=$($DOCKER_CMD exec "$existing_container" grep -o '"APIKey": "[^"]*"' /config/Jackett/ServerConfig.json 2>/dev/null | cut -d'"' -f4 || true)
-        fi
-        
-        if [ -n "$ext_api" ]; then
-            echo "[+] Successfully extracted API key from external $indexer_name!"
-            if [ "$indexer_name" == "prowlarr" ]; then
-                EXTERNAL_PROWLARR_PORT="$bound_port"
-                EXTERNAL_PROWLARR_API="$ext_api"
-            else
-                EXTERNAL_JACKETT_PORT="$bound_port"
-                EXTERNAL_JACKETT_API="$ext_api"
-            fi
-            return 0
-        fi
-    fi
-    return 1
-}
-
-EXTERNAL_PROWLARR_PORT=""
-EXTERNAL_PROWLARR_API=""
-EXTERNAL_JACKETT_PORT=""
-EXTERNAL_JACKETT_API=""
-
-if [ "$indexer_mode" == "1" ] || [ "$indexer_mode" == "3" ]; then
-    detect_existing_indexer "jackett" || true
-fi
-if [ "$indexer_mode" == "2" ] || [ "$indexer_mode" == "3" ]; then
-    detect_existing_indexer "prowlarr" || true
-fi
-
-echo "Pulling the latest helm image..."
-$COMPOSE_CMD --profile cli pull cli
-
-run_compose() {
-    if [ "$DOCKER_CMD" == "podman" ]; then
-        podman run --rm --entrypoint="" --security-opt label=disable -v "$PWD:/app" -v "$PODMAN_SOCK:/var/run/docker.sock" --env-file "$HELM_STATE"/.env.docker mini-helm docker compose "$@" 2> >(grep -v "rootless netns" >&2)
+install_native() {
+    say "--- Native Installation ---"
+    native_confirm
+    native_dependencies
+    if command -v qbittorrent-nox &> /dev/null; then
+        ok "qBittorrent-nox is installed."
     else
-        $COMPOSE_CMD "$@"
+        error "qbittorrent-nox failed to install or is not in PATH."
+    fi
+    if wants_jackett; then native_jackett; fi
+    if wants_prowlarr; then native_prowlarr; fi
+    say "Native installation completed! Ensure services are running using systemctl."
+}
+
+# ---------------------------------------------------------------- existing indexers
+
+# Print the API key found in a Jackett ServerConfig.json or Prowlarr config.xml on stdin.
+parse_api_key() {
+    if [ "$1" == "prowlarr" ]; then
+        sed -n 's:.*<ApiKey>\([^<]*\)</ApiKey>.*:\1:p' | head -n 1
+    else
+        sed -n 's/.*"APIKey"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1
     fi
 }
 
-echo "Seeding default Jackett indexers..."
-mkdir -p "$HELM_STATE"/jackett/Jackett/Indexers
+read_api_key() {
+    local name=$1 container=$2 file="/config/Jackett/ServerConfig.json"
+    if [ "$name" == "prowlarr" ]; then file="/config/config.xml"; fi
+    "$ENGINE" exec "$container" cat "$file" 2>/dev/null | parse_api_key "$name" || true
+}
 
-cat << 'EOF' > "$HELM_STATE"/jackett/Jackett/Indexers/1337x.json
-[{"id": "sitelink","type": "inputstring","name": "Site Link","value": "https://1337x.to/"}]
-EOF
-cat << 'EOF' > "$HELM_STATE"/jackett/Jackett/Indexers/yts.json
-[{"id": "sitelink","type": "inputstring","name": "Site Link","value": "https://yts.mx/"}]
-EOF
-cat << 'EOF' > "$HELM_STATE"/jackett/Jackett/Indexers/nyaasi.json
-[{"id": "sitelink","type": "inputstring","name": "Site Link","value": "https://nyaa.si/"}]
-EOF
-cat << 'EOF' > "$HELM_STATE"/jackett/Jackett/Indexers/thepiratebay.json
-[{"id": "sitelink","type": "inputstring","name": "Site Link","value": "https://thepiratebay.org/"}]
-EOF
+detect_existing_indexer() {
+    local name=$1 container port key
+    container=$("$ENGINE" ps --format '{{.Names}}' 2>/dev/null | grep -i "$name" | grep -vx "$PROJECT-$name" | head -n 1 || true)
+    [ -n "$container" ] || return 0
+    say "[+] Found existing external $name container: $container"
+    port=$("$ENGINE" port "$container" 2>/dev/null | head -n 1 | awk -F':' '{print $NF}' || true)
+    if [ -z "$port" ]; then
+        if [ "$name" == "prowlarr" ]; then port="9696"; else port="9117"; fi
+    fi
+    key=$(read_api_key "$name" "$container")
+    [ -n "$key" ] || return 0
+    say "[+] Successfully extracted API key from external $name!"
+    if [ "$name" == "prowlarr" ]; then
+        EXTERNAL_PROWLARR_PORT="$port" EXTERNAL_PROWLARR_API="$key"
+    else
+        EXTERNAL_JACKETT_PORT="$port" EXTERNAL_JACKETT_API="$key"
+    fi
+}
 
-echo "Pre-seeding qBittorrent configuration..."
-mkdir -p "$HELM_STATE"/qbittorrent/qBittorrent/
-cat << 'EOF' > "$HELM_STATE"/qbittorrent/qBittorrent/qBittorrent.conf
+detect_existing_indexers() {
+    EXTERNAL_JACKETT_PORT="" EXTERNAL_JACKETT_API=""
+    EXTERNAL_PROWLARR_PORT="" EXTERNAL_PROWLARR_API=""
+    if wants_jackett; then detect_existing_indexer jackett; fi
+    if wants_prowlarr; then detect_existing_indexer prowlarr; fi
+}
+
+# ---------------------------------------------------------------- files
+
+# render_compose TEMPLATE "BLOCK ..." prints the compose file.
+# The rules match helm.core.compose.render; tests compare the two.
+render_compose() {
+    R_STATE="$HELM_STATE" R_DL="$HELM_DL" R_CONFIG="$HELM_CONFIG" R_SOCKET="$ENGINE_SOCKET" \
+    awk -v blocks=" $2 " '
+        function put(s, key, val,   i, out) {
+            out = ""
+            while ((i = index(s, key)) > 0) {
+                out = out substr(s, 1, i - 1) val
+                s = substr(s, i + length(key))
+            }
+            return out s
+        }
+        { line = $0; marker = line; sub(/^[ \t]+/, "", marker) }
+        marker ~ /^#@ if / { split(marker, f, " "); depth++; on[depth] = index(blocks, " " f[3] " ") > 0; next }
+        marker ~ /^#@ end/ { if (depth == 0) { bad = 1; exit } depth--; next }
+        marker ~ /^#@/ { next }
+        {
+            for (i = 1; i <= depth; i++) if (!on[i]) next
+            line = put(line, "@HELM_STATE@", ENVIRON["R_STATE"])
+            line = put(line, "@HELM_DL@", ENVIRON["R_DL"])
+            line = put(line, "@HELM_CONFIG@", ENVIRON["R_CONFIG"])
+            line = put(line, "@ENGINE_SOCKET@", ENVIRON["R_SOCKET"])
+            print line
+        }
+        END { if (bad || depth != 0) { print "unbalanced #@ blocks in compose template" > "/dev/stderr"; exit 1 } }
+    ' "$1"
+}
+
+compose_blocks() {
+    local blocks="cli"
+    if local_jackett; then blocks="$blocks jackett"; fi
+    if local_prowlarr; then blocks="$blocks prowlarr"; fi
+    if [ -d "$PWD/src/helm" ]; then blocks="$blocks source"; fi
+    if is_yes "$use_vpn"; then blocks="$blocks vpn"; else blocks="$blocks novpn"; fi
+    printf '%s\n' "$blocks"
+}
+
+fetch_template() {
+    local local_file="$SCRIPT_DIR/$TEMPLATE_PATH_IN_REPO" url="$HELM_RAW_BASE/$TEMPLATE_PATH_IN_REPO"
+    if [ -n "${HELM_COMPOSE_TEMPLATE:-}" ]; then
+        TEMPLATE_FILE="$HELM_COMPOSE_TEMPLATE"
+    elif [ -f "$local_file" ]; then
+        TEMPLATE_FILE="$local_file"
+    else
+        TEMPLATE_FILE=$(mktemp)
+        TEMPLATE_TEMP=1
+        info "Downloading the compose template from $url"
+        if command -v curl &> /dev/null; then
+            curl -fsSL "$url" -o "$TEMPLATE_FILE" || die "Could not download $url"
+        else
+            wget -q -O "$TEMPLATE_FILE" "$url" || die "Could not download $url"
+        fi
+    fi
+    [ -s "$TEMPLATE_FILE" ] || die "Compose template is missing or empty: $TEMPLATE_FILE"
+}
+
+write_compose() {
+    fetch_template
+    local blocks
+    blocks=$(compose_blocks)
+    if is_yes "$use_vpn"; then say "Configuring with VPN (Gluetun)..."; else say "Configuring WITHOUT VPN..."; fi
+    render_compose "$TEMPLATE_FILE" "$blocks" > "$COMPOSE_FILE.tmp"
+    mv "$COMPOSE_FILE.tmp" "$COMPOSE_FILE"
+    if [ -n "${TEMPLATE_TEMP:-}" ]; then rm -f "$TEMPLATE_FILE"; fi
+}
+
+# set_env_value KEY VALUE replaces KEY's line in .env.docker.
+set_env_value() {
+    local file="$ENV_FILE"
+    (
+        umask 077
+        K="$1" V="$2" awk 'index($0, ENVIRON["K"] "=") == 1 { print ENVIRON["K"] "=" ENVIRON["V"]; next } { print }' \
+            "$file" > "$file.tmp"
+    )
+    mv "$file.tmp" "$file"
+}
+
+write_env_file() {
+    local jackett_url="http://jackett:9117" prowlarr_url="http://prowlarr:9696" qb_host="qbittorrent"
+    if [ -n "$EXTERNAL_JACKETT_PORT" ]; then jackett_url="http://host.docker.internal:$EXTERNAL_JACKETT_PORT"; fi
+    if [ -n "$EXTERNAL_PROWLARR_PORT" ]; then prowlarr_url="http://host.docker.internal:$EXTERNAL_PROWLARR_PORT"; fi
+    # With a VPN, qBittorrent shares gluetun's network, so only that name resolves.
+    if is_yes "$use_vpn"; then qb_host="gluetun"; fi
+    (
+        umask 077
+        {
+            say "# --- Helm Container Isolated Configuration ---"
+            say "JACKETT_URL=$jackett_url"
+            say "JACKETT_API_KEY=${EXTERNAL_JACKETT_API:-${JACKETT_API:-placeholder}}"
+            say "PROWLARR_URL=$prowlarr_url"
+            say "PROWLARR_API_KEY=${EXTERNAL_PROWLARR_API:-${PROWLARR_API:-placeholder}}"
+            say "QB_WEBUI=http://$qb_host:18080"
+            say "QB_USERNAME=$qb_user"
+            say "QB_PASSWORD=adminadmin"
+            say "INDEXER_MANAGER=$INDEXER_MANAGER"
+            say "COMPOSE_PROJECT_NAME=$PROJECT"
+            say "HOST_PWD=$PWD"
+            if is_yes "$use_vpn"; then
+                say ""
+                say "# --- VPN (Gluetun) Configuration ---"
+                say "VPN_SERVICE_PROVIDER=$vpn_provider"
+                say "VPN_TYPE=$vpn_type"
+                if [ -n "$vpn_extra" ]; then say "$vpn_extra"; fi
+            fi
+        } > "$ENV_FILE"
+    )
+    chmod 600 "$ENV_FILE"
+}
+
+seed_jackett() {
+    local dir="$HELM_STATE/jackett/Jackett/Indexers" name site
+    say "Seeding default Jackett indexers..."
+    mkdir -p "$dir"
+    for name in 1337x yts nyaasi thepiratebay; do
+        case $name in
+            1337x) site="https://1337x.to/" ;;
+            yts) site="https://yts.mx/" ;;
+            nyaasi) site="https://nyaa.si/" ;;
+            thepiratebay) site="https://thepiratebay.org/" ;;
+        esac
+        printf '[{"id": "sitelink","type": "inputstring","name": "Site Link","value": "%s"}]\n' "$site" > "$dir/$name.json"
+    done
+}
+
+seed_qbittorrent() {
+    local dir="$HELM_STATE/qbittorrent/qBittorrent"
+    mkdir -p "$dir"
+    if [ -f "$dir/qBittorrent.conf" ]; then
+        info "Keeping the existing qBittorrent configuration."
+        return 0
+    fi
+    say "Pre-seeding qBittorrent configuration..."
+    cat > "$dir/qBittorrent.conf" <<'EOF'
 [Preferences]
 WebUI\Password_PBKDF2="@ByteArray(ARQ77eY1NUZaQsuDHbIMCA==:0WMRkYTUWVT9wVvdDtHAjU9b3b7uB8NR1Gur2hmQCvCDpm39Q+PsIfSYvgkvpe7L5yL8YQv8EaV7t8mP308QWg==)"
 WebUI\Username=admin
@@ -789,171 +599,156 @@ WebUI\AuthSubnetWhitelist=10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
 WebUI\AuthSubnetWhitelistEnabled=true
 WebUI\LocalHostAuth=false
 EOF
+}
 
-echo ""
-echo "Starting containers in the background to initialize configurations..."
+# ---------------------------------------------------------------- stack
 
-SERVICES_TO_START=(qbittorrent flaresolverr)
-if [[ ( "$indexer_mode" == "1" || "$indexer_mode" == "3" ) && -z "$EXTERNAL_JACKETT_API" ]]; then
-    SERVICES_TO_START+=("jackett")
-fi
-if [[ ( "$indexer_mode" == "2" || "$indexer_mode" == "3" ) && -z "$EXTERNAL_PROWLARR_API" ]]; then
-    SERVICES_TO_START+=("prowlarr")
-fi
+compose() { "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" "$@"; }
 
-run_compose up -d --remove-orphans "${SERVICES_TO_START[@]}"
-
-echo "[INFO] Waiting for services to initialize..."
-
-TIMEOUT=45
-ELAPSED=0
-
-while [ "$ELAPSED" -lt "$TIMEOUT" ]; do
-    if [ "$indexer_mode" == "2" ]; then
-        CRITICAL_CONTAINER=$($DOCKER_CMD ps -q -f "name=${COMPOSE_PROJECT_NAME:-helm}-prowlarr" | head -n 1 || true)
-        CRITICAL_NAME="prowlarr"
+# Podman runs compose from inside the Helm image, against the Podman socket.
+run_compose() {
+    if [ "$ENGINE" == "podman" ]; then
+        podman run --rm --entrypoint="" --security-opt label=disable \
+            -v "$PWD:/app" -v "$ENGINE_SOCKET:/var/run/docker.sock" --env-file "$ENV_FILE" \
+            "$HELM_IMAGE" docker compose -f /app/docker-compose.yml "$@" 2> >(grep -v "rootless netns" >&2)
     else
-        CRITICAL_CONTAINER=$($DOCKER_CMD ps -q -f "name=${COMPOSE_PROJECT_NAME:-helm}-jackett" | head -n 1 || true)
-        CRITICAL_NAME="jackett"
+        compose "$@"
     fi
-    
-    if [ -n "$CRITICAL_CONTAINER" ]; then
-        IS_RUNNING=$($DOCKER_CMD inspect -f '{{.State.Running}}' "$CRITICAL_CONTAINER" 2>/dev/null || true)
-        
-        if [ "$IS_RUNNING" == "true" ]; then
-            echo "[OK] Services are initialized and running!"
-            break
-        fi
-        
-        IS_EXITED=$($DOCKER_CMD inspect -f '{{.State.Status}}' "$CRITICAL_CONTAINER" 2>/dev/null || true)
-        if [ "$IS_EXITED" == "exited" ]; then
-            echo "[ERROR] Container $CRITICAL_NAME started but crashed immediately."
-            echo "Resolution: Run 'run_compose logs $CRITICAL_NAME' to inspect the failure."
-            exit 1
-        fi
-    fi
-    
-    sleep 5
-    ELAPSED=$((ELAPSED + 5))
-    echo "Polling status... ($ELAPSED/$TIMEOUT seconds)"
-done
+}
 
-if [ "$ELAPSED" -ge "$TIMEOUT" ]; then
-    echo "[WARNING] Timeout reached while waiting for configurations."
-    echo "Services may be experiencing slow startup times or are hanging."
-fi
+container_id() {
+    "$ENGINE" ps -q -f "name=$PROJECT-$1" 2>/dev/null | head -n 1 || true
+}
 
-JACKETT_CONTAINER=""
+start_services() {
+    local services=(qbittorrent flaresolverr)
+    if local_jackett; then services+=(jackett); fi
+    if local_prowlarr; then services+=(prowlarr); fi
+    say ""
+    say "Starting containers in the background to initialize configurations..."
+    run_compose up -d --remove-orphans "${services[@]}"
+}
 
-if [ "$indexer_mode" == "1" ] || [ "$indexer_mode" == "3" ]; then
-    if [ -n "$EXTERNAL_JACKETT_API" ]; then JACKETT_API="$EXTERNAL_JACKETT_API"; fi
-    if [ -z "$JACKETT_API" ]; then
-        for _ in {1..15}; do
-            JACKETT_CONTAINER=$($DOCKER_CMD ps -q -f "name=${COMPOSE_PROJECT_NAME:-helm}-jackett" | head -n 1 || true)
-            if [ -n "$JACKETT_CONTAINER" ]; then
-                extracted_api=$($DOCKER_CMD exec "$JACKETT_CONTAINER" cat /config/Jackett/ServerConfig.json 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('APIKey',''))" 2>/dev/null || true)
-                if [ ! -z "$extracted_api" ]; then
-                    JACKETT_API="$extracted_api"
-                    echo "[+] Successfully grabbed Jackett API Key."
-                    
-                    $DOCKER_CMD exec "$JACKETT_CONTAINER" sed -i 's|"FlareSolverrUrl":.*|"FlareSolverrUrl": "http://flaresolverr:8191",|' /config/Jackett/ServerConfig.json 2>/dev/null || true
-                    run_compose restart jackett
-                    echo "[+] Jackett configured with FlareSolverr."
-                    break
-                fi
+wait_for_services() {
+    local name="qbittorrent" elapsed=0 container state
+    if local_jackett; then name="jackett"; elif local_prowlarr; then name="prowlarr"; fi
+    info "Waiting for services to initialize..."
+    while [ "$elapsed" -lt "$SETUP_TIMEOUT" ]; do
+        container=$(container_id "$name")
+        if [ -n "$container" ]; then
+            state=$("$ENGINE" inspect -f '{{.State.Status}}' "$container" 2>/dev/null || true)
+            if [ "$state" == "running" ]; then
+                ok "Services are initialized and running!"
+                return 0
             fi
-            sleep 3
-        done
-        
+            if [ "$state" == "exited" ]; then
+                die "Container $name started but crashed immediately. Run '$ENGINE logs $PROJECT-$name' to see why."
+            fi
+        fi
+        sleep "$SETUP_POLL"
+        elapsed=$((elapsed + SETUP_POLL))
+        if [ "$SETUP_POLL" -eq 0 ]; then elapsed=$((elapsed + 1)); fi
+        say "Polling status... ($elapsed/$SETUP_TIMEOUT seconds)"
+    done
+    warn "Timeout reached while waiting for configurations."
+    warn "Services may be experiencing slow startup times or are hanging."
+}
+
+# grab_api_key NAME prints the key read from Helm's own container, or nothing.
+grab_api_key() {
+    local name=$1 container key try
+    for ((try = 0; try < KEY_TRIES; try++)); do
+        container=$(container_id "$name")
+        if [ -n "$container" ]; then
+            key=$(read_api_key "$name" "$container")
+            if [ -n "$key" ]; then
+                printf '%s\n' "$key"
+                return 0
+            fi
+        fi
+        sleep "$KEY_POLL"
+    done
+}
+
+configure_api_keys() {
+    if wants_jackett; then
+        JACKETT_API="${EXTERNAL_JACKETT_API:-$JACKETT_API}"
         if [ -z "$JACKETT_API" ]; then
-            echo "[-] Could not find APIKey in Jackett configuration. Using placeholder."
-            JACKETT_API="your_jackett_api_key_here"
-        fi
-    fi
-    # Re-write .env.docker with the true JACKETT_API_KEY
-    sed -i "s|JACKETT_API_KEY=.*|JACKETT_API_KEY=$JACKETT_API|" "$HELM_STATE"/.env.docker
-fi
-
-if [ "$indexer_mode" == "2" ] || [ "$indexer_mode" == "3" ]; then
-    if [ -n "$EXTERNAL_PROWLARR_API" ]; then PROWLARR_API="$EXTERNAL_PROWLARR_API"; fi
-    if [ -z "$PROWLARR_API" ]; then
-        for _ in {1..15}; do
-            PROWLARR_CONTAINER=$($DOCKER_CMD ps -q -f "name=${COMPOSE_PROJECT_NAME:-helm}-prowlarr" | head -n 1 || true)
-            if [ -n "$PROWLARR_CONTAINER" ]; then
-                extracted_api=$($DOCKER_CMD exec "$PROWLARR_CONTAINER" grep -oP '(?<=<ApiKey>)[^<]+' /config/config.xml 2>/dev/null || true)
-                if [ ! -z "$extracted_api" ]; then
-                    PROWLARR_API="$extracted_api"
-                    echo "[+] Successfully grabbed Prowlarr API Key."
-                    break
-                fi
+            JACKETT_API=$(grab_api_key jackett)
+            if [ -n "$JACKETT_API" ]; then
+                say "[+] Successfully grabbed Jackett API Key."
+                "$ENGINE" exec "$(container_id jackett)" \
+                    sed -i 's|"FlareSolverrUrl":.*|"FlareSolverrUrl": "http://flaresolverr:8191",|' \
+                    /config/Jackett/ServerConfig.json 2>/dev/null || true
+                run_compose restart jackett
+                say "[+] Jackett configured with FlareSolverr."
+            else
+                warn "Could not find APIKey in Jackett configuration. Using placeholder."
+                JACKETT_API="your_jackett_api_key_here"
             fi
-            sleep 3
-        done
-        
-        if [ -z "$PROWLARR_API" ]; then
-            echo "[-] Could not find APIKey in Prowlarr configuration. Using placeholder."
-            PROWLARR_API="your_prowlarr_api_key_here"
         fi
+        set_env_value JACKETT_API_KEY "$JACKETT_API"
     fi
-    # Re-write .env.docker with the true PROWLARR_API_KEY
-    sed -i "s|PROWLARR_API_KEY=.*|PROWLARR_API_KEY=$PROWLARR_API|" "$HELM_STATE"/.env.docker
-fi
+    if wants_prowlarr; then
+        PROWLARR_API="${EXTERNAL_PROWLARR_API:-$PROWLARR_API}"
+        if [ -z "$PROWLARR_API" ]; then
+            PROWLARR_API=$(grab_api_key prowlarr)
+            if [ -n "$PROWLARR_API" ]; then
+                say "[+] Successfully grabbed Prowlarr API Key."
+            else
+                warn "Could not find APIKey in Prowlarr configuration. Using placeholder."
+                PROWLARR_API="your_prowlarr_api_key_here"
+            fi
+        fi
+        set_env_value PROWLARR_API_KEY "$PROWLARR_API"
+    fi
+}
 
-echo ""
-echo "Setup is 100% complete! Everything is configured."
-echo "Your native .env and config.json secrets were left completely untouched."
-echo "helm's own config.json gained an INDEXER_MANAGER setting only."
-echo "---"
-echo "Security Summary & Data Locations:"
-echo " - Settings:   ~/.config/helm/"
-echo " - Databases:  ~/.local/state/helm/"
-echo " - Secrets:    ~/.local/state/helm/.env.docker"
-echo " - Downloads:  ~/Downloads/helm/"
-echo "---"
-echo ""
+# ---------------------------------------------------------------- finish
 
-if [ "$run_mode" == "2" ]; then
-    echo "Tearing down containers for Ephemeral (One-Shot) mode..."
-    if [ "$DOCKER_CMD" == "podman" ]; then
-        # Use podman stop directly - avoids docker compose's network namespace destruction
-        # which triggers the "rootless netns: kill network process: permission denied" bug
-        podman stop "${COMPOSE_PROJECT_NAME:-helm}"-prowlarr "${COMPOSE_PROJECT_NAME:-helm}"-jackett "${COMPOSE_PROJECT_NAME:-helm}"-qbittorrent "${COMPOSE_PROJECT_NAME:-helm}"-flaresolverr "${COMPOSE_PROJECT_NAME:-helm}"-gluetun 2>/dev/null || true
+quote_words() {
+    local word out=""
+    for word in "$@"; do out="$out $(printf '%q' "$word")"; done
+    printf '%s' "${out# }"
+}
+
+write_launcher() {
+    local file="$PWD/helm-torrent.sh" run
+    if [ "$ENGINE" == "podman" ]; then
+        run=$(quote_words podman run -it --rm --entrypoint= --security-opt label=disable \
+            --network "${PROJECT}_default" -v "$PWD:/app" -v "$HELM_CONFIG:/config/helm" \
+            -e HELM_CONFIG_DIR=/config/helm -v "$ENGINE_SOCKET:/var/run/docker.sock" \
+            --env-file "$ENV_FILE" "$HELM_IMAGE" python -m helm.cli)
+        run="$run \"\$@\" 2> >(grep -v \"rootless netns\" >&2)"
     else
-        run_compose stop || true
+        run="exec $(quote_words "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" --profile cli run --rm cli) \"\$@\""
     fi
-    echo "Generating helm-torrent launcher script..."
-    cat << EOF > helm-torrent.sh
+    say "Generating helm-torrent launcher script..."
+    cat > "$file" <<EOF
 #!/usr/bin/env bash
-ARGS="\$@"
-if [[ "\$*" != *"--oneshot"* ]] && [[ "\$*" != *"-o"* ]]; then
-    ARGS="--oneshot \$@"
+# Generated by setup.sh for $ENGINE. Re-run setup.sh to change it.
+set -e
+export COMPOSE_PROJECT_NAME=$(printf '%q' "$PROJECT")
+oneshot=0
+for arg in "\$@"; do
+    case "\$arg" in
+        -o|--oneshot) oneshot=1 ;;
+    esac
+done
+if [ "\$oneshot" -eq 0 ]; then
+    set -- --oneshot "\$@"
 fi
-
-if [ "$DOCKER_CMD" == "podman" ]; then
-    NETWORK="${COMPOSE_PROJECT_NAME:-helm}_default"
-    podman run -it --rm --entrypoint="" --security-opt label=disable --network "\$NETWORK" -v "\$PWD:/app" -v "$PODMAN_SOCK:/var/run/docker.sock" --env-file "$HELM_STATE"/.env.docker mini-helm python -m helm.cli \$ARGS 2> >(grep -v "rootless netns" >&2)
-else
-    $COMPOSE_CMD --profile cli run --rm cli \$ARGS
-fi
+$run
 EOF
-    chmod +x helm-torrent.sh
-    
-    echo "Containers stopped. Helm will spin them up automatically when you trigger a download."
-    echo ""
-    echo "To start using the app in its isolated CLI container, run:"
-    echo "    ./helm-torrent.sh --oneshot"
-    echo "==========================================="
-else
-    echo "Containers are left running 24/7 in the background."
-    echo ""
-    if [ -n "$SKIP_PROMPTS" ]; then
-        install_systemd="n"
-    else
-        read -r -p "Do you want to create a systemd service to start Helm automatically on boot? (y/N): " install_systemd
-    fi
-    if [[ "$install_systemd" =~ ^[Yy]$ ]]; then
-        echo "Creating systemd service..."
-        cat << EOF | sudo tee /etc/systemd/system/helm-app.service > /dev/null
+    chmod +x "$file"
+}
+
+install_systemd_unit() {
+    local compose_bin
+    compose_bin=$(command -v "${COMPOSE_CMD[0]}")
+    compose_bin=$(quote_words "$compose_bin" "${COMPOSE_CMD[@]:1}" -f "$COMPOSE_FILE")
+    say "Creating systemd service..."
+    sudo tee /etc/systemd/system/helm-app.service > /dev/null <<EOF
 [Unit]
 Description=Helm Application Service
 After=network.target
@@ -962,19 +757,119 @@ After=network.target
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=$PWD
-ExecStart=$(which "$COMPOSE_CMD") up -d
-ExecStop=/bin/bash -c '$DOCKER_CMD stop "${COMPOSE_PROJECT_NAME:-helm}"-jackett "${COMPOSE_PROJECT_NAME:-helm}"-qbittorrent "${COMPOSE_PROJECT_NAME:-helm}"-flaresolverr 2>/dev/null || true'
+Environment=COMPOSE_PROJECT_NAME=$PROJECT
+ExecStart=$compose_bin up -d
+ExecStop=$compose_bin stop
 TimeoutStartSec=0
 
 [Install]
 WantedBy=multi-user.target
 EOF
-        sudo systemctl daemon-reload
-        sudo systemctl enable helm-app.service
-        echo "Systemd service 'helm-app.service' created and enabled."
+    sudo systemctl daemon-reload
+    sudo systemctl enable helm-app.service
+    say "Systemd service 'helm-app.service' created and enabled."
+}
+
+print_summary() {
+    say ""
+    say "Setup is 100% complete! Everything is configured."
+    say "Your config files and secrets.env were not changed."
+    say "---"
+    say "Security Summary & Data Locations:"
+    say " - Settings:   $HELM_CONFIG/"
+    say " - Databases:  $HELM_STATE/"
+    say " - Secrets:    $ENV_FILE (mode 600)"
+    say " - Downloads:  $HELM_DL/"
+    say "---"
+    if [ -f "$HELM_CONFIG/config.toml" ] || [ -f "$HELM_CONFIG/config.jsonc" ]; then
+        info "The containers use INDEXER_MANAGER=$INDEXER_MANAGER from $ENV_FILE."
+        info "For a helm-torrent on this machine, set search.indexer_manager = \"$INDEXER_MANAGER\" in your config file."
     fi
-    echo ""
-    echo "To start using the app in its isolated CLI container, run:"
-    echo "    $COMPOSE_CMD --profile cli run --rm cli"
-    echo "==========================================="
+    say ""
+}
+
+stop_stack() {
+    say "Tearing down containers for Ephemeral (One-Shot) mode..."
+    if [ "$ENGINE" == "podman" ]; then
+        # podman stop avoids compose tearing down the network namespace, which hits
+        # "rootless netns: kill network process: permission denied".
+        local service names=()
+        for service in prowlarr jackett qbittorrent flaresolverr gluetun; do names+=("$PROJECT-$service"); done
+        podman stop "${names[@]}" 2>/dev/null || true
+    else
+        run_compose stop || true
+    fi
+}
+
+finish() {
+    if [ "$run_mode" == "2" ]; then
+        stop_stack
+        write_launcher
+        say "Containers stopped. Helm will spin them up automatically when you trigger a download."
+        say ""
+        say "To start using the app in its isolated CLI container, run:"
+        say "    ./helm-torrent.sh"
+    else
+        say "Containers are left running 24/7 in the background."
+        say ""
+        local install_systemd
+        ask install_systemd "Do you want to create a systemd service to start Helm automatically on boot? (y/N): " n
+        if is_yes "$install_systemd"; then install_systemd_unit; fi
+        say ""
+        say "To start using the app in its isolated CLI container, run:"
+        say "    $(quote_words "${COMPOSE_CMD[@]}" --profile cli run --rm cli)"
+    fi
+    rule
+}
+
+main() {
+    setup_colours
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)"
+    PROJECT="${COMPOSE_PROJECT_NAME:-helm}"
+    export COMPOSE_PROJECT_NAME="$PROJECT"
+    default_paths
+    parse_args "$@"
+
+    say "Using paths:"
+    say "  Config:    $HELM_CONFIG"
+    say "  State:     $HELM_STATE"
+    say "  Downloads: $HELM_DL"
+    say ""
+    rule
+    say "        Helm Application Setup Script      "
+    rule
+    say ""
+
+    choose_install
+    case "$install_mode" in
+        3) install_native; exit 0 ;;
+        2) check_podman ;;
+        *) check_docker ;;
+    esac
+    ok "Container engine and compose are functional."
+
+    COMPOSE_FILE="$PWD/docker-compose.yml"
+    ENV_FILE="$HELM_STATE/.env.docker"
+    mkdir -p "$HELM_STATE/jackett" "$HELM_STATE/prowlarr" "$HELM_STATE/qbittorrent" "$HELM_STATE/gluetun" "$HELM_DL" "$HELM_CONFIG"
+
+    detect_existing_indexers
+    say ""
+    choose_stack
+    write_compose
+    write_env_file
+
+    say "Pulling the latest helm image..."
+    compose --profile cli pull cli
+
+    if local_jackett; then seed_jackett; fi
+    seed_qbittorrent
+    start_services
+    wait_for_services
+    configure_api_keys
+    print_summary
+    finish
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
 fi

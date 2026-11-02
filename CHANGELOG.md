@@ -3,6 +3,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
+- Rewrite `setup.sh` as small functions with a short `main`, tested against fake Docker, Podman and systemctl binaries. `setup.sh` and `helm-torrent init` now render one compose template, `src/helm/core/compose.template.yml`, and `docker-compose.yml.example` is removed. Setup no longer edits `config.json`; the indexer choice goes into `.env.docker` as `INDEXER_MANAGER`. The container name prefix is `helm` (or `COMPOSE_PROJECT_NAME`) everywhere, instead of the directory name in `.env.docker`. An existing `qBittorrent.conf` is kept instead of overwritten.
 - Use the theme everywhere the UI, wizard, one-shot mode and Lite downloader print colour, and show the banner when the UI starts. Colours are now off when output is piped or `NO_COLOR` is set. Red messages that used the terminal's basic red now use the theme's error colour.
 - Use one set of service defaults: Jackett `19117`, Prowlarr `19696`, qBittorrent `18080`. Set `[services]` for a native Jackett on `9117`.
 - Report invalid config files clearly instead of resetting them. Runtime choices are stored in `settings.json` in the state directory, below the user's file.
@@ -28,6 +29,11 @@ All notable changes to this project will be documented in this file.
 - Standalone `uninstall.sh` for raw GitHub execution, with preview-by-default, selective removal and unit tests.
 
 ### Fixed
+- Setup: detect an existing Jackett or Prowlarr container before writing the compose and env files, so the detected one is used instead of a second copy.
+- Setup: mount the config directory into the CLI container and set `HELM_CONFIG_DIR`; the old `/app/config.json` mount was never read.
+- Setup: use the published `ghcr.io/piratebird/helm` image on Podman instead of a `mini-helm` image nothing built.
+- Setup: with a VPN, map gluetun `18080:18080` (qBittorrent listens on 18080) and point `QB_WEBUI` at `gluetun`.
+- Setup: fix the systemd unit's empty `ExecStart`, the launcher adding `--oneshot` when any argument contained `-o`, the summary ignoring `--*-dir`, and `sed -i` failing on macOS. `.env.docker` is now written with mode `0600`.
 - Log in to qBittorrent again after a session expires, and follow URL or credential changes in long-running services.
 - Remove a cancelled job's torrent from qBittorrent, and map container paths to host paths when cataloging its files.
 - Allow failed or cancelled sources to be resubmitted, and keep the queue worker alive after unexpected errors.
