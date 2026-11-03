@@ -35,6 +35,7 @@ Headless services, layered TOML/JSONC settings with `config` commands, themes an
 - Standalone `uninstall.sh` for raw GitHub execution, with preview-by-default, selective removal and unit tests.
 
 ### Fixed
+- Duplicate results from different sources are merged instead of dropped. Results now match on info hash, read from magnets, from `.torrent` URLs named after the hash, and from the `InfoHash` field that Jackett, Prowlarr and Torznab send with their download links, before falling back to the title (ignoring case and punctuation) plus size. The merged result keeps the most-seeded copy, takes a missing date or size from another copy, uses a magnet over an indexer download link, lists every source as `Jackett (TPB) +1`, and lists them in `--json` as `sources`.
 - Search results from the Jackett and Prowlarr JSON APIs now keep their publish date (only the Torznab XML fallback did before). Jackett's `0001-01-01` placeholder is treated as no date.
 - A missing Prowlarr API key and a JSON search that falls back to Torznab are logged to `helm.log` only, not printed during searches.
 - One-shot waits now watch only the torrents this run sent (tagged `helm` plus a per-run `helm-ui-…` tag), so torrents added to qBittorrent by hand no longer hold up the teardown, and Ctrl+C removes only this run's unfinished torrents. The wait goes through the shared qBittorrent session and URL instead of its own `QB_WEBUI` default, and a missing password now stops it instead of retrying forever.

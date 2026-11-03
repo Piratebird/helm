@@ -161,6 +161,7 @@ def run(args, teardown_oneshot):
                         "link": sanitize_link(t.link),
                         "seeders": getattr(t, "seeders", 0),
                         "indexer": getattr(t, "indexer", "Unknown"),
+                        "sources": getattr(t, "sources", None) or [getattr(t, "indexer", "Unknown")],
                     }
                     for t in filtered
                 ]

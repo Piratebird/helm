@@ -4,6 +4,8 @@ filter torrents functionality based on seeds and quality
 core/torrent_filter.py
 """
 
+import base64
+import copy
 import hashlib
 import re
 
@@ -57,22 +59,106 @@ def filter_items(items, category_profiles, negatives, min_score=0, min_seeds=0):
     return [i[0] for i in sorted(results, key=lambda x: x[1], reverse=True)]
 
 
-def dedupe(items):
-    seen = set()
-    unique = []
-    for i in items:
-        link = getattr(i, "link", "")
-        if "btih:" in link.lower():
-            hash_start = link.lower().find("btih:") + 5
-            hash_value = link[hash_start : hash_start + 40].lower()
-        else:
-            hash_value = (
-                hashlib.md5(link.encode("utf-8")).hexdigest()
-                if link
-                else hashlib.md5(getattr(i, "title", "").encode("utf-8")).hexdigest()
-            )
+HEX_HASH = re.compile(r"^[0-9a-f]{40}$")
+BASE32_HASH = re.compile(r"^[a-z2-7]{32}$")
+MAGNET_HASH = re.compile(r"xt=urn:btih:([0-9a-z]+)", re.IGNORECASE)
+TORRENT_URL_HASH = re.compile(r"(?<![0-9a-f])([0-9a-f]{40})(?![0-9a-f])[^/]*\.torrent(?:$|\?)", re.IGNORECASE)
 
-        if hash_value not in seen:
-            seen.add(hash_value)
-            unique.append(i)
-    return unique
+
+def normalize_hash(value):
+    """Return a BitTorrent v1 info hash as 40 lowercase hex characters, or None."""
+    if not isinstance(value, str):
+        return None
+    value = value.strip().lower()
+    if HEX_HASH.match(value):
+        return value
+    if BASE32_HASH.match(value):
+        return base64.b32decode(value.upper()).hex()
+    return None
+
+
+def item_hash(item):
+    """Info hash from the item's own field, its magnet link, or a .torrent URL named after the hash."""
+    found = normalize_hash(getattr(item, "info_hash", None))
+    if found:
+        return found
+    link = getattr(item, "link", "") or ""
+    match = MAGNET_HASH.search(link) if link.lower().startswith("magnet:") else TORRENT_URL_HASH.search(link)
+    return normalize_hash(match.group(1)) if match else None
+
+
+def normalize_title(title):
+    return " ".join(re.sub(r"[^0-9a-z]+", " ", (title or "").lower()).split())
+
+
+def dedupe_key(item):
+    found = item_hash(item)
+    if found:
+        return ("hash", found)
+    size = getattr(item, "size", 0) or 0
+    if size > 0:
+        return ("title", normalize_title(getattr(item, "title", "")), size)
+    link = getattr(item, "link", "") or ""
+    return ("link", hashlib.md5((link or getattr(item, "title", "")).encode("utf-8")).hexdigest())
+
+
+def _seeders(item):
+    try:
+        return int(getattr(item, "seeders", 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _known(value):
+    return value not in (None, "", 0, "Unknown")
+
+
+def _merge(group):
+    """One item for a set of duplicates: the best-seeded copy, filled in from the others."""
+    best = copy.copy(max(group, key=_seeders))
+    for field in ("pubdate", "size"):
+        if not _known(getattr(best, field, None)):
+            value = next((getattr(i, field) for i in group if _known(getattr(i, field, None))), None)
+            if value is not None:
+                setattr(best, field, value)
+    if not str(getattr(best, "link", "")).lower().startswith("magnet:"):
+        magnet = next((i.link for i in group if str(getattr(i, "link", "")).lower().startswith("magnet:")), None)
+        if magnet:
+            best.link = magnet
+    found = item_hash(best) or next((item_hash(i) for i in group if item_hash(i)), None)
+    if found and hasattr(best, "info_hash"):
+        best.info_hash = found
+    winner = max(group, key=_seeders)
+    sources = []
+    for item in [winner] + [i for i in group if i is not winner]:
+        for source in _sources(item):
+            if source not in sources:
+                sources.append(source)
+    if hasattr(best, "sources"):
+        best.sources = sources
+    if len(sources) > 1 and hasattr(best, "indexer"):
+        best.indexer = f"{sources[0]} +{len(sources) - 1}"
+    return best
+
+
+def _sources(item):
+    """The sources behind an item; an already merged item keeps its list."""
+    listed = getattr(item, "sources", None)
+    if listed:
+        return list(listed)
+    indexer = getattr(item, "indexer", None)
+    return [indexer] if indexer else []
+
+
+def dedupe(items):
+    """Collapse duplicates across sources, keeping first-seen order.
+
+    Items match on info hash first, then on normalized title plus size, then on
+    the link. Duplicates are merged rather than dropped: the copy with the most
+    seeders wins, a missing date or size is taken from another copy, a magnet is
+    preferred over an indexer download URL, and every source is kept.
+    """
+    groups = {}
+    for item in items:
+        groups.setdefault(dedupe_key(item), []).append(item)
+    return [group[0] if len(group) == 1 else _merge(group) for group in groups.values()]

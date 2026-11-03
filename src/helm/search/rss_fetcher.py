@@ -53,7 +53,9 @@ def source_status(error):
 
 
 class TorrentItem:
-    def __init__(self, title, link, seeders, leechers=0, size=0, pubdate=None, indexer="Unknown"):
+    def __init__(
+        self, title, link, seeders, leechers=0, size=0, pubdate=None, indexer="Unknown", info_hash=None, sources=None
+    ):
         self.title = title
         self.link = link
         self.seeders = seeders
@@ -61,6 +63,10 @@ class TorrentItem:
         self.size = size
         self.pubdate = pubdate
         self.indexer = indexer
+        # Set when the source reports a hash for a non-magnet link, so dedupe can match it.
+        self.info_hash = info_hash
+        # Every source that returned this torrent, filled in by dedupe.
+        self.sources = sources
 
 
 ISO_DATE = re.compile(r"^\s*(\d{4})-(\d{2})-(\d{2})")
@@ -106,6 +112,7 @@ def _parse_feed(xml_text):
 
         seeders = 0
         leechers = 0
+        info_hash = None
         for attr in elem.findall("torznab:attr", namespaces=ns):
             name = attr.get("name")
             value = attr.get("value", "")
@@ -125,6 +132,8 @@ def _parse_feed(xml_text):
                     leechers = int(value)
                 except ValueError:
                     pass
+            elif name == "infohash":
+                info_hash = value
             elif name == "size" and size == 0:
                 try:
                     size = int(value)
@@ -137,7 +146,7 @@ def _parse_feed(xml_text):
         indexer_elem = elem.find("jackettindexer")
         indexer = indexer_elem.text if indexer_elem is not None else "Jackett"
 
-        items.append(TorrentItem(title, link, seeders, leechers, size, pubdate, indexer))
+        items.append(TorrentItem(title, link, seeders, leechers, size, pubdate, indexer, info_hash=info_hash))
     return items
 
 
@@ -222,6 +231,7 @@ def search_prowlarr(query, content_type="video"):
                     size,
                     pubdate=iso_day(item.get("publishDate")),
                     indexer=f"Prowlarr ({indexer})",
+                    info_hash=item.get("infoHash"),
                 )
             )
 
@@ -266,18 +276,9 @@ def search_indexers(query, content_type="video", fallback_lite=True):
     search never comes up empty.
     """
     from helm.config.settings import load_settings
+    from helm.search.torrent_filter import dedupe
 
     manager = load_settings().get("search.indexer_manager")
-
-    def dedupe(items):
-        seen = set()
-        unique = []
-        for item in items:
-            key = (item.title.lower().strip(), item.size)
-            if key not in seen:
-                seen.add(key)
-                unique.append(item)
-        return unique
 
     items = []
     if manager in ("prowlarr", "both"):
@@ -342,6 +343,7 @@ def search_jackett(query, content_type="video"):
                     size,
                     pubdate=iso_day(item.get("PublishDate")),
                     indexer=f"Jackett ({indexer})",
+                    info_hash=item.get("InfoHash"),
                 )
             )
 
