@@ -5,6 +5,7 @@ import requests
 from helm.config.secret_manager import get_secret
 from helm.config.settings import load_settings
 from helm.logger import get_logger
+from helm.search.public_indexers import PUBLIC_INDEXER_IDS
 
 logger = get_logger(__name__)
 
@@ -77,7 +78,7 @@ class JackettManager:
 
 class ProwlarrManager:
     # Public trackers Helm enables by default when none are configured.
-    DEFAULT_SEED_NAMES = ("1337x", "yts", "torrentgalaxy", "nyaapantsu", "eztv")
+    DEFAULT_SEED_NAMES = PUBLIC_INDEXER_IDS
 
     def __init__(self):
         self.url = load_settings().get("services.prowlarr")

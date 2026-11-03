@@ -129,6 +129,8 @@ The script will guide you through:
 
 `setup.sh` only handles the host: the container engine, native installs and the optional systemd unit. It then pulls `ghcr.io/piratebird/helm` and runs `helm-torrent init` inside it, with the engine socket and your directories mounted at the same paths, so the files it writes are owned by you. `init` writes `docker-compose.yml` in the current directory from `src/helm/stack/compose.template.yml`, writes `state/.env.docker` with mode `0600` (including `INDEXER_MANAGER` for the containers), reads the Jackett and Prowlarr API keys, and creates the `helm-torrent.sh` launcher in one-shot mode. The CLI container gets your config directory, so `config.toml` and `config.jsonc` work there too. Set `COMPOSE_PROJECT_NAME` to change the container name prefix (default `helm`), `HELM_IMAGE` to use another image, or `HELM_SETUP_RUNNER=helm-torrent` to run `init` on the host instead of in the image.
 
+`init` sets up 14 public Jackett indexers: 1337x, YTS, Nyaa, The Pirate Bay, EZTV, LimeTorrents, TheRARBG, TorrentDownloads, TorrentDownload, TorrentProject, Knaben, uindex, Kickass and ExtraTorrent (the list is in `src/helm/search/public_indexers.py`). Five of them sit behind Cloudflare and work through the stack's FlareSolverr. Prowlarr enables the same ones on its first search when it has none. An indexer you already set up in Jackett is left as it is, so rerunning `init` adds the missing ones only.
+
 <br>
 
 ## Why this exists

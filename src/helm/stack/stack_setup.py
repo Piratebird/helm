@@ -11,6 +11,7 @@ talks to Docker or to Podman's Docker-compatible socket.
 """
 
 import getpass
+import json
 import os
 import re
 import shlex
@@ -21,16 +22,12 @@ import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
+from helm.search.public_indexers import PUBLIC_INDEXERS
 from helm.stack import compose
 
 IMAGE = "ghcr.io/piratebird/helm:latest"
 SERVICES = ("prowlarr", "jackett", "qbittorrent", "flaresolverr", "gluetun")
-JACKETT_SITES = (
-    ("1337x", "https://1337x.to/"),
-    ("yts", "https://yts.mx/"),
-    ("nyaasi", "https://nyaa.si/"),
-    ("thepiratebay", "https://thepiratebay.org/"),
-)
+JACKETT_SITES = PUBLIC_INDEXERS
 QBITTORRENT_CONF = """[Preferences]
 WebUI\\Password_PBKDF2="@ByteArray(ARQ77eY1NUZaQsuDHbIMCA==:0WMRkYTUWVT9wVvdDtHAjU9b3b7uB8NR1Gur2hmQCvCDpm39Q+PsIfSYvgkvpe7L5yL8YQv8EaV7t8mP308QWg==)"
 WebUI\\Username=admin
@@ -310,8 +307,13 @@ def seed_jackett(plan):
     directory = os.path.join(plan.state, "jackett", "Jackett", "Indexers")
     os.makedirs(directory, exist_ok=True)
     for name, site in JACKETT_SITES:
-        with open(os.path.join(directory, f"{name}.json"), "w", encoding="utf-8") as handle:
-            handle.write(f'[{{"id": "sitelink","type": "inputstring","name": "Site Link","value": "{site}"}}]\n')
+        path = os.path.join(directory, f"{name}.json")
+        if os.path.exists(path):
+            # Jackett saves the user's settings for this indexer here; never reset them.
+            continue
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump([{"id": "sitelink", "type": "inputstring", "name": "Site Link", "value": site}], handle)
+            handle.write("\n")
 
 
 def seed_qbittorrent(plan):

@@ -19,6 +19,7 @@ Headless services, layered TOML/JSONC settings with `config` commands, themes an
 - Respect the configured download directory and reject unknown flags, blank queries, and invalid content types.
 
 ### Added
+- `init` now sets up 14 public Jackett indexers instead of 4, adding EZTV, LimeTorrents, TheRARBG, TorrentDownloads, TorrentDownload, TorrentProject, Knaben, uindex, Kickass and ExtraTorrent. Each was checked against a fresh Jackett with FlareSolverr. Prowlarr's first-search defaults use the same list.
 - `show:all` in the result filter lists the results that filters hid, marked `[HIDDEN]` with the reason, and the result header counts them.
 - Tests for the setup wizard's full-automation prompts against a local HTTP server that acts like Jackett, Prowlarr and qBittorrent, and in-process tests for `status`, indexer management and the interactive session. CI now installs tmux and tries libtorrent, so those tests run there instead of skipping, and lists any skips.
 - `helm-torrent daemon prune` deletes the records and logs of daemons that have stopped.
@@ -37,6 +38,8 @@ Headless services, layered TOML/JSONC settings with `config` commands, themes an
 - Standalone `uninstall.sh` for raw GitHub execution, with preview-by-default, selective removal and unit tests.
 
 ### Fixed
+- Rerunning `init` no longer resets Jackett indexers you have already configured; only missing ones are added. YTS is set up at its current `yts.gg` link instead of the retired `yts.mx`.
+- Prowlarr's default indexers no longer include `torrentgalaxy` and `nyaapantsu`, which have no Prowlarr definition, so only 3 of its 5 defaults were ever set up.
 - Content filters use the Torznab category a source gives (Jackett, Prowlarr and Torznab feeds): a result filed under the searched type skips the keyword checks, and one filed only under another type is hidden. Results without a category still use keywords.
 - Keywords from another content type that are normal in video release names (audio codecs such as `AAC`, `MP3` and `FLAC`, plus `ep` and `single`) no longer hide video results; they only rank them lower. Strong signals such as `PC`, `DODI`, `FitGirl` or `soundtrack` still hide them.
 - Book searches ask Torznab for category `7000` (books) as well as `8000` (other), and game searches add `1000` (console).
