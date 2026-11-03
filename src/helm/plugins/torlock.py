@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from html.parser import HTMLParser
 from typing import Any, Dict, List, Tuple, Union
 
-from helpers import download_file, retrieve_url
+from helpers import download_file, retrieve_url, validate_html
 from novaprinter import prettyPrinter
 
 
@@ -106,6 +106,7 @@ class torlock:
             parser = self.MyHtmlParser(self.url)
             page_url = f"{self.url}/{category}/torrents/{query}.html?sort=seeds&page={page}"
             html = retrieve_url(page_url)
+            validate_html(html, ("<article",))
             parser.feed(html)
             parser.close()
             if parser.page_items < 20:

@@ -1,5 +1,82 @@
 # Changelog
 All notable changes to this project will be documented in this file.
+## [0.11.0] - Unreleased
+
+Headless services, layered TOML/JSONC settings with `config` commands, themes and the banner, a rebuilt setup that runs `helm-torrent init` inside the image, and a package restructure. Set the date when this is tagged.
+
+### Changed
+- `search.min_seeds` defaults to 1 instead of 3, so results with one or two seeders are shown. A `min_seeds = 3` in an old `config.json` is treated as the old default when migrating.
+- Rename the Lite downloader's `download_magnet` to `download_torrent`, since it also takes `.torrent` URLs and files. `download_magnet` stays as an alias.
+- Split setup: `setup.sh` now only checks the host (engine, native installs, systemd) and runs `helm-torrent init` inside the Helm image as the current user. `init` writes the compose file, `.env.docker`, API keys and the launcher, and takes `--engine`, `--indexers`, `--run-mode`, `--workdir`, `--socket`, `--project`, `--mount-source` and `--skip-prompts`; it asks for whatever is missing and runs even when the config file is broken. It no longer activates Jackett and Prowlarr indexers through their APIs: Jackett gets the seeded indexer files, and Prowlarr seeds its defaults on first search. If the image cannot be pulled, setup uses a local copy.
+- Rewrite `setup.sh` as small functions with a short `main`, tested against fake Docker, Podman and systemctl binaries. `setup.sh` and `helm-torrent init` now render one compose template, `src/helm/core/compose.template.yml`, and `docker-compose.yml.example` is removed. Setup no longer edits `config.json`; the indexer choice goes into `.env.docker` as `INDEXER_MANAGER`. The container name prefix is `helm` (or `COMPOSE_PROJECT_NAME`) everywhere, instead of the directory name in `.env.docker`. An existing `qBittorrent.conf` is kept instead of overwritten.
+- Use the theme everywhere the UI, wizard, one-shot mode and Lite downloader print colour, and show the banner when the UI starts. Colours are now off when output is piped or `NO_COLOR` is set. Red messages that used the terminal's basic red now use the theme's error colour.
+- Use one set of service defaults: Jackett `19117`, Prowlarr `19696`, qBittorrent `18080`. Set `[services]` for a native Jackett on `9117`.
+- Report invalid config files clearly instead of resetting them. Runtime choices are stored in `settings.json` in the state directory, below the user's file.
+- Start faster by deferring heavy imports, and split the CLI entry point into separate handlers.
+- Use SQLite WAL, indexed lookups, one-second cancellation polling and `sendfile` in the queue and file server.
+- Install the `helm-torrent` command instead of `helm` to avoid Kubernetes Helm's executable. Python imports, configuration paths, and container names remain compatible. Source setup generates `helm-torrent.sh`.
+- Make libtorrent an optional `download` extra; Lite searches and magnet retrieval work without native bindings.
+- Respect the configured download directory and reject unknown flags, blank queries, and invalid content types.
+
+### Added
+- Spelling variants: when a search finds fewer than 30 results, Helm tries each long word split in two ("spiderman" as "spider man"), keeps a split only if probe results from Apibay and Torrents-csv contain the original word once punctuation is removed and outnumber the typed query at least twice, and then searches it too and merges the results. "spiderman brand new day" went from 6 results to 581. Turn it off with `search.spelling_variants = false` or `HELM_SPELLING_VARIANTS=false`.
+- qBittorrent plugin compatibility: `helpers` and `novaprinter` now match qBittorrent's nova3 API (`retrieve_url(url, custom_headers, request_data, ssl_context, unescape_html_entities)`, `download_file(url, referer)` returning `"<path> <url>"`, `headers`/`_headers`, `enable_socks_proxy`, `anySizeToBytes`, `SearchResults`). Your own plugins get the URL-encoded query, and when you pick a result whose link is not a magnet, the plugin's `download_torrent` runs in a child process with a 60-second timeout, falling back to Helm's own link resolver. By a static check of the 72 public plugins on qBittorrent's unofficial list, 59 should now load and run, up from about 30; the rest are Python 2 or need extra packages.
+- `init` now sets up 14 public Jackett indexers instead of 4, adding EZTV, LimeTorrents, TheRARBG, TorrentDownloads, TorrentDownload, TorrentProject, Knaben, uindex, Kickass and ExtraTorrent. Each was checked against a fresh Jackett with FlareSolverr. Prowlarr's first-search defaults use the same list.
+- `show:all` in the result filter lists the results that filters hid, marked `[HIDDEN]` with the reason, and the result header counts them.
+- Tests for the setup wizard's full-automation prompts against a local HTTP server that acts like Jackett, Prowlarr and qBittorrent, and in-process tests for `status`, indexer management and the interactive session. CI now installs tmux and tries libtorrent, so those tests run there instead of skipping, and lists any skips.
+- `helm-torrent daemon prune` deletes the records and logs of daemons that have stopped.
+- Theme presets (`helm`, `tokyo-night`, `nord`, `catppuccin-mocha`) with single-colour overrides, and `helm-torrent banner [--json]`. Banner modules and logo sources (built-in, file, command) run under one time limit, so a slow or failing part cannot break or delay the banner.
+- `helm-torrent config init`, `edit`, `doctor` and `show --origin`. They run even when the config file is broken. `doctor` checks syntax, values, unknown keys, ignored files, `secrets.env` permissions, writable directories and service reachability, and never prints secrets.
+- Layered settings from `config.toml` or `config.jsonc`, with validation and a shared JSON Schema. Existing `config.json` values migrate once, and the original file stays in place. If both new files exist, `config.toml` is used.
+- Durable job queue with process-isolated workers, crash recovery, cancellation and a completed-file catalog.
+- `helm-torrent download`, `watch`, `serve`, `files`, `attach` and `daemon`, plus `--daemon` and `--session`.
+- Authenticated HTTP job API and range streaming limited to cataloged files inside the download directory.
+- Resolution of HTML detail pages, redirects, direct `.torrent` URLs and local metadata, with size, depth, hop and time limits.
+- Isolated Docker and Podman stack benchmarks with effective cgroup verification and `--image`/`--image-manifest` overrides.
+- A device profiler that reports energy as unavailable unless discharging is verified.
+- A tested Linux PSS benchmark harness, source fingerprints, raw samples and verified generated-payload loopback BitTorrent measurements, including twelve-source concurrency comparisons and configurable `--lite-workers`.
+- Isolated Lite worker processes with bounded deadlines/imports, category propagation, process cleanup and fixtures for every bundled scraper.
+- Per-source Lite outcomes and retained-result counts on stderr, preserving JSON stdout.
+- Standalone `uninstall.sh` for raw GitHub execution, with preview-by-default, selective removal and unit tests.
+
+### Fixed
+- A banner command that hit its own timeout just before the banner deadline showed "unavailable" instead of "timed out"; it failed the Python 3.8 CI run. CI now runs every Python version to the end instead of cancelling the rest after one fails.
+- `REPACK` no longer hides video results, since scene video releases use it too; it only ranks them lower. Game repacks are still caught by FitGirl, DODI, ElAmigos and similar keywords.
+- Dedupe also joins a result that has no hash and a rounded size (such as LimeTorrents' "4.2 GB") to a hashed copy with the same title and a size within 2%.
+- Plugin results whose size was given in GiB/MiB/KiB/TiB, in lowercase, with thousands separators, or as a number were dropped; they are kept now, and a plugin's `pub_date` shows as the result date.
+- A plugin's second `retrieve_url` argument was sent as POST data instead of headers, and `download_file`'s referer was used as a file name.
+- Rerunning `init` no longer resets Jackett indexers you have already configured; only missing ones are added. YTS is set up at its current `yts.gg` link instead of the retired `yts.mx`.
+- Prowlarr's default indexers no longer include `torrentgalaxy` and `nyaapantsu`, which have no Prowlarr definition, so only 3 of its 5 defaults were ever set up.
+- Content filters use the Torznab category a source gives (Jackett, Prowlarr and Torznab feeds): a result filed under the searched type skips the keyword checks, and one filed only under another type is hidden. Results without a category still use keywords.
+- Keywords from another content type that are normal in video release names (audio codecs such as `AAC`, `MP3` and `FLAC`, plus `ep` and `single`) no longer hide video results; they only rank them lower. Strong signals such as `PC`, `DODI`, `FitGirl` or `soundtrack` still hide them.
+- Book searches ask Torznab for category `7000` (books) as well as `8000` (other), and game searches add `1000` (console).
+- Duplicate results from different sources are merged instead of dropped. Results now match on info hash, read from magnets, from `.torrent` URLs named after the hash, and from the `InfoHash` field that Jackett, Prowlarr and Torznab send with their download links, before falling back to the title (ignoring case and punctuation) plus size. The merged result keeps the most-seeded copy, takes a missing date or size from another copy, uses a magnet over an indexer download link, lists every source as `Jackett (TPB) +1`, and lists them in `--json` as `sources`.
+- Search results from the Jackett and Prowlarr JSON APIs now keep their publish date (only the Torznab XML fallback did before). Jackett's `0001-01-01` placeholder is treated as no date.
+- A missing Prowlarr API key and a JSON search that falls back to Torznab are logged to `helm.log` only, not printed during searches.
+- One-shot waits now watch only the torrents this run sent (tagged `helm` plus a per-run `helm-ui-…` tag), so torrents added to qBittorrent by hand no longer hold up the teardown, and Ctrl+C removes only this run's unfinished torrents. The wait goes through the shared qBittorrent session and URL instead of its own `QB_WEBUI` default, and a missing password now stops it instead of retrying forever.
+- Progress lines from the Lite downloader and the one-shot wait are plain text, at most one per whole percent or 30 seconds, when output is not a terminal, so job logs no longer fill with escape codes.
+- qBittorrent login failures raise `QBittorrentAuthError` (a `ConnectionError`), and one-shot startup, readiness checks and teardown catch only the subprocess and HTTP errors they expect.
+- Setup: detect an existing Jackett or Prowlarr container before writing the compose and env files, so the detected one is used instead of a second copy.
+- Setup: mount the config directory into the CLI container and set `HELM_CONFIG_DIR`; the old `/app/config.json` mount was never read.
+- Setup: use the published `ghcr.io/piratebird/helm` image on Podman instead of a `mini-helm` image nothing built.
+- Setup: with a VPN, map gluetun `18080:18080` (qBittorrent listens on 18080) and point `QB_WEBUI` at `gluetun`.
+- Setup: fix the systemd unit's empty `ExecStart`, the launcher adding `--oneshot` when any argument contained `-o`, the summary ignoring `--*-dir`, and `sed -i` failing on macOS. `.env.docker` is now written with mode `0600`.
+- Log in to qBittorrent again after a session expires, and follow URL or credential changes in long-running services.
+- Remove a cancelled job's torrent from qBittorrent, and map container paths to host paths when cataloging its files.
+- Allow failed or cancelled sources to be resubmitted, and keep the queue worker alive after unexpected errors.
+- Stop orphaned download workers after a forced service stop.
+- Reject a whole watch file when any line is invalid, and survive transient watch-directory failures.
+- Close connections after rejected requests so an unread body cannot be parsed as a new request; time out stalled clients.
+- Keep the working directory off child-process import paths.
+- Use DHT bootstrap session settings on bindings without `add_dht_router`, including Termux.
+- Preserve completed plugin results when other plugins stall or reuse worker threads.
+- Clean up owned one-shot containers across failures and interrupts; Lite searches never start the stack.
+- Initialize logging after path overrides, redact credentials in formatted messages and archived logs, and read bounded log tails.
+- Report bundled plugin HTTP/parser errors instead of presenting every failure as an empty search.
+- Preserve unknown SubsPlease swarm counts through seed filtering.
+- Omit configuration from bug reports when redaction fails.
+- Correct README commands and qualify historical benchmark claims; add regression coverage.
+
 ## [0.10.0] - 2026-09-08
 
 

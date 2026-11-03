@@ -8,7 +8,7 @@ from html.parser import HTMLParser
 from typing import Callable, Dict, List, Mapping, Match, Tuple, Union
 from urllib.parse import quote
 
-from helpers import retrieve_url
+from helpers import retrieve_url, validate_html
 from novaprinter import prettyPrinter
 
 
@@ -131,6 +131,7 @@ class limetorrents:
         for page in range(1, 5):
             page_url = f"{self.url}/search/{category}/{query}/seeds/{page}/"
             html = retrieve_url(page_url)
+            validate_html(html, ("table2",))
             parser = self.MyHtmlParser(self.url)
             parser.feed(html)
             parser.close()

@@ -13,7 +13,8 @@ else:
     import tty
 import unicodedata  # noqa: E402
 
-from helm.ui.colors import C_LINE, C_LOGO, C_RST, C_SUB, C_TEXT, logo  # noqa: E402
+from helm.ui.ansi import T  # noqa: E402
+from helm.ui.banner import WORDMARK as logo  # noqa: E402
 
 
 def _read_key(fd):
@@ -68,6 +69,69 @@ def format_size(size_bytes):
     return "????"
 
 
+def _variant_for(query, raw_count):
+    """A split spelling worth searching too, when the search came back thin."""
+    from helm.config.settings import ConfigError, load_settings
+    from helm.search.query_variants import better_query
+
+    try:
+        if not load_settings().get("search.spelling_variants"):
+            return None
+    except ConfigError:
+        return None
+    try:
+        return better_query(query, raw_count)
+    except Exception:
+        return None
+
+
+def _collect(query, content_type, lite_mode):
+    """Search Jackett/Prowlarr and Lite together (or Lite only) for one query."""
+    from helm.search.rss_fetcher import SearchResults
+
+    res = SearchResults()
+    used_lite = lite_mode
+    import concurrent.futures
+
+    def fetch_jackett():
+        from helm.search.rss_fetcher import search_indexers
+
+        return search_indexers(query, content_type, fallback_lite=False)
+
+    def fetch_lite():
+        from helm.search.lite_fetcher import search_lite
+
+        return search_lite(query, content_type)
+
+    if not lite_mode:
+        jackett_future = None
+        lite_future = None
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            jackett_future = executor.submit(fetch_jackett)
+            lite_future = executor.submit(fetch_lite)
+
+            try:
+                res.extend(jackett_future.result())
+            except Exception as e:
+                print(
+                    f"Indexer manager unavailable ({type(e).__name__}); using Lite results.",
+                    file=sys.stderr,
+                )
+                used_lite = True
+
+            try:
+                res.extend(lite_future.result())
+            except Exception as error:
+                from helm.search.rss_fetcher import SourceOutcome, source_status
+
+                res.outcomes.append(SourceOutcome("Lite", source_status(error)))
+    else:
+        res.extend(fetch_lite())
+
+    return res, used_lite
+
+
 def animated_search(query, content_type, lite_mode=False, show_spinner=True):
     done = False
 
@@ -75,7 +139,7 @@ def animated_search(query, content_type, lite_mode=False, show_spinner=True):
         chars = [".  ", ".. ", "...", "   "]
         i = 0
         while not done:
-            sys.stdout.write(f"\r{C_LOGO}Searching" + chars[i % 4] + f"{C_RST}")
+            sys.stdout.write(f"\r{T.LOGO}Searching" + chars[i % 4] + T.RST)
             sys.stdout.flush()
             time.sleep(0.4)
             i += 1
@@ -87,51 +151,23 @@ def animated_search(query, content_type, lite_mode=False, show_spinner=True):
         t = threading.Thread(target=animate)
         t.start()
 
-    res = []
-    used_lite = lite_mode
+    variant = None
     try:
-        import concurrent.futures
-
-        def fetch_jackett():
-            from helm.core.rss_fetcher import search_indexers
-
-            return search_indexers(query, content_type)
-
-        def fetch_lite():
-            from helm.core.lite_fetcher import search_lite
-
-            return search_lite(query)
-
-        if not lite_mode:
-            jackett_future = None
-            lite_future = None
-
-            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-                jackett_future = executor.submit(fetch_jackett)
-                lite_future = executor.submit(fetch_lite)
-
-                try:
-                    res.extend(jackett_future.result())
-                except Exception as e:
-                    sys.stdout.write("\r" + " " * 30 + "\r")
-                    sys.stdout.write(
-                        f"\n\033[33m[!] Indexer Manager not available ({e}). Auto-falling back to LITE MODE...\033[0m\n"
-                    )
-                    sys.stdout.flush()
-                    used_lite = True
-
-                try:
-                    res.extend(lite_future.result())
-                except Exception:
-                    pass
-        else:
-            res.extend(fetch_lite())
-
+        res, used_lite = _collect(query, content_type, lite_mode)
+        variant = _variant_for(query, len(res))
+        if variant:
+            extra, _ = _collect(variant, content_type, lite_mode)
+            res.extend(extra)
     finally:
         done = True
         if t is not None:
             t.join()
 
+    if variant:
+        print(f"Also searched for '{variant}', the usual spelling in release names.", file=sys.stderr)
+    if res.outcomes:
+        summary = "; ".join(f"{o.source}: {o.status} ({o.count})" for o in res.outcomes)
+        print(f"Sources: {summary}", file=sys.stderr)
     return res, used_lite
 
 
@@ -169,19 +205,19 @@ def _append_scroll_footer(buf, count, start, stop, limit):
         return
     remaining = count - stop
     if remaining > 0:
-        buf.append(f"\033[K\r\n\033[3m{C_SUB}... and {remaining} more items below{C_RST}\033[0m\033[K\r\n")
+        buf.append(f"{T.EOL}\r\n{T.ITALIC}{T.ACCENT}... and {remaining} more items below{T.RST}{T.RST}{T.EOL}\r\n")
     if start > 0:
-        buf.append(f"\033[K\r\n\033[3m{C_SUB}... and {start} items above{C_RST}\033[0m\033[K\r\n")
+        buf.append(f"{T.EOL}\r\n{T.ITALIC}{T.ACCENT}... and {start} items above{T.RST}{T.RST}{T.EOL}\r\n")
 
 
 def _enter_raw_input(fd):
     if not IS_WINDOWS:
         tty.setraw(sys.stdin.fileno())
-    sys.stdout.write("\033[?25l")
+    sys.stdout.write(T.HIDE_CURSOR)
 
 
 def _exit_raw_input(fd, old_settings):
-    sys.stdout.write("\033[?25h")
+    sys.stdout.write(T.SHOW_CURSOR)
     if not IS_WINDOWS:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
@@ -195,10 +231,10 @@ def interactive_indexer_selector(indexer_list):
     def redraw():
         nonlocal selected_index
         buf = []
-        buf.append("\033[H")
-        logo_crlf = logo.replace("\n", "\033[K\r\n")
-        buf.append(f"{C_LOGO}{logo_crlf}{C_RST}\033[K\r\n")
-        buf.append(f"{C_SUB}THE HELM - Indexer Management{C_RST}\033[K\r\n\033[K\r\n")
+        buf.append(T.HOME)
+        logo_crlf = logo.replace("\n", f"{T.EOL}\r\n")
+        buf.append(f"{T.LOGO}{logo_crlf}{T.RST}{T.EOL}\r\n")
+        buf.append(f"{T.ACCENT}THE HELM - Indexer Management{T.RST}{T.EOL}\r\n{T.EOL}\r\n")
 
         search_term = current_input.lower()
         if search_term.startswith("/"):
@@ -218,15 +254,15 @@ def interactive_indexer_selector(indexer_list):
         window_items = disp_items[start_idx:stop_idx]
 
         buf.append(
-            f"\033[1m{C_TEXT}Found {len(disp_items)} indexers (showing {start_idx + 1}-{start_idx + len(window_items)}):{C_RST}\033[K\r\n"
+            f"{T.BOLD}{T.TEXT}Found {len(disp_items)} indexers (showing {start_idx + 1}-{start_idx + len(window_items)}):{T.RST}{T.EOL}\r\n"
         )
-        buf.append(f"{C_LINE}" + "━" * 80 + f"{C_RST}\033[K\r\n")
+        buf.append(T.LINE + "━" * 80 + f"{T.RST}{T.EOL}\r\n")
 
         for i, idx in enumerate(window_items):
             actual_i = start_idx + i
             title = _truncate_to_width(idx["title"], 40)
 
-            status = "\033[32m[CONFIGURED]\033[0m" if idx["configured"] else "\033[31m[UNCONFIGURED]\033[0m"
+            status = f"{T.SUCCESS}[CONFIGURED]{T.RST}" if idx["configured"] else f"{T.ERROR}[UNCONFIGURED]{T.RST}"
             typ = idx.get("type", "unknown")
 
             title_pad = max(2, 42 - get_display_width(title))
@@ -234,18 +270,18 @@ def interactive_indexer_selector(indexer_list):
 
             if actual_i == selected_index:
                 buf.append(
-                    f"\033[7m\033[1m{C_LOGO} ❯ {title}{C_RST}\033[7m{' ' * title_pad}{C_TEXT}{info_str}{C_RST}\033[K\r\n"
+                    f"{T.REVERSE}{T.BOLD}{T.LOGO} ❯ {title}{T.RST}{T.REVERSE}{' ' * title_pad}{T.TEXT}{info_str}{T.RST}{T.EOL}\r\n"
                 )
             else:
                 buf.append(
-                    f"\033[1m{C_SUB}   {C_RST} {C_LOGO}{title}{C_RST}{' ' * title_pad}\033[1m{C_TEXT}{info_str}{C_RST}\033[K\r\n"
+                    f"{T.BOLD}{T.ACCENT}   {T.RST} {T.LOGO}{title}{T.RST}{' ' * title_pad}{T.BOLD}{T.TEXT}{info_str}{T.RST}{T.EOL}\r\n"
                 )
 
         _append_scroll_footer(buf, len(disp_items), start_idx, stop_idx, limit)
 
-        buf.append(f"{C_LINE}" + "━" * 80 + f"{C_RST}\033[K\r\n")
-        prompt = f"\033[1m{C_TEXT}❯ Search (Arrows=Move, Enter=Toggle Config, Esc/Ctrl-C=Exit):{C_RST} {current_input}"
-        buf.append(prompt + "\033[J")
+        buf.append(T.LINE + "━" * 80 + f"{T.RST}{T.EOL}\r\n")
+        prompt = f"{T.BOLD}{T.TEXT}❯ Search (Arrows=Move, Enter=Toggle Config, Esc/Ctrl-C=Exit):{T.RST} {current_input}"
+        buf.append(prompt + T.CLEAR_DOWN)
         sys.stdout.write("".join(buf))
         sys.stdout.flush()
         return disp_items
@@ -290,7 +326,10 @@ def interactive_indexer_selector(indexer_list):
         _exit_raw_input(fd, old_settings)
 
 
-def interactive_selector(filtered_list, mode_str="", lite_mode=False, media_type=""):
+def interactive_selector(filtered_list, mode_str="", lite_mode=False, media_type="", hidden=None):
+    """Pick one result. *hidden* holds (item, reason) pairs the filters removed; ``show:all`` lists them too."""
+    hidden = list(hidden or ())
+    hidden_reason = {id(item): reason for item, reason in hidden}
     fd = sys.stdin.fileno() if not IS_WINDOWS else None
     old_settings = termios.tcgetattr(fd) if not IS_WINDOWS else None
     current_input = ""
@@ -299,20 +338,23 @@ def interactive_selector(filtered_list, mode_str="", lite_mode=False, media_type
     def redraw():
         nonlocal selected_index
         buf = []
-        buf.append("\033[H")
+        buf.append(T.HOME)
 
-        logo_crlf = logo.replace("\n", "\033[K\r\n")
-        buf.append(f"{C_LOGO}{logo_crlf}{C_RST}\033[K\r\n")
-        buf.append(f"{C_SUB}THE HELM - Torrent automation MVP{mode_str}{C_RST}\033[K\r\n\033[K\r\n")
+        logo_crlf = logo.replace("\n", f"{T.EOL}\r\n")
+        buf.append(f"{T.LOGO}{logo_crlf}{T.RST}{T.EOL}\r\n")
+        buf.append(f"{T.ACCENT}THE HELM - Torrent automation MVP{mode_str}{T.RST}{T.EOL}\r\n{T.EOL}\r\n")
 
         raw_terms = current_input.lower().split()
         title_terms = []
         cat_filter = None
         sort_key = None
         sort_desc = True
+        show_all = False
 
         for term in raw_terms:
-            if term.startswith("cat:"):
+            if term == "show:all":
+                show_all = True
+            elif term.startswith("cat:"):
                 cat_filter = term.split(":", 1)[1]
             elif term.startswith("sort:"):
                 sort_val = term.split(":", 1)[1]
@@ -333,7 +375,8 @@ def interactive_selector(filtered_list, mode_str="", lite_mode=False, media_type
             search_term = search_term[1:]
 
         disp_items = []
-        for t in filtered_list:
+        source = list(filtered_list) + ([item for item, _ in hidden] if show_all else [])
+        for t in source:
             if search_term and search_term not in t.title.lower():
                 continue
 
@@ -361,10 +404,14 @@ def interactive_selector(filtered_list, mode_str="", lite_mode=False, media_type
 
         window_items = disp_items[start_idx:stop_idx]
 
+        if hidden and not show_all:
+            hidden_note = f" {T.MUTED}[{len(hidden)} hidden by filters, type show:all]{T.RST}"
+        else:
+            hidden_note = ""
         buf.append(
-            f"\033[1m{C_TEXT}Found {len(disp_items)} results (showing {start_idx + 1}-{start_idx + len(window_items)}):{C_RST}\033[K\r\n"
+            f"{T.BOLD}{T.TEXT}Found {len(disp_items)} results (showing {start_idx + 1}-{start_idx + len(window_items)}):{T.RST}{hidden_note}{T.EOL}\r\n"
         )
-        buf.append(f"{C_LINE}" + "━" * 80 + f"{C_RST}\033[K\r\n")
+        buf.append(T.LINE + "━" * 80 + f"{T.RST}{T.EOL}\r\n")
 
         for i, t in enumerate(window_items):
             actual_i = start_idx + i
@@ -374,8 +421,9 @@ def interactive_selector(filtered_list, mode_str="", lite_mode=False, media_type
             is_generic = score == 0
 
             # Only show tags for generic items, or items that have a media type (non-generic)
-            tag = f"[{item_type.upper()}]" if item_type else "[GENERIC]"
-            has_tag = is_generic or item_type
+            reason = hidden_reason.get(id(t))
+            tag = "[HIDDEN]" if reason else f"[{item_type.upper()}]" if item_type else "[GENERIC]"
+            has_tag = reason or is_generic or item_type
 
             prefix_len = len(tag) + 1 if has_tag else 0
             max_title_len = 38 - prefix_len
@@ -390,31 +438,33 @@ def interactive_selector(filtered_list, mode_str="", lite_mode=False, media_type
             size_str = format_size(getattr(t, "size", 0))
             date_str = getattr(t, "pubdate", "") or "????-??-??"
             indexer = getattr(t, "indexer", "Unknown")
+            if reason:
+                indexer = f"{indexer} | {reason}"
 
             info_str = f"[{size_str:>9}] [{date_str:>10}] [{seeds:>4}↑ {leechs:>3}↓] [{indexer}]"
 
             if has_tag:
-                title = f"\033[33m{tag}{C_LOGO} {title}"
+                title = f"{T.WARNING}{tag}{T.LOGO} {title}"
 
             if actual_i == selected_index:
                 buf.append(
-                    f"\033[7m\033[1m{C_LOGO} ❯ {title}{C_RST}\033[7m{' ' * title_pad}{C_TEXT}{info_str}{C_RST}\033[K\r\n"
+                    f"{T.REVERSE}{T.BOLD}{T.LOGO} ❯ {title}{T.RST}{T.REVERSE}{' ' * title_pad}{T.TEXT}{info_str}{T.RST}{T.EOL}\r\n"
                 )
             else:
                 buf.append(
-                    f"\033[1m{C_SUB}   {C_RST}{C_LOGO}{title}{C_RST}{' ' * title_pad}\033[1m{C_TEXT}{info_str}{C_RST}\033[K\r\n"
+                    f"{T.BOLD}{T.ACCENT}   {T.RST}{T.LOGO}{title}{T.RST}{' ' * title_pad}{T.BOLD}{T.TEXT}{info_str}{T.RST}{T.EOL}\r\n"
                 )
 
         _append_scroll_footer(buf, len(disp_items), start_idx, stop_idx, limit)
 
-        buf.append(f"{C_LINE}" + "━" * 80 + f"{C_RST}\033[K\r\n")
+        buf.append(T.LINE + "━" * 80 + f"{T.RST}{T.EOL}\r\n")
 
         if lite_mode:
-            prompt = f"\033[1m{C_TEXT}❯ Filter (cat:video, sort:size | Esc=Back, Ctrl-C=Exit):{C_RST} {current_input}"
+            prompt = f"{T.BOLD}{T.TEXT}❯ Filter (cat:video, sort:size, show:all | Esc=Back, Ctrl-C=Exit):{T.RST} {current_input}"
         else:
-            prompt = f"\033[1m{C_TEXT}❯ Filter (cat:video, sort:size | Esc=Back, Ctrl-C=Exit, Ctrl-E=Teardown):{C_RST} {current_input}"
+            prompt = f"{T.BOLD}{T.TEXT}❯ Filter (cat:video, sort:size, show:all | Esc=Back, Ctrl-C=Exit, Ctrl-E=Teardown):{T.RST} {current_input}"
 
-        buf.append(prompt + "\033[J")
+        buf.append(prompt + T.CLEAR_DOWN)
         sys.stdout.write("".join(buf))
         sys.stdout.flush()
         return disp_items
@@ -475,25 +525,25 @@ def interactive_checkbox_selector(options, title_msg="Select categories", defaul
 
     def redraw():
         buf = []
-        buf.append("\033[H")
+        buf.append(T.HOME)
 
-        logo_crlf = logo.replace("\n", "\033[K\r\n")
-        buf.append(f"{C_LOGO}{logo_crlf}{C_RST}\033[K\r\n")
-        buf.append(f"{C_SUB}THE HELM - Torrent automation MVP{C_RST}\033[K\r\n\033[K\r\n")
+        logo_crlf = logo.replace("\n", f"{T.EOL}\r\n")
+        buf.append(f"{T.LOGO}{logo_crlf}{T.RST}{T.EOL}\r\n")
+        buf.append(f"{T.ACCENT}THE HELM - Torrent automation MVP{T.RST}{T.EOL}\r\n{T.EOL}\r\n")
 
-        buf.append(f"\033[1m{C_TEXT}? {title_msg}:{C_RST}\033[K\r\n")
-        buf.append(f"{C_LINE}" + "━" * 80 + f"{C_RST}\033[K\r\n")
+        buf.append(f"{T.BOLD}{T.TEXT}? {title_msg}:{T.RST}{T.EOL}\r\n")
+        buf.append(T.LINE + "━" * 80 + f"{T.RST}{T.EOL}\r\n")
 
         for i, opt in enumerate(options):
             check_char = "x" if i in checked else " "
-            prefix = f"\033[7m\033[1m{C_LOGO} ❯ " if i == selected_index else f"\033[1m{C_SUB}   "
+            prefix = f"{T.REVERSE}{T.BOLD}{T.LOGO} ❯ " if i == selected_index else f"{T.BOLD}{T.ACCENT}   "
             # if selected index we want to invert the colors for the whole line, including the text
-            suffix = f"{C_RST}"
-            buf.append(f"{prefix}[{check_char}] {opt}{suffix}\033[K\r\n")
+            suffix = T.RST
+            buf.append(f"{prefix}[{check_char}] {opt}{suffix}{T.EOL}\r\n")
 
-        buf.append(f"{C_LINE}" + "━" * 80 + f"{C_RST}\033[K\r\n")
+        buf.append(T.LINE + "━" * 80 + f"{T.RST}{T.EOL}\r\n")
         buf.append(
-            f"\033[1m{C_TEXT}❯ (Arrows=Move, Space=Toggle, Enter=Confirm, Esc=Go Back, Ctrl-C=Exit){C_RST}\033[J"
+            f"{T.BOLD}{T.TEXT}❯ (Arrows=Move, Space=Toggle, Enter=Confirm, Esc=Go Back, Ctrl-C=Exit){T.RST}{T.CLEAR_DOWN}"
         )
 
         sys.stdout.write("".join(buf))

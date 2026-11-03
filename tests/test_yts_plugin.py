@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../s
 
 import novaprinter  # noqa: E402
 
-from helm.core.lite_plugin_loader import load_plugins  # noqa: E402
+from helm.search.lite_plugin_loader import load_plugins  # noqa: E402
 
 BUNDLED_PLUGINS = os.path.abspath(os.path.join(os.path.dirname(__file__), "../src/helm/plugins"))
 API_URL = "https://yts.lt/api/v2/list_movies.json"

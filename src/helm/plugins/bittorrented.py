@@ -9,10 +9,10 @@
 import re
 
 import requests
-from novaprinter import prettyPrinter
+from novaprinter import prettyPrinter, report_error
 
-from helm.core.http import get_shared_session
-from helm.core.logger import get_logger
+from helm.logger import get_logger
+from helm.net.http import get_shared_session
 
 logger = get_logger(__name__)
 
@@ -27,6 +27,7 @@ def map_results(results):
     for r in results:
         info_hash = (r.get("torrent_infohash") or "").lower()
         if not INFO_HASH.match(info_hash):
+            report_error(ValueError("Invalid info hash in API result"))
             continue
         name = r.get("torrent_name") or info_hash
         out.append(
@@ -73,6 +74,7 @@ class bittorrented(object):
             payload = r.json()
         except Exception as e:
             logger.debug(f"Event: BitTorrented API connection failed: {e}")
+            report_error(e)
             return
 
         results = (payload or {}).get("results") or []

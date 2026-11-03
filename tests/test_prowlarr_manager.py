@@ -1,7 +1,7 @@
 import pytest
 import responses
 
-from helm.core.indexer_manager import ProwlarrManager
+from helm.search.indexer_manager import ProwlarrManager
 
 
 @pytest.fixture(autouse=True)

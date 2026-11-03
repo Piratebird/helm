@@ -10,10 +10,10 @@ import re
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from helpers import retrieve_url
-from novaprinter import prettyPrinter
+from helpers import retrieve_url, validate_html
+from novaprinter import prettyPrinter, report_error
 
-from helm.core.logger import get_logger
+from helm.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -87,12 +87,15 @@ class x1337(object):
         if not query:
             return
 
+        categories = CATEGORIES if cat == "all" else [{"movies": "Movies", "tv": "TV"}[cat]]
+        failure = None
         base = None
         list_html = None
         for i in range(len(HOSTS)):
             host = HOSTS[(_working_host + i) % len(HOSTS)]
             try:
-                html = retrieve_url(f"https://{host}{_category_path(query, CATEGORIES[0])}")
+                html = retrieve_url(f"https://{host}{_category_path(query, categories[0])}")
+                validate_html(html, ("table-list",))
                 rows = parse_rows(html)
                 if not rows:
                     continue  # empty or a Cloudflare wall page
@@ -100,20 +103,24 @@ class x1337(object):
                 list_html = html
                 _set_working_host(host)
                 break
-            except Exception:
+            except Exception as error:
+                failure = error
                 continue
         if not base:
+            if failure is not None:
+                report_error(failure)
             return
 
         rows = parse_rows(list_html)
 
         # The "all" category handed to the plugin can be either; search the
         # other category too so movies and TV overlap is recovered.
-        for category in CATEGORIES[1:]:
+        for category in categories[1:]:
             try:
                 html = retrieve_url(f"{base}{_category_path(query, category)}")
                 rows.extend(parse_rows(html))
-            except Exception:
+            except Exception as error:
+                report_error(error)
                 continue
 
         seen = set()
@@ -136,7 +143,8 @@ class x1337(object):
                 path = futures[future]
                 try:
                     magnets[path] = extract_magnet(future.result())
-                except Exception:
+                except Exception as error:
+                    report_error(error)
                     magnets[path] = None
 
         for row in unique[:MAX_DETAILS]:
