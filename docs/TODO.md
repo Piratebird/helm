@@ -23,7 +23,29 @@ Address reliability and measurement gaps before adding the daemon or AI features
 - [x] **Real stack benchmarks:** Isolated Docker and Podman runs exercise Prowlarr, Jackett, FlareSolverr and qBittorrent with verified cgroup limits, checksummed downloads and lifecycle samples. See [BENCHMARK.md](BENCHMARK.md).
 - [x] **Torrent link resolution:** Magnets, HTML detail pages, redirects, direct `.torrent` URLs and local metadata resolve with bounded size, depth, hops and time.
 - [ ] **Device measurements:** Verify Android/Termux process cleanup and memory with `--lite-workers`. The profiler and CPU/energy accounting are tested locally, but no complete device run has been recorded.
-- [x] **Integration coverage:** Subprocess, real-socket and fake-engine tests cover the headless CLI, HTTP API, tmux sessions, wizard and one-shot ordering. The wizard's full-automation prompts remain lightly covered.
+- [x] **Integration coverage:** Subprocess, real-socket and fake-engine tests cover the headless CLI, HTTP API, tmux sessions, wizard and one-shot ordering, including the wizard's full-automation prompts against local fake Jackett, Prowlarr and qBittorrent servers.
+
+## Released in 0.11.0 (2026-11-03)
+
+- [x] **Settings:** Layered TOML/JSONC settings (environment, file, state, defaults) with `config init`, `edit`, `doctor` and `show --origin`; `config.json` is migrated once and never reset.
+- [x] **Look:** Theme presets, logo sources and banner modules with a time budget, applied across the UI, wizard, one-shot mode and Lite downloader.
+- [x] **Setup:** `setup.sh` only prepares the host and runs `helm-torrent init` inside the published image, from one compose template.
+- [x] **Layout:** `helm.core` split into feature packages and `cli.py` into commands.
+- [x] **Reliability:** Tagged one-shot waits, plain progress in job logs, daemon record pruning, narrower error handling.
+- [x] **Duplicates:** Results merge by info hash across sources (then by title and size, allowing rounded sizes), keeping the best-seeded copy, a magnet link and every source.
+- [x] **Filtering:** Source Torznab categories first; weak cross-category words (audio codecs, `ep`, `REPACK`) only rank lower; `min_seeds` defaults to 1; `show:all` lists hidden results with the reason.
+- [x] **Indexers:** 14 public Jackett indexers seeded and shared with Prowlarr, each checked against a live Jackett with FlareSolverr; existing indexer settings are kept.
+- [x] **Plugins:** qBittorrent nova3 plugin API (`retrieve_url`, `download_file`, `anySizeToBytes`, `SearchResults`, `pub_date`, encoded queries, `download_torrent`); about 59 of the 72 public community plugins should load.
+- [x] **Spelling variants:** Thin searches also try the split spelling release names use, such as `spider man` for `spiderman`.
+- [x] **CI:** Every Python version from 3.8 to 3.12 runs to the end; tmux and libtorrent are installed.
+
+## Open
+
+- [ ] **Prowlarr and FlareSolverr:** Check whether the stack adds FlareSolverr as a Prowlarr indexer proxy; without it the five Cloudflare indexers fail in Prowlarr.
+- [ ] **`helm-torrent --version`:** The flag does not exist yet.
+- [ ] **Structured JSON errors:** Return `{"status": "error", "code": ...}` under `--json` instead of plain messages.
+- [ ] **Python orchestration:** Move the remaining host setup from `setup.sh` to the Docker SDK.
+- [ ] **Unofficial plugins at runtime:** The plugin compatibility estimate is from reading the code; run a sample of community plugins in a sandbox.
 
 ## Completed Tasks
 - [x] Create a Bash installer (`setup.sh`)
@@ -64,7 +86,7 @@ Address reliability and measurement gaps before adding the daemon or AI features
   - [x] Implement API handlers for Prowlarr so users who prefer modern tracker syncing can use it seamlessly.
 - [x] **Improve Jackett Interaction:** 
   - [x] Allow adding/removing indexers directly from the CLI.
-  - [x] Auto-inject default indexers (1337x, YTS, etc.) during `helm-torrent init` via internal API.
+  - [x] Seed default indexers during `helm-torrent init` (14 public ones since 0.11.0).
 
 ### 3. Distribution & Installation
 - [x] **Uninstall Script (`uninstall.sh`):**
