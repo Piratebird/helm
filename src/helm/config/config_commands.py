@@ -37,6 +37,7 @@ DESCRIPTIONS = {
     "search.default_type": "Content profile used when none is given.",
     "search.indexer_manager": "Which manager to search: jackett, prowlarr or both.",
     "search.lite_only": "Always use Lite mode and skip the indexer managers.",
+    "search.spelling_variants": "When a search finds little, also try a long word split in two, such as spider man for spiderman.",
     "services.jackett": "Jackett web address.",
     "services.prowlarr": "Prowlarr web address.",
     "services.qbittorrent": "qBittorrent Web UI address.",

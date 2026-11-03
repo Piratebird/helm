@@ -69,6 +69,69 @@ def format_size(size_bytes):
     return "????"
 
 
+def _variant_for(query, raw_count):
+    """A split spelling worth searching too, when the search came back thin."""
+    from helm.config.settings import ConfigError, load_settings
+    from helm.search.query_variants import better_query
+
+    try:
+        if not load_settings().get("search.spelling_variants"):
+            return None
+    except ConfigError:
+        return None
+    try:
+        return better_query(query, raw_count)
+    except Exception:
+        return None
+
+
+def _collect(query, content_type, lite_mode):
+    """Search Jackett/Prowlarr and Lite together (or Lite only) for one query."""
+    from helm.search.rss_fetcher import SearchResults
+
+    res = SearchResults()
+    used_lite = lite_mode
+    import concurrent.futures
+
+    def fetch_jackett():
+        from helm.search.rss_fetcher import search_indexers
+
+        return search_indexers(query, content_type, fallback_lite=False)
+
+    def fetch_lite():
+        from helm.search.lite_fetcher import search_lite
+
+        return search_lite(query, content_type)
+
+    if not lite_mode:
+        jackett_future = None
+        lite_future = None
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            jackett_future = executor.submit(fetch_jackett)
+            lite_future = executor.submit(fetch_lite)
+
+            try:
+                res.extend(jackett_future.result())
+            except Exception as e:
+                print(
+                    f"Indexer manager unavailable ({type(e).__name__}); using Lite results.",
+                    file=sys.stderr,
+                )
+                used_lite = True
+
+            try:
+                res.extend(lite_future.result())
+            except Exception as error:
+                from helm.search.rss_fetcher import SourceOutcome, source_status
+
+                res.outcomes.append(SourceOutcome("Lite", source_status(error)))
+    else:
+        res.extend(fetch_lite())
+
+    return res, used_lite
+
+
 def animated_search(query, content_type, lite_mode=False, show_spinner=True):
     done = False
 
@@ -88,54 +151,20 @@ def animated_search(query, content_type, lite_mode=False, show_spinner=True):
         t = threading.Thread(target=animate)
         t.start()
 
-    from helm.search.rss_fetcher import SearchResults
-
-    res = SearchResults()
-    used_lite = lite_mode
+    variant = None
     try:
-        import concurrent.futures
-
-        def fetch_jackett():
-            from helm.search.rss_fetcher import search_indexers
-
-            return search_indexers(query, content_type, fallback_lite=False)
-
-        def fetch_lite():
-            from helm.search.lite_fetcher import search_lite
-
-            return search_lite(query, content_type)
-
-        if not lite_mode:
-            jackett_future = None
-            lite_future = None
-
-            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-                jackett_future = executor.submit(fetch_jackett)
-                lite_future = executor.submit(fetch_lite)
-
-                try:
-                    res.extend(jackett_future.result())
-                except Exception as e:
-                    print(
-                        f"Indexer manager unavailable ({type(e).__name__}); using Lite results.",
-                        file=sys.stderr,
-                    )
-                    used_lite = True
-
-                try:
-                    res.extend(lite_future.result())
-                except Exception as error:
-                    from helm.search.rss_fetcher import SourceOutcome, source_status
-
-                    res.outcomes.append(SourceOutcome("Lite", source_status(error)))
-        else:
-            res.extend(fetch_lite())
-
+        res, used_lite = _collect(query, content_type, lite_mode)
+        variant = _variant_for(query, len(res))
+        if variant:
+            extra, _ = _collect(variant, content_type, lite_mode)
+            res.extend(extra)
     finally:
         done = True
         if t is not None:
             t.join()
 
+    if variant:
+        print(f"Also searched for '{variant}', the usual spelling in release names.", file=sys.stderr)
     if res.outcomes:
         summary = "; ".join(f"{o.source}: {o.status} ({o.count})" for o in res.outcomes)
         print(f"Sources: {summary}", file=sys.stderr)

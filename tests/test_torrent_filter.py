@@ -139,3 +139,24 @@ def test_torrent_item_round_trips_through_worker_json():
 
     item = TorrentItem("x", "http://l", 1, info_hash=HASH, sources=["A", "B"])
     assert vars(TorrentItem(**json.loads(json.dumps(vars(item))))) == vars(item)
+
+
+def test_dedupe_joins_a_rounded_size_copy_to_the_hashed_one():
+    exact = TorrentItem(
+        "Movie.2026.1080p.WEBRip-Group", f"magnet:?xt=urn:btih:{HASH}", 3498, size=4_512_345_678, indexer="Apibay"
+    )
+    rounded = TorrentItem(
+        "Movie 2026 1080p WEBRip Group",
+        "https://lime.test/movie.html",
+        4174,
+        size=4_509_715_660,
+        indexer="LimeTorrents",
+    )
+    far = TorrentItem(
+        "Movie 2026 1080p WEBRip Group", "https://lime.test/other.html", 9, size=2_000_000_000, indexer="LimeTorrents"
+    )
+    unique = dedupe([exact, rounded, far])
+    assert len(unique) == 2
+    merged = unique[0]
+    assert merged.seeders == 4174 and merged.link.startswith("magnet:") and merged.indexer == "LimeTorrents +1"
+    assert unique[1].size == 2_000_000_000

@@ -71,6 +71,7 @@ FIELDS = (
         choices=("both", "jackett", "prowlarr"),
     ),
     Field("search.lite_only", "bool", False, env="HELM_LITE_ONLY", legacy="LITE_MODE_ONLY"),
+    Field("search.spelling_variants", "bool", True, env="HELM_SPELLING_VARIANTS"),
     Field("services.jackett", "url", "http://localhost:19117", env="JACKETT_URL", legacy="JACKETT_URL"),
     Field("services.prowlarr", "url", "http://localhost:19696", env="PROWLARR_URL", legacy="PROWLARR_URL"),
     Field("services.qbittorrent", "url", "http://localhost:18080", env="QB_WEBUI", legacy="QB_WEBUI"),

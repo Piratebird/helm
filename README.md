@@ -96,6 +96,7 @@ If a source times out (for example, `nyaa.si`), Helm keeps results from other co
 
 - Enter a nonempty, specific query. A request containing `q=` has an empty query; current Helm rejects blank interactive and CLI searches.
 - Use `helm-torrent logs` for recent source errors, or `HELM_VERBOSE=true helm-torrent search "artist album" --type music --lite --json` for verbose diagnostics on stderr.
+- Sources match words literally, and release names often split names ("Spider-Man"). When a search finds little, Helm also tries the split spelling and prints `Also searched for ...`; set `search.spelling_variants = false` to turn this off.
 - If raw results exist but the final list is empty, check content filters and `search.min_seeds` in `config.toml` (default: 1). Use `helm-torrent paths` to locate it. Type `show:all` in the result filter to list hidden results with the reason each was hidden (`seeds`, `category` or `keyword:<word>`).
 - Content types are mapped to plugin category keys when supported (video searches movies/TV/anime); general sources fall back to `all`. Inline feeds and unsupported categories still rely on local scoring/filtering.
 - A source summary on stderr distinguishes empty results from timeouts, HTTP failures, connection failures, and parse failures. Bundled plugins report swallowed failures; third-party plugins may need the `novaprinter.report_error` hook. Jobs whose queue budget expires are marked `budget_exhausted`; JSON stdout stays separate.

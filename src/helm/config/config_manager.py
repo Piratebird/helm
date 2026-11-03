@@ -111,9 +111,9 @@ RELATED_MEDIA_TERMS = ["season", "episode", "s01", "s02"]
 
 # Another category's keywords that are also normal in this category's release
 # names: video releases name their audio track (x264 AAC, XviD MP3, FLAC) and TV
-# packs use "Ep 01-06". These only lower a result's rank instead of hiding it.
+# packs use "Ep 01-06", and scene releases are re-released as REPACK. These only lower a result's rank instead of hiding it.
 WEAK_TERMS = {
-    "video": ["aac", "alac", "flac", "mp3", "ogg", "wav", "ep", "single"],
+    "video": ["aac", "alac", "flac", "mp3", "ogg", "wav", "ep", "single", "repack"],
 }
 
 

@@ -204,4 +204,30 @@ def dedupe(items):
     groups = {}
     for item in items:
         groups.setdefault(dedupe_key(item), []).append(item)
+    _join_rounded_sizes(groups)
     return [group[0] if len(group) == 1 else _merge(group) for group in groups.values()]
+
+
+SIZE_TOLERANCE = 0.02
+
+
+def _join_rounded_sizes(groups):
+    """Fold hashless results into a hashed one with the same title and nearly the same size.
+
+    Sites that only show "4.2 GB" give a rounded size and no hash, so the exact
+    title-and-size key misses the copy another source reported precisely.
+    """
+    by_title = {}
+    for key, group in groups.items():
+        if key[0] == "hash":
+            for item in group:
+                by_title.setdefault(normalize_title(getattr(item, "title", "")), []).append((key, item))
+    if not by_title:
+        return
+    for key in [k for k in groups if k[0] == "title"]:
+        title, size = key[1], key[2]
+        for target, item in by_title.get(title, ()):
+            other = getattr(item, "size", 0) or 0
+            if other and abs(other - size) <= SIZE_TOLERANCE * max(other, size):
+                groups[target].extend(groups.pop(key))
+                break
