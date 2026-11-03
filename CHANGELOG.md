@@ -1,8 +1,8 @@
 # Changelog
 All notable changes to this project will be documented in this file.
-## [0.11.0] - Unreleased
+## [0.11.0] - 2026-11-03
 
-Headless services, layered TOML/JSONC settings with `config` commands, themes and the banner, a rebuilt setup that runs `helm-torrent init` inside the image, and a package restructure. Set the date when this is tagged.
+Headless services, layered TOML/JSONC settings with `config` commands, themes and the banner, a rebuilt setup that runs `helm-torrent init` inside the image, a package restructure, and wider search coverage: merged duplicates, source-category filtering, 14 seeded Jackett indexers, qBittorrent plugin compatibility and spelling variants.
 
 ### Changed
 - `search.min_seeds` defaults to 1 instead of 3, so results with one or two seeders are shown. A `min_seeds = 3` in an old `config.json` is treated as the old default when migrating.

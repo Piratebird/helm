@@ -152,7 +152,7 @@ For more detailed tasks breakdown check [TODO.md](docs/TODO.md)
 
 All notable changes are tracked in [CHANGELOG](CHANGELOG.md).
 
-**Latest release: [0.10.0](CHANGELOG.md#0100---2026-09-08)** — Full Prowlarr integration with native default-indexer seeding, a new container `status` command, guaranteed-pure `--json` output, and a rewritten Lite pipeline that runs every source concurrently over a shared connection-pooled session. See the full file for everything that came before.
+**Latest release: [0.11.0](CHANGELOG.md#0110---2026-11-03)**: headless services (`download`, `watch`, `serve`, `attach`, `--daemon`), layered TOML/JSONC settings with `config init|edit|doctor|show`, themes and the banner, setup that runs `helm-torrent init` inside the image, and wider search: duplicates merged by info hash, source-category filtering with `show:all`, 14 seeded Jackett indexers, qBittorrent plugin API compatibility and spelling variants such as `spider man` for `spiderman`. See the full file for everything that came before.
 
 ## Configuration
 
