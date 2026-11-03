@@ -125,3 +125,25 @@ def test_tail_handles_a_single_oversized_record(tmp_path):
     path = tmp_path / "huge.log"
     path.write_text("x" * 10000)
     assert len(tail_log(path, max_bytes=64).encode()) <= 65
+
+
+def test_missing_prowlarr_key_goes_to_the_log_file_only(tmp_path, monkeypatch, capsys):
+    import logging
+
+    from helm.logger import configure_logging
+    from helm.search import rss_fetcher
+
+    monkeypatch.setenv("HELM_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("HELM_CONFIG_DIR", str(tmp_path / "config"))
+    monkeypatch.delenv("PROWLARR_API_KEY", raising=False)
+    monkeypatch.delenv("HELM_VERBOSE", raising=False)
+    monkeypatch.setattr(rss_fetcher, "get_secret", lambda key: None)
+    configure_logging()
+    try:
+        assert rss_fetcher.search_prowlarr("ubuntu") == []
+    finally:
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+    assert "Prowlarr API key" not in capsys.readouterr().err
+    assert "Prowlarr API key not configured" in (tmp_path / "helm.log").read_text()
+    configure_logging(file_logging=False)

@@ -1,3 +1,5 @@
+import responses
+
 import helm.search.rss_fetcher as rf
 from helm.search.rss_fetcher import TorrentItem, _parse_feed, search_jackett
 
@@ -103,3 +105,42 @@ def test_search_indexers_falls_back_to_lite_with_prowlarr_manager(monkeypatch):
 
     # Same list, deduped (no duplicates here).
     assert ret == [lite]
+
+
+def test_iso_day_reads_jackett_and_prowlarr_timestamps():
+    assert rf.iso_day("2019-07-02T12:34:56") == "2019-07-02"
+    assert rf.iso_day("2021-03-04T05:06:07.1234567+01:00") == "2021-03-04"  # Jackett: 7 fractional digits
+    assert rf.iso_day("2024-12-08T16:53:15Z") == "2024-12-08"  # Prowlarr
+    assert rf.iso_day("0001-01-01T00:00:00") is None  # Jackett's "no date"
+    for missing in (None, "", "not a date", 20240101):
+        assert rf.iso_day(missing) is None
+
+
+@responses.activate
+def test_jackett_json_results_keep_their_dates(monkeypatch):
+    monkeypatch.setenv("JACKETT_URL", "http://jackett.test")
+    monkeypatch.setattr(rf, "get_secret", lambda key: "key")
+    results = [
+        {"Title": "Dated", "Size": 1, "Seeders": 5, "Peers": 1, "Tracker": "YTS",
+         "MagnetUri": "magnet:?xt=urn:btih:" + "a" * 40, "PublishDate": "2019-07-02T12:34:56.1234567+00:00"},
+        {"Title": "Undated", "Size": 2, "Seeders": 3, "Peers": 1, "Tracker": "TPB",
+         "MagnetUri": "magnet:?xt=urn:btih:" + "b" * 40, "PublishDate": "0001-01-01T00:00:00"},
+    ]  # fmt: skip
+    responses.add(responses.GET, "http://jackett.test/api/v2.0/indexers/all/results", json={"Results": results})
+    items = {item.title: item.pubdate for item in search_jackett("spider-man")}
+    assert items == {"Dated": "2019-07-02", "Undated": None}
+
+
+@responses.activate
+def test_prowlarr_json_results_keep_their_dates(monkeypatch):
+    monkeypatch.setenv("PROWLARR_URL", "http://prowlarr.test")
+    monkeypatch.setattr(rf, "get_secret", lambda key: "key")
+    responses.add(responses.GET, "http://prowlarr.test/api/v1/indexer", json=[{"id": 1}])
+    responses.add(
+        responses.GET,
+        "http://prowlarr.test/api/v1/search",
+        json=[{"title": "Dated", "size": 1, "seeders": 2, "leechers": 0, "indexer": "YTS",
+               "magnetUrl": "magnet:?xt=urn:btih:" + "c" * 40, "publishDate": "2024-12-08T16:53:15Z"}],
+    )  # fmt: skip
+    (item,) = rf.search_prowlarr("ubuntu")
+    assert item.pubdate == "2024-12-08"

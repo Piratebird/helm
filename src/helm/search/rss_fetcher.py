@@ -6,6 +6,7 @@ responsible for fetching and parsing RSS(really simple syndication) feeds from m
 """
 
 import email.utils
+import re
 import urllib.error
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -60,6 +61,22 @@ class TorrentItem:
         self.size = size
         self.pubdate = pubdate
         self.indexer = indexer
+
+
+ISO_DATE = re.compile(r"^\s*(\d{4})-(\d{2})-(\d{2})")
+
+
+def iso_day(value):
+    """Return the YYYY-MM-DD of an ISO 8601 timestamp, or None.
+
+    Jackett's PublishDate can carry seven fractional digits and Prowlarr's a
+    trailing Z, which datetime.fromisoformat rejects on older Pythons, so only
+    the date part is read. Jackett sends 0001-01-01 when a tracker has no date.
+    """
+    match = ISO_DATE.match(value) if isinstance(value, str) else None
+    if not match or int(match.group(1)) < 1990:
+        return None
+    return "-".join(match.groups())
 
 
 CATEGORY_MAP = {"video": "2000,5000", "games": "4000", "software": "4000", "books": "8000", "music": "3000"}
@@ -153,14 +170,14 @@ def _fetch_aggregate(jackett_url, api_key, query, cat):
 
 
 def search_prowlarr(query, content_type="video"):
-    from helm.config.secret_manager import get_secret
     from helm.config.settings import load_settings
 
     prowlarr_url = load_settings().get("services.prowlarr")
     api_key = get_secret("PROWLARR_API_KEY")
 
     if not api_key or "your_prowlarr_api_key_here" in api_key.lower():
-        logger.warning("Event: Prowlarr API key not configured or is placeholder.")
+        # Normal with search.indexer_manager = "both" and only Jackett set up; the banner shows it too.
+        logger.warning("Event: Prowlarr API key not configured or is placeholder.", extra={"file_only": True})
         return []
 
     # Seed default indexers on first use when none are configured.
@@ -203,7 +220,7 @@ def search_prowlarr(query, content_type="video"):
                     seeders,
                     leechers,
                     size,
-                    pubdate=None,
+                    pubdate=iso_day(item.get("publishDate")),
                     indexer=f"Prowlarr ({indexer})",
                 )
             )
@@ -212,7 +229,9 @@ def search_prowlarr(query, content_type="video"):
         return sorted(results, key=lambda x: x.seeders, reverse=True)
 
     except Exception as e:
-        logger.error(f"Event: Prowlarr JSON search failed: {e}. Falling back to Torznab XML parsing.")
+        logger.error(
+            f"Event: Prowlarr JSON search failed: {e}. Falling back to Torznab XML parsing.", extra={"file_only": True}
+        )
 
         cats = content_type.split(",")
         cat_ids = []
@@ -315,7 +334,15 @@ def search_jackett(query, content_type="video"):
                 continue
 
             results.append(
-                TorrentItem(title, download_url, seeders, leechers, size, pubdate=None, indexer=f"Jackett ({indexer})")
+                TorrentItem(
+                    title,
+                    download_url,
+                    seeders,
+                    leechers,
+                    size,
+                    pubdate=iso_day(item.get("PublishDate")),
+                    indexer=f"Jackett ({indexer})",
+                )
             )
 
         if results:
@@ -323,7 +350,10 @@ def search_jackett(query, content_type="video"):
             return sorted(results, key=lambda x: x.seeders, reverse=True)
 
     except Exception as e:
-        logger.error(f"Event: Jackett JSON search failed: {e}. Falling back to ThreadPool Torznab XML parsing.")
+        logger.error(
+            f"Event: Jackett JSON search failed: {e}. Falling back to ThreadPool Torznab XML parsing.",
+            extra={"file_only": True},
+        )
 
     # 2) Hard fallback to XML Torznab Parsing
     cats = content_type.split(",")

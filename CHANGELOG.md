@@ -35,6 +35,8 @@ Headless services, layered TOML/JSONC settings with `config` commands, themes an
 - Standalone `uninstall.sh` for raw GitHub execution, with preview-by-default, selective removal and unit tests.
 
 ### Fixed
+- Search results from the Jackett and Prowlarr JSON APIs now keep their publish date (only the Torznab XML fallback did before). Jackett's `0001-01-01` placeholder is treated as no date.
+- A missing Prowlarr API key and a JSON search that falls back to Torznab are logged to `helm.log` only, not printed during searches.
 - One-shot waits now watch only the torrents this run sent (tagged `helm` plus a per-run `helm-ui-…` tag), so torrents added to qBittorrent by hand no longer hold up the teardown, and Ctrl+C removes only this run's unfinished torrents. The wait goes through the shared qBittorrent session and URL instead of its own `QB_WEBUI` default, and a missing password now stops it instead of retrying forever.
 - Progress lines from the Lite downloader and the one-shot wait are plain text, at most one per whole percent or 30 seconds, when output is not a terminal, so job logs no longer fill with escape codes.
 - qBittorrent login failures raise `QBittorrentAuthError` (a `ConnectionError`), and one-shot startup, readiness checks and teardown catch only the subprocess and HTTP errors they expect.
