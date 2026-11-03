@@ -277,6 +277,9 @@ def run_with_deadline(functions, timeout):
     def work(index, function):
         try:
             results[index] = ("ok", function())
+        except (subprocess.TimeoutExpired, TimeoutError):
+            # A command's own timeout equals the deadline, so it can fire first; it is still a timeout.
+            results[index] = ("timeout", None)
         except Exception:
             results[index] = ("error", None)
 

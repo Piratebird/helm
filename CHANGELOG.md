@@ -40,6 +40,7 @@ Headless services, layered TOML/JSONC settings with `config` commands, themes an
 - Standalone `uninstall.sh` for raw GitHub execution, with preview-by-default, selective removal and unit tests.
 
 ### Fixed
+- A banner command that hit its own timeout just before the banner deadline showed "unavailable" instead of "timed out"; it failed the Python 3.8 CI run. CI now runs every Python version to the end instead of cancelling the rest after one fails.
 - `REPACK` no longer hides video results, since scene video releases use it too; it only ranks them lower. Game repacks are still caught by FitGirl, DODI, ElAmigos and similar keywords.
 - Dedupe also joins a result that has no hash and a rounded size (such as LimeTorrents' "4.2 GB") to a hashed copy with the same title and a size within 2%.
 - Plugin results whose size was given in GiB/MiB/KiB/TiB, in lowercase, with thousands separators, or as a number were dropped; they are kept now, and a plugin's `pub_date` shows as the result date.

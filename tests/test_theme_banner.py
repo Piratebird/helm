@@ -207,6 +207,16 @@ def test_run_with_deadline_reports_errors_and_timeouts():
     assert results == {0: ("ok", 1), 1: ("error", None), 2: ("timeout", None)}
 
 
+def test_a_timeout_raised_inside_a_module_counts_as_timed_out():
+    # Python 3.8 on CI: the command's own subprocess timeout fired before the deadline.
+    import subprocess
+
+    def expired():
+        raise subprocess.TimeoutExpired(["slow"], 1.5)
+
+    assert run_with_deadline([expired], 1) == {0: ("timeout", None)}
+
+
 def test_custom_modules_and_separator(home):
     modules = [
         {"type": "command", "label": "Hello", "command": python_command("print('\\n\\x1b[1mhi there\\x1b[0m')")},
