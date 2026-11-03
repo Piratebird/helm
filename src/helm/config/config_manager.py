@@ -109,18 +109,43 @@ CONTENT_PROFILES = {
 RELATED_MEDIA_TERMS = ["season", "episode", "s01", "s02"]
 
 
+# Another category's keywords that are also normal in this category's release
+# names: video releases name their audio track (x264 AAC, XviD MP3, FLAC) and TV
+# packs use "Ep 01-06". These only lower a result's rank instead of hiding it.
+WEAK_TERMS = {
+    "video": ["aac", "alac", "flac", "mp3", "ogg", "wav", "ep", "single"],
+}
+
+
+def _derived_negatives(cat):
+    derived = [kw for other, kws in CONTENT_PROFILES.items() if other != cat for kw in kws]
+    if cat != "video":
+        derived += RELATED_MEDIA_TERMS
+    return set(derived)
+
+
 def _build_negative_keywords():
-    """Each category's negatives are the union of every *other* category's positives."""
-    negatives = {}
-    for cat in CONTENT_PROFILES:
-        derived = [kw for other, kws in CONTENT_PROFILES.items() if other != cat for kw in kws]
-        if cat != "video":
-            derived += RELATED_MEDIA_TERMS
-        negatives[cat] = sorted(set(derived))
-    return negatives
+    """Each category's negatives are every *other* category's positives, minus its weak terms."""
+    return {cat: sorted(_derived_negatives(cat) - set(WEAK_TERMS.get(cat, ()))) for cat in CONTENT_PROFILES}
+
+
+def _build_weak_negatives():
+    return {cat: sorted(_derived_negatives(cat) & set(WEAK_TERMS.get(cat, ()))) for cat in CONTENT_PROFILES}
 
 
 NEGATIVE_KEYWORDS = _build_negative_keywords()
+WEAK_NEGATIVE_KEYWORDS = _build_weak_negatives()
+
+# Torznab category ranges per content type (1000 console, 2000 movies, 3000
+# audio, 4000 PC, 5000 TV, 7000 books). 6000 (XXX), 8000 (other) and the
+# tracker-specific ids above 100000 say nothing about the content type.
+TORZNAB_GROUPS = {
+    "video": (2000, 5000),
+    "games": (1000, 4000),
+    "software": (4000,),
+    "books": (7000,),
+    "music": (3000,),
+}
 
 
 def get_config_dir():

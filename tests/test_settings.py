@@ -77,7 +77,7 @@ def snapshot(settings):
 
 def test_defaults_without_any_file(config_dir):
     settings = load_settings()
-    assert settings.get("search.min_seeds") == 3
+    assert settings.get("search.min_seeds") == 1
     assert settings.origin("search.min_seeds") == "default"
     assert settings.path is None
     assert list(config_dir.iterdir()) == []
@@ -268,7 +268,7 @@ def test_damaged_state_does_not_stop_startup(config_dir):
     state = Path(settings_module.state_file())
     state.parent.mkdir(parents=True)
     state.write_text("{")
-    assert load_settings().get("search.min_seeds") == 3
+    assert load_settings().get("search.min_seeds") == 1
     remember({"search.min_seeds": 5})
     assert load_settings().get("search.min_seeds") == 5
     state.write_text('{"search.min_seeds": "bad", "other": 1}')
@@ -337,8 +337,8 @@ def test_nothing_to_migrate_creates_no_file(config_dir, text):
 
 def test_corrupt_legacy_file_is_backed_up_once(config_dir, capsys):
     (config_dir / "config.json").write_text("{broken")
-    assert load_settings().get("search.min_seeds") == 3
-    assert load_settings().get("search.min_seeds") == 3
+    assert load_settings().get("search.min_seeds") == 1
+    assert load_settings().get("search.min_seeds") == 1
     assert (config_dir / "config.json.bak").read_text() == "{broken"
     assert capsys.readouterr().err.count("corrupted") == 1
 
@@ -509,3 +509,10 @@ def test_theme_and_banner_environment_overrides(config_dir, monkeypatch):
     assert settings.get("theme.preset") == "tokyo-night"
     assert settings.get("banner.enabled") is False
     assert settings.origin("theme.preset") == "env"
+
+
+def test_old_min_seeds_default_in_config_json_is_not_migrated():
+    # Old versions wrote min_seeds = 3 into every config.json; the default is now 1.
+    assert map_legacy({"min_seeds": 3}) == {}
+    assert map_legacy({"min_seeds": 1}) == {}
+    assert map_legacy({"min_seeds": 5}) == {"search.min_seeds": 5}

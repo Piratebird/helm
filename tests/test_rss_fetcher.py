@@ -122,13 +122,16 @@ def test_jackett_json_results_keep_their_dates(monkeypatch):
     monkeypatch.setattr(rf, "get_secret", lambda key: "key")
     results = [
         {"Title": "Dated", "Size": 1, "Seeders": 5, "Peers": 1, "Tracker": "YTS",
-         "MagnetUri": "magnet:?xt=urn:btih:" + "a" * 40, "PublishDate": "2019-07-02T12:34:56.1234567+00:00"},
+         "MagnetUri": "magnet:?xt=urn:btih:" + "a" * 40, "PublishDate": "2019-07-02T12:34:56.1234567+00:00",
+         "Category": [2000, 100001], "InfoHash": "A" * 40},
         {"Title": "Undated", "Size": 2, "Seeders": 3, "Peers": 1, "Tracker": "TPB",
          "MagnetUri": "magnet:?xt=urn:btih:" + "b" * 40, "PublishDate": "0001-01-01T00:00:00"},
     ]  # fmt: skip
     responses.add(responses.GET, "http://jackett.test/api/v2.0/indexers/all/results", json={"Results": results})
-    items = {item.title: item.pubdate for item in search_jackett("spider-man")}
-    assert items == {"Dated": "2019-07-02", "Undated": None}
+    found = {item.title: item for item in search_jackett("spider-man")}
+    assert {title: item.pubdate for title, item in found.items()} == {"Dated": "2019-07-02", "Undated": None}
+    assert found["Dated"].categories == [2000, 100001] and found["Dated"].info_hash == "A" * 40
+    assert found["Undated"].categories is None
 
 
 @responses.activate
@@ -140,7 +143,9 @@ def test_prowlarr_json_results_keep_their_dates(monkeypatch):
         responses.GET,
         "http://prowlarr.test/api/v1/search",
         json=[{"title": "Dated", "size": 1, "seeders": 2, "leechers": 0, "indexer": "YTS",
-               "magnetUrl": "magnet:?xt=urn:btih:" + "c" * 40, "publishDate": "2024-12-08T16:53:15Z"}],
+               "magnetUrl": "magnet:?xt=urn:btih:" + "c" * 40, "publishDate": "2024-12-08T16:53:15Z",
+               "infoHash": "c" * 40, "categories": [{"id": 5000, "name": "TV"}, {"id": 5040}]}],
     )  # fmt: skip
     (item,) = rf.search_prowlarr("ubuntu")
     assert item.pubdate == "2024-12-08"
+    assert item.categories == [5000, 5040] and item.info_hash == "c" * 40

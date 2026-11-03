@@ -54,7 +54,17 @@ def source_status(error):
 
 class TorrentItem:
     def __init__(
-        self, title, link, seeders, leechers=0, size=0, pubdate=None, indexer="Unknown", info_hash=None, sources=None
+        self,
+        title,
+        link,
+        seeders,
+        leechers=0,
+        size=0,
+        pubdate=None,
+        indexer="Unknown",
+        info_hash=None,
+        sources=None,
+        categories=None,
     ):
         self.title = title
         self.link = link
@@ -67,6 +77,8 @@ class TorrentItem:
         self.info_hash = info_hash
         # Every source that returned this torrent, filled in by dedupe.
         self.sources = sources
+        # Torznab category ids the source filed this under, when it says.
+        self.categories = categories
 
 
 ISO_DATE = re.compile(r"^\s*(\d{4})-(\d{2})-(\d{2})")
@@ -85,7 +97,7 @@ def iso_day(value):
     return "-".join(match.groups())
 
 
-CATEGORY_MAP = {"video": "2000,5000", "games": "4000", "software": "4000", "books": "8000", "music": "3000"}
+CATEGORY_MAP = {"video": "2000,5000", "games": "1000,4000", "software": "4000", "books": "7000,8000", "music": "3000"}
 
 
 def _parse_feed(xml_text):
@@ -113,6 +125,7 @@ def _parse_feed(xml_text):
         seeders = 0
         leechers = 0
         info_hash = None
+        categories = [c.text for c in elem.findall("category") if c.text]
         for attr in elem.findall("torznab:attr", namespaces=ns):
             name = attr.get("name")
             value = attr.get("value", "")
@@ -134,6 +147,8 @@ def _parse_feed(xml_text):
                     pass
             elif name == "infohash":
                 info_hash = value
+            elif name == "category":
+                categories.append(value)
             elif name == "size" and size == 0:
                 try:
                     size = int(value)
@@ -146,7 +161,19 @@ def _parse_feed(xml_text):
         indexer_elem = elem.find("jackettindexer")
         indexer = indexer_elem.text if indexer_elem is not None else "Jackett"
 
-        items.append(TorrentItem(title, link, seeders, leechers, size, pubdate, indexer, info_hash=info_hash))
+        items.append(
+            TorrentItem(
+                title,
+                link,
+                seeders,
+                leechers,
+                size,
+                pubdate,
+                indexer,
+                info_hash=info_hash,
+                categories=categories or None,
+            )
+        )
     return items
 
 
@@ -232,6 +259,7 @@ def search_prowlarr(query, content_type="video"):
                     pubdate=iso_day(item.get("publishDate")),
                     indexer=f"Prowlarr ({indexer})",
                     info_hash=item.get("infoHash"),
+                    categories=[c.get("id") for c in item.get("categories") or () if isinstance(c, dict)] or None,
                 )
             )
 
@@ -344,6 +372,7 @@ def search_jackett(query, content_type="video"):
                     pubdate=iso_day(item.get("PublishDate")),
                     indexer=f"Jackett ({indexer})",
                     info_hash=item.get("InfoHash"),
+                    categories=list(item.get("Category") or ()) or None,
                 )
             )
 

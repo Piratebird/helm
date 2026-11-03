@@ -297,7 +297,10 @@ def interactive_indexer_selector(indexer_list):
         _exit_raw_input(fd, old_settings)
 
 
-def interactive_selector(filtered_list, mode_str="", lite_mode=False, media_type=""):
+def interactive_selector(filtered_list, mode_str="", lite_mode=False, media_type="", hidden=None):
+    """Pick one result. *hidden* holds (item, reason) pairs the filters removed; ``show:all`` lists them too."""
+    hidden = list(hidden or ())
+    hidden_reason = {id(item): reason for item, reason in hidden}
     fd = sys.stdin.fileno() if not IS_WINDOWS else None
     old_settings = termios.tcgetattr(fd) if not IS_WINDOWS else None
     current_input = ""
@@ -317,9 +320,12 @@ def interactive_selector(filtered_list, mode_str="", lite_mode=False, media_type
         cat_filter = None
         sort_key = None
         sort_desc = True
+        show_all = False
 
         for term in raw_terms:
-            if term.startswith("cat:"):
+            if term == "show:all":
+                show_all = True
+            elif term.startswith("cat:"):
                 cat_filter = term.split(":", 1)[1]
             elif term.startswith("sort:"):
                 sort_val = term.split(":", 1)[1]
@@ -340,7 +346,8 @@ def interactive_selector(filtered_list, mode_str="", lite_mode=False, media_type
             search_term = search_term[1:]
 
         disp_items = []
-        for t in filtered_list:
+        source = list(filtered_list) + ([item for item, _ in hidden] if show_all else [])
+        for t in source:
             if search_term and search_term not in t.title.lower():
                 continue
 
@@ -368,8 +375,12 @@ def interactive_selector(filtered_list, mode_str="", lite_mode=False, media_type
 
         window_items = disp_items[start_idx:stop_idx]
 
+        if hidden and not show_all:
+            hidden_note = f" {T.MUTED}[{len(hidden)} hidden by filters, type show:all]{T.RST}"
+        else:
+            hidden_note = ""
         buf.append(
-            f"{T.BOLD}{T.TEXT}Found {len(disp_items)} results (showing {start_idx + 1}-{start_idx + len(window_items)}):{T.RST}{T.EOL}\r\n"
+            f"{T.BOLD}{T.TEXT}Found {len(disp_items)} results (showing {start_idx + 1}-{start_idx + len(window_items)}):{T.RST}{hidden_note}{T.EOL}\r\n"
         )
         buf.append(T.LINE + "━" * 80 + f"{T.RST}{T.EOL}\r\n")
 
@@ -381,8 +392,9 @@ def interactive_selector(filtered_list, mode_str="", lite_mode=False, media_type
             is_generic = score == 0
 
             # Only show tags for generic items, or items that have a media type (non-generic)
-            tag = f"[{item_type.upper()}]" if item_type else "[GENERIC]"
-            has_tag = is_generic or item_type
+            reason = hidden_reason.get(id(t))
+            tag = "[HIDDEN]" if reason else f"[{item_type.upper()}]" if item_type else "[GENERIC]"
+            has_tag = reason or is_generic or item_type
 
             prefix_len = len(tag) + 1 if has_tag else 0
             max_title_len = 38 - prefix_len
@@ -397,6 +409,8 @@ def interactive_selector(filtered_list, mode_str="", lite_mode=False, media_type
             size_str = format_size(getattr(t, "size", 0))
             date_str = getattr(t, "pubdate", "") or "????-??-??"
             indexer = getattr(t, "indexer", "Unknown")
+            if reason:
+                indexer = f"{indexer} | {reason}"
 
             info_str = f"[{size_str:>9}] [{date_str:>10}] [{seeds:>4}↑ {leechs:>3}↓] [{indexer}]"
 
@@ -417,9 +431,9 @@ def interactive_selector(filtered_list, mode_str="", lite_mode=False, media_type
         buf.append(T.LINE + "━" * 80 + f"{T.RST}{T.EOL}\r\n")
 
         if lite_mode:
-            prompt = f"{T.BOLD}{T.TEXT}❯ Filter (cat:video, sort:size | Esc=Back, Ctrl-C=Exit):{T.RST} {current_input}"
+            prompt = f"{T.BOLD}{T.TEXT}❯ Filter (cat:video, sort:size, show:all | Esc=Back, Ctrl-C=Exit):{T.RST} {current_input}"
         else:
-            prompt = f"{T.BOLD}{T.TEXT}❯ Filter (cat:video, sort:size | Esc=Back, Ctrl-C=Exit, Ctrl-E=Teardown):{T.RST} {current_input}"
+            prompt = f"{T.BOLD}{T.TEXT}❯ Filter (cat:video, sort:size, show:all | Esc=Back, Ctrl-C=Exit, Ctrl-E=Teardown):{T.RST} {current_input}"
 
         buf.append(prompt + T.CLEAR_DOWN)
         sys.stdout.write("".join(buf))

@@ -50,7 +50,7 @@ It completely automates its own setup, orchestrating Jackett, Prowlarr, Flaresol
 - **Ephemeral (One-Shot) Mode:** Containers spin up when you search/download, and tear down immediately after to save RAM and CPU.
 - **Permanent Mode:** Keep the stack running 24/7 if you prefer.
 - **VPN Support:** Automatically route qBittorrent traffic through Gluetun (Wireguard/OpenVPN).
-- **Live Search & Filter:** A fast, interactive CLI interface to search indexers and select torrents.
+- **Live Search & Filter:** A fast, interactive CLI interface to search indexers and select torrents. The filter bar takes words to match plus `cat:<type>`, `sort:size`, `sort:seeds` (prefix `-` for ascending) and `show:all`.
 - **Lite Mode (Zero Setup):** Search public APIs and bundled Python scrapers without Docker or Jackett. Lite sources run in isolated processes with a shared 30-second budget, including queueing, startup and network work. Six run simultaneously by default; use `--lite-workers 2` or `HELM_LITE_WORKERS=2` to reduce process concurrency (valid range: 1–12). Stalled workers are terminated and reaped, with POSIX process-group cleanup; completed source results are preserved. Each worker thread reuses its own HTTP session.
 - **CLI Indexer Management:** Manage both Jackett and Prowlarr indexers directly from the command line.
 
@@ -96,7 +96,7 @@ If a source times out (for example, `nyaa.si`), Helm keeps results from other co
 
 - Enter a nonempty, specific query. A request containing `q=` has an empty query; current Helm rejects blank interactive and CLI searches.
 - Use `helm-torrent logs` for recent source errors, or `HELM_VERBOSE=true helm-torrent search "artist album" --type music --lite --json` for verbose diagnostics on stderr.
-- If raw results exist but the final list is empty, check content filters and `search.min_seeds` in `config.toml` (default: 3). Use `helm-torrent paths` to locate it.
+- If raw results exist but the final list is empty, check content filters and `search.min_seeds` in `config.toml` (default: 1). Use `helm-torrent paths` to locate it. Type `show:all` in the result filter to list hidden results with the reason each was hidden (`seeds`, `category` or `keyword:<word>`).
 - Content types are mapped to plugin category keys when supported (video searches movies/TV/anime); general sources fall back to `all`. Inline feeds and unsupported categories still rely on local scoring/filtering.
 - A source summary on stderr distinguishes empty results from timeouts, HTTP failures, connection failures, and parse failures. Bundled plugins report swallowed failures; third-party plugins may need the `novaprinter.report_error` hook. Jobs whose queue budget expires are marked `budget_exhausted`; JSON stdout stays separate.
 
@@ -174,7 +174,7 @@ What these do:
 ```toml
 # ~/.config/helm/config.toml
 [search]
-min_seeds = 3
+min_seeds = 1
 lite_workers = 6
 default_type = "video"
 indexer_manager = "jackett"   # jackett, prowlarr or both

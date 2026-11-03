@@ -18,11 +18,40 @@ def _compile_words(words):
     return re.compile(r"\b(?:" + "|".join(re.escape(w.lower()) for w in sorted_words) + r")\b")
 
 
-def filter_items(items, category_profiles, negatives, min_score=0, min_seeds=0):
+def category_groups(item):
+    """The standard Torznab groups (1000, 2000, ... 7000) a source put this item in."""
+    groups = set()
+    for value in getattr(item, "categories", None) or ():
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            continue
+        if 1000 <= number < 8000 and number // 1000 != 6:
+            groups.add(number // 1000 * 1000)
+    return groups
+
+
+def filter_items(
+    items, category_profiles, negatives, min_score=0, min_seeds=0, weak_negatives=(), hidden=None, groups=None
+):
+    """Score and filter search results, best first.
+
+    A result whose source category matches *groups* skips the keyword checks; one
+    whose source category only matches other content types is hidden. Otherwise a
+    title with a *negatives* word is hidden and each *weak_negatives* word only
+    lowers its rank. Hidden items go to *hidden* as (item, reason) pairs, with
+    reason "seeds", "category" or "keyword:<word>", so callers can still show them.
+    """
     results = []
 
     neg_pattern = _compile_words(negatives)
+    weak_pattern = _compile_words(weak_negatives)
     cat_patterns = {cat: _compile_words(pos) for cat, pos in category_profiles.items()}
+    wanted = set(groups or ())
+
+    def hide(item, reason):
+        if hidden is not None:
+            hidden.append((item, reason))
 
     for item in items:
         title = getattr(item, "title", "").lower()
@@ -33,10 +62,20 @@ def filter_items(items, category_profiles, negatives, min_score=0, min_seeds=0):
             seeders = 0
 
         if seeders != -1 and seeders < min_seeds:
+            hide(item, "seeds")
             continue
 
-        if neg_pattern and neg_pattern.search(title):
+        source_groups = category_groups(item) if wanted else set()
+        trusted = bool(source_groups & wanted)
+        if source_groups and not trusted:
+            hide(item, "category")
             continue
+
+        if not trusted and neg_pattern:
+            match = neg_pattern.search(title)
+            if match:
+                hide(item, f"keyword:{match.group(0)}")
+                continue
 
         best_cat = None
         best_score = 0
@@ -51,10 +90,14 @@ def filter_items(items, category_profiles, negatives, min_score=0, min_seeds=0):
                     best_score = score
                     best_cat = cat
 
+        penalty = 0 if trusted or not weak_pattern else len(set(weak_pattern.findall(title)))
+
         if best_score >= min_score or not any(cat_patterns.values()):
             item.score = best_score
             item.media_type = best_cat if best_score > 0 else None
-            results.append((item, best_score))
+            results.append((item, best_score - penalty))
+        else:
+            hide(item, "score")
 
     return [i[0] for i in sorted(results, key=lambda x: x[1], reverse=True)]
 

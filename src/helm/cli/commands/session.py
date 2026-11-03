@@ -7,7 +7,7 @@ import sys
 from helm.cli import deps
 from helm.cli.commands.banner import print_header
 from helm.cli.commands.indexers import manage_indexers
-from helm.config.config_manager import CONTENT_PROFILES, NEGATIVE_KEYWORDS
+from helm.config.config_manager import CONTENT_PROFILES, NEGATIVE_KEYWORDS, TORZNAB_GROUPS, WEAK_NEGATIVE_KEYWORDS
 from helm.ui.ansi import T
 
 
@@ -88,9 +88,13 @@ def run(args, teardown_oneshot):
         elif state == "SEARCHING":
             keywords = []
             negatives = []
+            weak_negatives = []
+            groups = set()
             for cat in categories:
                 keywords.extend(CONTENT_PROFILES.get(cat, []))
                 negatives.extend(NEGATIVE_KEYWORDS.get(cat, []))
+                weak_negatives.extend(WEAK_NEGATIVE_KEYWORDS.get(cat, []))
+                groups.update(TORZNAB_GROUPS.get(cat, ()))
 
             # Collect profiles for scoring
             cat_profiles = {cat: CONTENT_PROFILES.get(cat, []) for cat in categories}
@@ -101,6 +105,7 @@ def run(args, teardown_oneshot):
 
             query_words = set(re.findall(r"\b\w+\b", search_query.lower()))
             negatives = [n for n in negatives if n.lower() not in query_words]
+            weak_negatives = [n for n in weak_negatives if n not in all_positives and n.lower() not in query_words]
 
             # Special case for books
             cleaned_query = search_query
@@ -123,7 +128,17 @@ def run(args, teardown_oneshot):
             min_seeds = deps.load_settings().get("search.min_seeds")
 
             unique_items = deps.dedupe(all_items)
-            filtered = deps.filter_items(unique_items, cat_profiles, negatives, min_score=0, min_seeds=min_seeds)
+            hidden = []
+            filtered = deps.filter_items(
+                unique_items,
+                cat_profiles,
+                negatives,
+                min_score=0,
+                min_seeds=min_seeds,
+                weak_negatives=weak_negatives,
+                hidden=hidden,
+                groups=groups,
+            )
 
             if not filtered:
                 if args.json:
@@ -187,7 +202,7 @@ def run(args, teardown_oneshot):
             try:
                 media_type_str = "+".join(categories) if categories else ""
                 selected, do_teardown = deps.interactive_selector(
-                    filtered, mode_str, lite_mode=args.lite, media_type=media_type_str
+                    filtered, mode_str, lite_mode=args.lite, media_type=media_type_str, hidden=hidden
                 )
 
                 if do_teardown == "BACK":

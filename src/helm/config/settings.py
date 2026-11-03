@@ -59,7 +59,7 @@ COLOR_EXAMPLES = {name: value for name, value in HELM_COLORS.items() if value.st
 COLOR_EXAMPLES.update({"success": "#4CAF50", "warning": "#E0AF68", "info": "#7DCFFF"})
 
 FIELDS = (
-    Field("search.min_seeds", "int", 3, legacy="min_seeds", minimum=0),
+    Field("search.min_seeds", "int", 1, legacy="min_seeds", minimum=0),
     Field("search.lite_workers", "int", 6, env="HELM_LITE_WORKERS", minimum=1, maximum=12),
     Field("search.default_type", "str", "video", choices=tuple(sorted(CONTENT_PROFILES))),
     Field(
@@ -326,6 +326,11 @@ def atomic_write(path, text):
             os.unlink(temporary)
 
 
+# Defaults that older versions wrote into every config.json. Such a value is
+# the old default, not a user's choice, so migration treats it as unset.
+RETIRED_DEFAULTS = {"search.min_seeds": 3}
+
+
 def map_legacy(config):
     """Convert config.json keys, keeping only valid values that differ from defaults.
 
@@ -338,7 +343,7 @@ def map_legacy(config):
                 value = check(field, config[field.legacy])
             except ValueError:
                 continue
-            if value != field.default:
+            if value != field.default and RETIRED_DEFAULTS.get(field.path, object()) != value:
                 values[field.path] = value
     return values
 

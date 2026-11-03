@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 Headless services, layered TOML/JSONC settings with `config` commands, themes and the banner, a rebuilt setup that runs `helm-torrent init` inside the image, and a package restructure. Set the date when this is tagged.
 
 ### Changed
+- `search.min_seeds` defaults to 1 instead of 3, so results with one or two seeders are shown. A `min_seeds = 3` in an old `config.json` is treated as the old default when migrating.
 - Rename the Lite downloader's `download_magnet` to `download_torrent`, since it also takes `.torrent` URLs and files. `download_magnet` stays as an alias.
 - Split setup: `setup.sh` now only checks the host (engine, native installs, systemd) and runs `helm-torrent init` inside the Helm image as the current user. `init` writes the compose file, `.env.docker`, API keys and the launcher, and takes `--engine`, `--indexers`, `--run-mode`, `--workdir`, `--socket`, `--project`, `--mount-source` and `--skip-prompts`; it asks for whatever is missing and runs even when the config file is broken. It no longer activates Jackett and Prowlarr indexers through their APIs: Jackett gets the seeded indexer files, and Prowlarr seeds its defaults on first search. If the image cannot be pulled, setup uses a local copy.
 - Rewrite `setup.sh` as small functions with a short `main`, tested against fake Docker, Podman and systemctl binaries. `setup.sh` and `helm-torrent init` now render one compose template, `src/helm/core/compose.template.yml`, and `docker-compose.yml.example` is removed. Setup no longer edits `config.json`; the indexer choice goes into `.env.docker` as `INDEXER_MANAGER`. The container name prefix is `helm` (or `COMPOSE_PROJECT_NAME`) everywhere, instead of the directory name in `.env.docker`. An existing `qBittorrent.conf` is kept instead of overwritten.
@@ -18,6 +19,7 @@ Headless services, layered TOML/JSONC settings with `config` commands, themes an
 - Respect the configured download directory and reject unknown flags, blank queries, and invalid content types.
 
 ### Added
+- `show:all` in the result filter lists the results that filters hid, marked `[HIDDEN]` with the reason, and the result header counts them.
 - Tests for the setup wizard's full-automation prompts against a local HTTP server that acts like Jackett, Prowlarr and qBittorrent, and in-process tests for `status`, indexer management and the interactive session. CI now installs tmux and tries libtorrent, so those tests run there instead of skipping, and lists any skips.
 - `helm-torrent daemon prune` deletes the records and logs of daemons that have stopped.
 - Theme presets (`helm`, `tokyo-night`, `nord`, `catppuccin-mocha`) with single-colour overrides, and `helm-torrent banner [--json]`. Banner modules and logo sources (built-in, file, command) run under one time limit, so a slow or failing part cannot break or delay the banner.
@@ -35,6 +37,9 @@ Headless services, layered TOML/JSONC settings with `config` commands, themes an
 - Standalone `uninstall.sh` for raw GitHub execution, with preview-by-default, selective removal and unit tests.
 
 ### Fixed
+- Content filters use the Torznab category a source gives (Jackett, Prowlarr and Torznab feeds): a result filed under the searched type skips the keyword checks, and one filed only under another type is hidden. Results without a category still use keywords.
+- Keywords from another content type that are normal in video release names (audio codecs such as `AAC`, `MP3` and `FLAC`, plus `ep` and `single`) no longer hide video results; they only rank them lower. Strong signals such as `PC`, `DODI`, `FitGirl` or `soundtrack` still hide them.
+- Book searches ask Torznab for category `7000` (books) as well as `8000` (other), and game searches add `1000` (console).
 - Duplicate results from different sources are merged instead of dropped. Results now match on info hash, read from magnets, from `.torrent` URLs named after the hash, and from the `InfoHash` field that Jackett, Prowlarr and Torznab send with their download links, before falling back to the title (ignoring case and punctuation) plus size. The merged result keeps the most-seeded copy, takes a missing date or size from another copy, uses a magnet over an indexer download link, lists every source as `Jackett (TPB) +1`, and lists them in `--json` as `sources`.
 - Search results from the Jackett and Prowlarr JSON APIs now keep their publish date (only the Torznab XML fallback did before). Jackett's `0001-01-01` placeholder is treated as no date.
 - A missing Prowlarr API key and a JSON search that falls back to Torznab are logged to `helm.log` only, not printed during searches.

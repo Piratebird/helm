@@ -113,7 +113,7 @@ def test_template_documents_every_field(file_format):
 
 
 def test_uncommented_jsonc_template_line_takes_effect():
-    text = render_template("jsonc").replace('// "min_seeds": 3,', '"min_seeds": 9,')
+    text = render_template("jsonc").replace('// "min_seeds": 1,', '"min_seeds": 9,')
     assert parse_jsonc(text)["search"]["min_seeds"] == 9
 
 

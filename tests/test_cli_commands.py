@@ -275,3 +275,29 @@ def test_send_falls_back_to_lite_when_qbittorrent_fails(monkeypatch, capsys):
     monkeypatch.setattr(downloader, "download_torrent", lambda link: True)
     assert session.send_magnet(item(), lite_mode=False) is True
     assert "Falling back to LITE MODE" in capsys.readouterr().err
+
+
+def test_session_hides_with_real_filters_and_passes_hidden_to_selector(ui, monkeypatch):
+    from helm.search.rss_fetcher import TorrentItem
+    from helm.search.torrent_filter import dedupe, filter_items
+
+    monkeypatch.setattr(deps, "dedupe", dedupe)
+    monkeypatch.setattr(deps, "filter_items", filter_items)
+    found = [
+        TorrentItem("Movie 2019 1080p XviD MP3", "magnet:?xt=urn:btih:" + "a" * 40, 5),
+        TorrentItem("Movie 2019 [DODI Repack]", "magnet:?xt=urn:btih:" + "b" * 40, 5),
+        TorrentItem("Movie 2019 720p", "magnet:?xt=urn:btih:" + "c" * 40, 0),
+        TorrentItem("Movie 2019 PC Edition", "magnet:?xt=urn:btih:" + "d" * 40, 5, categories=[2000]),
+    ]
+    seen = {}
+
+    def selector(kept, *a, **kw):
+        seen["kept"] = [i.title for i in kept]
+        seen["hidden"] = {i.title: reason for i, reason in kw["hidden"]}
+        return kept[0], False
+
+    ui(["movie"], [["video"]], [found], [])
+    monkeypatch.setattr(deps, "interactive_selector", selector)
+    session.run(session_args(), teardown_oneshot=lambda: None)
+    assert sorted(seen["kept"]) == ["Movie 2019 1080p XviD MP3", "Movie 2019 PC Edition"]
+    assert seen["hidden"] == {"Movie 2019 [DODI Repack]": "keyword:dodi", "Movie 2019 720p": "seeds"}
