@@ -1,6 +1,7 @@
 """The interactive search session behind helm-torrent, ui and search."""
 
 import json
+import os
 import re
 import sys
 
@@ -13,13 +14,28 @@ from helm.ui.ansi import T
 
 def send_magnet(selected, lite_mode, json_mode=False, success_msg="Torrent sent successfully :)", tag=None):
     """Send a torrent to qBittorrent, falling back to the built-in downloader if it is unavailable."""
+    from helm.search import plugin_download
+
+    # A plugin result may link to a details page that only its plugin can turn into a torrent.
+    link = plugin_download.resolve(selected) or selected.link
+    try:
+        return _send(link, lite_mode, json_mode, success_msg, tag)
+    finally:
+        if link != selected.link and plugin_download.is_plugin_temp_file(link):
+            try:
+                os.remove(link)
+            except OSError:
+                pass
+
+
+def _send(link, lite_mode, json_mode, success_msg, tag):
     if lite_mode:
         from helm.torrents.lite_downloader import download_torrent
 
-        return download_torrent(selected.link)
+        return download_torrent(link)
 
     try:
-        deps.add_magnet(selected.link, tag=f"helm,{tag}" if tag else "helm")
+        deps.add_magnet(link, tag=f"helm,{tag}" if tag else "helm")
         if not json_mode:
             print(f"{T.TEXT}{success_msg}{T.RST}")
     except Exception as e:
@@ -29,7 +45,7 @@ def send_magnet(selected, lite_mode, json_mode=False, success_msg="Torrent sent 
         )
         from helm.torrents.lite_downloader import download_torrent
 
-        return download_torrent(selected.link)
+        return download_torrent(link)
     return True
 
 

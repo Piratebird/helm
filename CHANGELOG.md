@@ -19,6 +19,7 @@ Headless services, layered TOML/JSONC settings with `config` commands, themes an
 - Respect the configured download directory and reject unknown flags, blank queries, and invalid content types.
 
 ### Added
+- qBittorrent plugin compatibility: `helpers` and `novaprinter` now match qBittorrent's nova3 API (`retrieve_url(url, custom_headers, request_data, ssl_context, unescape_html_entities)`, `download_file(url, referer)` returning `"<path> <url>"`, `headers`/`_headers`, `enable_socks_proxy`, `anySizeToBytes`, `SearchResults`). Your own plugins get the URL-encoded query, and when you pick a result whose link is not a magnet, the plugin's `download_torrent` runs in a child process with a 60-second timeout, falling back to Helm's own link resolver. By a static check of the 72 public plugins on qBittorrent's unofficial list, 59 should now load and run, up from about 30; the rest are Python 2 or need extra packages.
 - `init` now sets up 14 public Jackett indexers instead of 4, adding EZTV, LimeTorrents, TheRARBG, TorrentDownloads, TorrentDownload, TorrentProject, Knaben, uindex, Kickass and ExtraTorrent. Each was checked against a fresh Jackett with FlareSolverr. Prowlarr's first-search defaults use the same list.
 - `show:all` in the result filter lists the results that filters hid, marked `[HIDDEN]` with the reason, and the result header counts them.
 - Tests for the setup wizard's full-automation prompts against a local HTTP server that acts like Jackett, Prowlarr and qBittorrent, and in-process tests for `status`, indexer management and the interactive session. CI now installs tmux and tries libtorrent, so those tests run there instead of skipping, and lists any skips.
@@ -38,6 +39,8 @@ Headless services, layered TOML/JSONC settings with `config` commands, themes an
 - Standalone `uninstall.sh` for raw GitHub execution, with preview-by-default, selective removal and unit tests.
 
 ### Fixed
+- Plugin results whose size was given in GiB/MiB/KiB/TiB, in lowercase, with thousands separators, or as a number were dropped; they are kept now, and a plugin's `pub_date` shows as the result date.
+- A plugin's second `retrieve_url` argument was sent as POST data instead of headers, and `download_file`'s referer was used as a file name.
 - Rerunning `init` no longer resets Jackett indexers you have already configured; only missing ones are added. YTS is set up at its current `yts.gg` link instead of the retired `yts.mx`.
 - Prowlarr's default indexers no longer include `torrentgalaxy` and `nyaapantsu`, which have no Prowlarr definition, so only 3 of its 5 defaults were ever set up.
 - Content filters use the Torznab category a source gives (Jackett, Prowlarr and Torznab feeds): a result filed under the searched type skips the keyword checks, and one filed only under another type is hidden. Results without a category still use keywords.

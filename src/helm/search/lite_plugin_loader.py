@@ -9,7 +9,8 @@ logger = get_logger(__name__)
 PLUGIN_SEARCH_TIMEOUT = 30
 
 # Ensure our plugins directory is in the path so helpers and novaprinter can be imported
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../plugins")))
+BUNDLED_PLUGIN_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../plugins"))
+sys.path.insert(0, BUNDLED_PLUGIN_DIR)
 
 import novaprinter  # noqa: E402
 
@@ -81,8 +82,21 @@ def plugin_categories(plugin, content_type):
     return ["all"] if "all" in selected else selected
 
 
-def _execute_plugin(plugin, query, content_type="all"):
+def is_bundled(path):
+    return bool(path) and os.path.dirname(os.path.abspath(path)) == BUNDLED_PLUGIN_DIR
+
+
+def plugin_query(query, path=None):
+    """The query a plugin gets: raw for Helm's bundled plugins, URL-encoded like
+    qBittorrent's nova2 for everyone else's, which build URLs from it directly."""
+    from urllib.parse import quote
+
+    return query if path is None or is_bundled(path) else quote(query)
+
+
+def _execute_plugin(plugin, query, content_type="all", path=None):
     name = getattr(plugin, "name", plugin.__class__.__name__)
+    query = plugin_query(query, path)
     collector = novaprinter.get_results()
     collector.clear()
     novaprinter.get_errors().clear()
@@ -103,6 +117,8 @@ def _execute_plugin(plugin, query, content_type="all"):
     after = len(collector)
     for item in collector:
         item.indexer = name
+        if path and callable(getattr(plugin, "download_torrent", None)):
+            item.plugin = os.path.abspath(path)
     logger.info(f"Event: Plugin {name} returned {after - before} results")
     # Pool workers can run several plugins. Return a snapshot before the next
     # plugin clears that worker's thread-local collector.

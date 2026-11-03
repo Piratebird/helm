@@ -146,7 +146,7 @@ def execute_job(job, query, content_type):
         from helm.search.lite_plugin_loader import _execute_plugin, load_plugin
 
         plugin = load_plugin(job.target)
-        return _execute_plugin(plugin, query, content_type)
+        return _execute_plugin(plugin, query, content_type, path=job.target)
     raise ValueError("Unknown search job kind")
 
 

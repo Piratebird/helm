@@ -65,6 +65,8 @@ class TorrentItem:
         info_hash=None,
         sources=None,
         categories=None,
+        desc_link=None,
+        plugin=None,
     ):
         self.title = title
         self.link = link
@@ -79,6 +81,10 @@ class TorrentItem:
         self.sources = sources
         # Torznab category ids the source filed this under, when it says.
         self.categories = categories
+        # A plugin result's details page, and the plugin file that found it, so
+        # the plugin's own download_torrent can turn the link into a torrent.
+        self.desc_link = desc_link
+        self.plugin = plugin
 
 
 ISO_DATE = re.compile(r"^\s*(\d{4})-(\d{2})-(\d{2})")
